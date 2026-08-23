@@ -14,6 +14,7 @@ import {
   PRIME_VIDEO_HITS,
   MAX_DISNEY_HITS,
 } from '../../data/media/streamingMedia';
+import { Footer } from '../../components/Footer/Footer';
 import './HomeScreen.css';
 
 interface HomeScreenProps {
@@ -356,6 +357,9 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
           />
         ))}
       </ContentRail>
+
+      {/* Made with ❤️ by i.am.krs Footer */}
+      <Footer />
 
       <div className="tv-screen-bottom-spacer" />
     </div>

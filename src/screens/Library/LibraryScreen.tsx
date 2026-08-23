@@ -7,6 +7,7 @@ import { POPULAR_MOVIES } from '../../data/media/mockMedia';
 import { ContentRail } from '../../components/ContentRail/ContentRail';
 import { MediaCard } from '../../components/MediaCard/MediaCard';
 import { Bookmark, Clock } from 'lucide-react';
+import { Footer } from '../../components/Footer/Footer';
 import './LibraryScreen.css';
 
 interface LibraryScreenProps {
@@ -145,6 +146,8 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({ onSelectMedia }) =
           />
         ))}
       </ContentRail>
+
+      <Footer />
 
       <div className="tv-screen-bottom-spacer" />
     </div>

@@ -198,14 +198,32 @@ class LiveMediaProviderService implements MediaProvider {
 
   public async getFeaturedMovie(): Promise<Movie> {
     const movies = await this.getMovies();
-    // Prioritize the latest releases with highest rating (e.g., Dune 2 (2024), Deadpool & Wolverine (2024), Alien Romulus (2024))
-    const sortedByLatest = [...movies].sort((a, b) => {
-      if (b.year !== a.year) return b.year - a.year;
-      const rA = parseFloat(a.rating) || 8.0;
-      const rB = parseFloat(b.rating) || 8.0;
-      return rB - rA;
-    });
-    return sortedByLatest[0] || HOLLYWOOD_MOVIES[0];
+    // Candidates for Featured in 4K: blockbuster movies with high-definition backdrop artwork and top ratings
+    const candidates = movies.filter(
+      m => m.backdrop && m.poster && (m.year >= 2022 || (parseFloat(m.rating) || 0) >= 8.0)
+    );
+
+    const pool = candidates.length >= 3 ? candidates : (movies.length > 0 ? movies : HOLLYWOOD_MOVIES);
+
+    // Retrieve previous featured movie ID from sessionStorage or memory to ensure a fresh movie on every app open/refresh
+    let lastId = '';
+    try {
+      lastId = sessionStorage.getItem('tv_featured_movie_id') || localStorage.getItem('tv_last_featured_movie_id') || '';
+    } catch (e) {}
+
+    // Filter out the one just shown so it always rotates
+    const eligible = pool.filter(m => m.id !== lastId);
+    const chosenPool = eligible.length > 0 ? eligible : pool;
+
+    const randomIndex = Math.floor(Math.random() * chosenPool.length);
+    const selected = chosenPool[randomIndex] || HOLLYWOOD_MOVIES[0];
+
+    try {
+      sessionStorage.setItem('tv_featured_movie_id', selected.id);
+      localStorage.setItem('tv_last_featured_movie_id', selected.id);
+    } catch (e) {}
+
+    return selected;
   }
 
   public async getMovie(id: string): Promise<Movie | null> {

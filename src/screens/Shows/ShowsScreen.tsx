@@ -5,6 +5,7 @@ import { mediaProvider } from '../../services/media/LiveMediaProvider';
 import { ContentRail } from '../../components/ContentRail/ContentRail';
 import { ShowCard } from '../../components/MediaCard/ShowCard';
 import { Focusable } from '../../components/Focusable/Focusable';
+import { Footer } from '../../components/Footer/Footer';
 import './ShowsScreen.css';
 
 interface ShowsScreenProps {
@@ -206,6 +207,7 @@ export const ShowsScreen: React.FC<ShowsScreenProps> = ({ onSelectShow, onPlaySh
           ))}
         </ContentRail>
       </div>
+      <Footer />
       <div className="tv-screen-bottom-spacer" />
     </div>
   );

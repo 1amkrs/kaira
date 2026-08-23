@@ -6,6 +6,7 @@ import { ContentRail } from '../../components/ContentRail/ContentRail';
 import { AlbumCard } from '../../components/MediaCard/AlbumCard';
 import { TrackRow } from '../../components/MediaCard/TrackRow';
 import { Focusable } from '../../components/Focusable/Focusable';
+import { Footer } from '../../components/Footer/Footer';
 import { playbackService } from '../../services/playback/PlaybackService';
 import './MusicScreen.css';
 
@@ -205,6 +206,7 @@ export const MusicScreen: React.FC<MusicScreenProps> = ({ onSelectAlbum, onPlayT
           ))}
         </ContentRail>
       </div>
+      <Footer />
       <div className="tv-screen-bottom-spacer" />
     </div>
   );

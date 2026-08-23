@@ -5,6 +5,7 @@ import { spatialNav } from '../../services/spatialNav/spatialNavEngine';
 import { appService } from '../../services/apps/AppService';
 import { POPULAR_GAMES } from '../../data/games/mockGames';
 import { MediaItem } from '../../types';
+import { Footer } from '../../components/Footer/Footer';
 import './GamesScreen.css';
 
 interface GamesScreenProps {
@@ -163,6 +164,7 @@ export const GamesScreen: React.FC<GamesScreenProps> = () => {
           ))}
         </div>
       </div>
+      <Footer />
     </div>
   );
 };

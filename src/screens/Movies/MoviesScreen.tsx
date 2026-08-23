@@ -5,6 +5,7 @@ import { mediaProvider } from '../../services/media/LiveMediaProvider';
 import { ContentRail } from '../../components/ContentRail/ContentRail';
 import { MovieCard } from '../../components/MediaCard/MovieCard';
 import { Focusable } from '../../components/Focusable/Focusable';
+import { Footer } from '../../components/Footer/Footer';
 import './MoviesScreen.css';
 
 interface MoviesScreenProps {
@@ -309,6 +310,7 @@ export const MoviesScreen: React.FC<MoviesScreenProps> = ({ onSelectMovie, onPla
           </ContentRail>
         )}
       </div>
+      <Footer />
       <div className="tv-screen-bottom-spacer" />
     </div>
   );
