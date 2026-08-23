@@ -566,14 +566,22 @@
   border-radius: 50%;
   background-color: #ffffff;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.8);
-  transition: transform var(--duration-micro) var(--easing-enter);
+  transition: transform var(--duration-micro) var(--easing-enter), background-color 160ms ease, box-shadow 160ms ease;
+  z-index: 5;
+}
+
+.tv-hud-progress-bar-container:hover .tv-hud-scrubber-head,
+.tv-hud-scrubber-head:hover {
+  transform: translate(-50%, -50%) scale(1.4);
+  background-color: #e50914;
+  box-shadow: 0 0 14px rgba(229, 9, 20, 0.9), 0 2px 8px rgba(0, 0, 0, 0.8);
 }
 
 .tv-hud-progress-bar-container.focused .tv-hud-scrubber-head,
 .tv-hud-progress-bar-container.scrubbing .tv-hud-scrubber-head {
   transform: translate(-50%, -50%) scale(1.4);
-  background-color: var(--google-blue);
-  box-shadow: 0 0 16px rgba(255, 69, 58, 0.95);
+  background-color: #e50914;
+  box-shadow: 0 0 16px rgba(229, 9, 20, 0.95), 0 0 8px rgba(255, 69, 58, 0.8);
 }
 
 .tv-hud-scrubber-tooltip {

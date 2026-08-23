@@ -22,6 +22,11 @@ import {
   ALL_REGIONAL_MOVIES,
 } from '../../data/media/regionalMedia';
 import { HOLLYWOOD_MOVIES } from '../../data/media/hollywoodMedia';
+import {
+  SHOWCASE_HERO_ITEMS,
+  SHOWCASE_CONTINUE_ITEMS,
+  POPULAR_SERIES_ITEMS,
+} from '../../data/media/showcaseData';
 
 import {
   SAMPLE_CDN_POOL,
@@ -956,6 +961,10 @@ class LiveMediaProviderService implements MediaProvider {
         }
       }
     } catch (e) {}
+
+    if (items.length === 0) {
+      return SHOWCASE_CONTINUE_ITEMS;
+    }
 
     return items;
   }

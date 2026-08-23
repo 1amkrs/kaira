@@ -382,6 +382,11 @@
    ========================================================================== */
 
 @media (max-width: 768px) {
+  .desktop-only-hero,
+  .desktop-only-rail {
+    display: none !important;
+  }
+
   .tv-hero-section {
     min-height: 44vh;
     padding: calc(var(--top-nav-height) + 12px) var(--screen-padding-x) var(--space-lg) var(--screen-padding-x);

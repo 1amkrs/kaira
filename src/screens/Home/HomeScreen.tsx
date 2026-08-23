@@ -8,6 +8,8 @@ import { MovieCard } from '../../components/MediaCard/MovieCard';
 import { ShowCard } from '../../components/MediaCard/ShowCard';
 import { AlbumCard } from '../../components/MediaCard/AlbumCard';
 import { MediaCard } from '../../components/MediaCard/MediaCard';
+import { MobileShowcaseHero } from '../../components/Showcase/MobileShowcaseHero';
+import { MobileShowcaseRails } from '../../components/Showcase/MobileShowcaseRails';
 import {
   NETFLIX_ORIGINALS,
   APPLE_TV_ORIGINALS,
@@ -104,9 +106,33 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
 
   return (
     <div className="tv-scroll-container tv-home-screen" role="main" aria-label="Google TV For You Home">
-      {/* 1. Featured Hero Billboard (Latest 2024 Release Highlight) */}
+      {/* ─── Mobile Hero Showcase (Active on Mobile <= 768px down to 350px) ─── */}
+      <MobileShowcaseHero
+        heroItems={
+          [
+            ...(featured ? [featured] : []),
+            ...(top10Daily.length > 0 ? top10Daily : hollywoodMovies.slice(0, 5)),
+            ...(popularShows.length > 0 ? popularShows.slice(0, 5) : []),
+          ].filter(Boolean) as any
+        }
+        onSelectMovie={onSelectMovie}
+        onSelectShow={onSelectShow}
+        onPlayMovie={onPlayMovie}
+      />
+
+      {/* ─── Mobile Showcase Rails (Continue Watching & Popular Series) ─── */}
+      <MobileShowcaseRails
+        continueWatching={continueWatching}
+        popularSeries={popularShows.length > 0 ? popularShows : undefined}
+        onSelectContinueItem={onSelectContinueItem}
+        onSelectMediaItem={handleSelectMediaItem}
+        onSelectShow={onSelectShow}
+        onSelectMovie={onSelectMovie}
+      />
+
+      {/* ─── Desktop / TV Featured Hero Billboard ─── */}
       {featured && (
-        <section className="tv-hero-section" aria-label="Featured Highlight">
+        <section className="tv-hero-section desktop-only-hero" aria-label="Featured Highlight">
           <div className="tv-hero-backdrop-wrapper">
             <img
               src={featured.backdrop || featured.poster}
@@ -174,34 +200,36 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
         </section>
       )}
 
-      {/* 2. Continue Watching Rail (Active watch sessions only) */}
+      {/* 2. Continue Watching Rail (Active watch sessions for Desktop/TV) */}
       {continueWatching.length > 0 && (
-        <ContentRail
-          id="rail-continue-watching"
-          title="Continue Watching"
-          subtitle="Pick up where you left off"
-          aspectRatio="16:9"
-        >
-          {continueWatching.map((item, idx) => (
-            <MediaCard
-              key={item.id}
-              item={{
-                id: item.id,
-                title: item.title,
-                subtitle: item.subtitle,
-                backdropUrl: item.backdrop,
-                posterUrl: item.poster,
-                progress: item.progress,
-                duration: item.duration,
-                type: 'movie',
-              }}
-              groupId="rail-continue-watching"
-              indexInGroup={idx}
-              aspectRatio="16:9"
-              onSelect={() => onSelectContinueItem(item)}
-            />
-          ))}
-        </ContentRail>
+        <div className="desktop-only-rail">
+          <ContentRail
+            id="rail-continue-watching"
+            title="Continue Watching"
+            subtitle="Pick up where you left off"
+            aspectRatio="16:9"
+          >
+            {continueWatching.map((item, idx) => (
+              <MediaCard
+                key={item.id}
+                item={{
+                  id: item.id,
+                  title: item.title,
+                  subtitle: item.subtitle,
+                  backdropUrl: item.backdrop,
+                  posterUrl: item.poster,
+                  progress: item.progress,
+                  duration: item.duration,
+                  type: 'movie',
+                }}
+                groupId="rail-continue-watching"
+                indexInGroup={idx}
+                aspectRatio="16:9"
+                onSelect={() => onSelectContinueItem(item)}
+              />
+            ))}
+          </ContentRail>
+        </div>
       )}
 
       {/* 3. Top 10 Today — Daily Trending from Cinemeta */}

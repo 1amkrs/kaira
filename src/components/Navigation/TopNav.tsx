@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Search, Settings, Lock, Moon, Home, Film, Tv, Music, Gamepad2, Bookmark } from 'lucide-react';
+import { Search, Settings, Lock, Moon, Home, Film, Tv, Music, Gamepad2, Bookmark, Library as LibraryIcon } from 'lucide-react';
 import { NavigationTab, ScreenId } from '../../types';
 import { UserProfile } from '../../types/profile';
 import { Focusable } from '../Focusable/Focusable';
@@ -199,7 +199,7 @@ export const TopNav: React.FC<TopNavProps> = ({
         </div>
       </header>
 
-      {/* ─── Mobile Header (Fixed Top on Screens <= 768px down to 350px) ─── */}
+      {/* ─── Mobile Header (Subtle Floating Top on Screens <= 768px down to 350px) ─── */}
       <header className="tv-mobile-top-bar" role="navigation" aria-label="Mobile Navigation Header">
         <div className="tv-mobile-top-left">
           {onOpenProfile && (
@@ -269,27 +269,67 @@ export const TopNav: React.FC<TopNavProps> = ({
         </div>
       </header>
 
-      {/* ─── Mobile Bottom Navigation Bar (Fixed Bottom on Screens <= 768px down to 350px) ─── */}
+      {/* ─── Mobile Bottom Navigation Bar (Floating Glass Pill Capsule on Screens <= 768px down to 350px) ─── */}
       <nav className="tv-mobile-bottom-bar" role="tablist" aria-label="Mobile Main Destinations">
-        {TABS.map((tab) => {
-          const isActive = activeScreen === tab.id;
-          const IconComp = tab.icon;
-          return (
-            <button
-              key={tab.id}
-              type="button"
-              role="tab"
-              aria-selected={isActive}
-              className={`tv-mobile-tab-btn ${isActive ? 'active' : ''}`}
-              onClick={() => onSelectTab(tab.id)}
-            >
-              <div className="tv-mobile-tab-icon-wrap">
-                <IconComp size={20} />
+        {/* 1. Home Tab */}
+        <button
+          type="button"
+          role="tab"
+          aria-selected={activeScreen === 'for-you' || activeScreen === 'movies' || activeScreen === 'shows'}
+          className={`tv-mobile-tab-btn ${activeScreen === 'for-you' ? 'active' : ''}`}
+          onClick={() => onSelectTab('for-you')}
+        >
+          <div className="tv-mobile-tab-capsule">
+            <Home size={20} strokeWidth={2.2} />
+            <span className="tv-mobile-tab-label">Home</span>
+          </div>
+        </button>
+
+        {/* 2. Search Tab */}
+        <button
+          type="button"
+          role="tab"
+          aria-selected={false}
+          className="tv-mobile-tab-btn"
+          onClick={onOpenSearch}
+        >
+          <div className="tv-mobile-tab-capsule">
+            <Search size={20} strokeWidth={2.2} />
+            <span className="tv-mobile-tab-label">Search</span>
+          </div>
+        </button>
+
+        {/* 3. Library Tab */}
+        <button
+          type="button"
+          role="tab"
+          aria-selected={activeScreen === 'library'}
+          className={`tv-mobile-tab-btn ${activeScreen === 'library' ? 'active' : ''}`}
+          onClick={() => onSelectTab('library')}
+        >
+          <div className="tv-mobile-tab-capsule">
+            <LibraryIcon size={20} strokeWidth={2.2} />
+            <span className="tv-mobile-tab-label">Library</span>
+          </div>
+        </button>
+
+        {/* 4. Profile Tab */}
+        {onOpenProfile && (
+          <button
+            type="button"
+            role="tab"
+            aria-selected={false}
+            className="tv-mobile-tab-btn profile-tab-btn"
+            onClick={onOpenProfile}
+          >
+            <div className="tv-mobile-tab-capsule">
+              <div className="tv-mobile-profile-avatar-pill" style={{ background: avatarColor }}>
+                {renderAvatarIcon(avatarIcon, 14, '#ffffff')}
               </div>
-              <span className="tv-mobile-tab-label">{tab.label}</span>
-            </button>
-          );
-        })}
+              <span className="tv-mobile-tab-label">Profile</span>
+            </div>
+          </button>
+        )}
       </nav>
     </>
   );
