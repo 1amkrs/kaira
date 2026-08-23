@@ -471,6 +471,7 @@ export const App: React.FC = () => {
             onPlay={handlePlayMovie}
             onSelectSimilar={(m) => setSelectedMovie(m)}
             onBack={() => setSelectedMovie(null)}
+            isPlayerActive={Boolean(activeVideoSource)}
           />
         ) : selectedShow ? (
           <ShowDetailsScreen
@@ -478,6 +479,7 @@ export const App: React.FC = () => {
             onPlayEpisode={handlePlayEpisode}
             onSelectSimilar={(s) => setSelectedShow(s)}
             onBack={() => setSelectedShow(null)}
+            isPlayerActive={Boolean(activeVideoSource)}
           />
         ) : selectedAlbum ? (
           <AlbumDetailsScreen

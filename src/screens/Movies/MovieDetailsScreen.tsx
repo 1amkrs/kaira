@@ -15,6 +15,7 @@ interface MovieDetailsScreenProps {
   onPlay: (movie: Movie, customStreamUrl?: string, streamType?: AddonStream['streamType']) => void;
   onSelectSimilar: (movie: Movie) => void;
   onBack: () => void;
+  isPlayerActive?: boolean;
 }
 
 export const MovieDetailsScreen: React.FC<MovieDetailsScreenProps> = ({
@@ -22,6 +23,7 @@ export const MovieDetailsScreen: React.FC<MovieDetailsScreenProps> = ({
   onPlay,
   onSelectSimilar,
   onBack,
+  isPlayerActive = false,
 }) => {
   const [detailedMovie, setDetailedMovie] = useState<Movie>(movie);
   const [isFavorite, setIsFavorite] = useState<boolean>(!!movie.isFavorite);
@@ -131,7 +133,7 @@ export const MovieDetailsScreen: React.FC<MovieDetailsScreenProps> = ({
       />
 
       {/* 2. Auto-playing YouTube Background Trailer (Layer 2) */}
-      {trailerId && (
+      {trailerId && !isPlayerActive && (
         <div className={`tv-details-trailer-bg ${isTrailerReady ? 'visible' : 'hidden'}`}>
           <iframe
             src={`https://www.youtube.com/embed/${trailerId}?autoplay=1&mute=1&controls=0&showinfo=0&rel=0&loop=1&playlist=${trailerId}&modestbranding=1&iv_load_policy=3&enablejsapi=1`}

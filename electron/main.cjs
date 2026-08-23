@@ -547,6 +547,105 @@ ipcMain.handle('ublock-toggle-popup', async (event, enabled) => {
   return ublockConfig;
 });
 
+ipcMain.handle('ublock-reset-stats', async () => {
+  ublockConfig.blockedCount = 0;
+  return ublockConfig;
+});
+
+// Deep Media Control for Web Embed Players & Sandboxed IFrames
+ipcMain.handle('media-control', async (event, { action, value }) => {
+  if (!mainWindow) return { success: false, error: 'No main window' };
+
+  const script = `
+    (function() {
+      try {
+        const videos = Array.from(document.querySelectorAll('video'));
+        if (videos.length === 0) return;
+
+        videos.forEach(v => {
+          if ('${action}' === 'play') {
+            v.muted = false;
+            v.play().catch(() => {});
+          } else if ('${action}' === 'pause') {
+            v.pause();
+          } else if ('${action}' === 'toggle') {
+            if (v.paused) {
+              v.muted = false;
+              v.play().catch(() => {});
+            } else {
+              v.pause();
+            }
+          } else if ('${action}' === 'seek') {
+            v.currentTime = Number(${JSON.stringify(value)}) || 0;
+          } else if ('${action}' === 'seekBy') {
+            v.currentTime = Math.max(0, (v.currentTime || 0) + (Number(${JSON.stringify(value)}) || 0));
+          } else if ('${action}' === 'setVolume') {
+            v.volume = Math.max(0, Math.min(1, Number(${JSON.stringify(value)}) || 1));
+            v.muted = false;
+          } else if ('${action}' === 'unmute') {
+            v.muted = false;
+          } else if ('${action}' === 'mute') {
+            v.muted = true;
+          } else if ('${action}' === 'setMuted') {
+            v.muted = Boolean(${JSON.stringify(value)});
+          } else if ('${action}' === 'setSpeed' || '${action}' === 'setPlaybackRate') {
+            v.playbackRate = Number(${JSON.stringify(value)}) || 1;
+          } else if ('${action}' === 'sync') {
+            if (!v.__tvos_hooked) {
+              v.__tvos_hooked = true;
+              const report = (evtName) => {
+                window.parent.postMessage({
+                  type: 'TVOS_TIMEUPDATE',
+                  currentTime: v.currentTime,
+                  duration: v.duration,
+                  paused: v.paused,
+                  muted: v.muted,
+                  volume: v.volume,
+                  event: evtName
+                }, '*');
+              };
+              v.addEventListener('timeupdate', () => report('timeupdate'));
+              v.addEventListener('play', () => report('play'));
+              v.addEventListener('pause', () => report('pause'));
+              v.addEventListener('ended', () => report('ended'));
+            }
+            window.parent.postMessage({
+              type: 'TVOS_TIMEUPDATE',
+              currentTime: v.currentTime,
+              duration: v.duration,
+              paused: v.paused,
+              muted: v.muted,
+              volume: v.volume
+            }, '*');
+          }
+        });
+      } catch (e) {}
+    })();
+  `;
+
+  const runInFrameRecursive = (frame) => {
+    if (!frame) return;
+    try {
+      frame.executeJavaScript(script).catch(() => {});
+    } catch (e) {}
+    if (frame.frames) {
+      for (const childFrame of frame.frames) {
+        runInFrameRecursive(childFrame);
+      }
+    }
+  };
+
+  try {
+    mainWindow.webContents.executeJavaScript(script).catch(() => {});
+    if (mainWindow.webContents.mainFrame) {
+      runInFrameRecursive(mainWindow.webContents.mainFrame);
+    }
+    return { success: true };
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+});
+
 // App Lifecycle
 app.whenReady().then(() => {
   createMainWindow();

@@ -16,6 +16,7 @@ interface ShowDetailsScreenProps {
   onPlayEpisode: (episode: Episode, customStreamUrl?: string, streamType?: AddonStream['streamType']) => void;
   onSelectSimilar?: (show: Show) => void;
   onBack: () => void;
+  isPlayerActive?: boolean;
 }
 
 export const ShowDetailsScreen: React.FC<ShowDetailsScreenProps> = ({
@@ -23,6 +24,7 @@ export const ShowDetailsScreen: React.FC<ShowDetailsScreenProps> = ({
   onPlayEpisode,
   onSelectSimilar,
   onBack,
+  isPlayerActive = false,
 }) => {
   const [detailedShow, setDetailedShow] = useState<Show>(show);
   const [selectedSeason, setSelectedSeason] = useState<number>(1);
@@ -165,7 +167,7 @@ export const ShowDetailsScreen: React.FC<ShowDetailsScreenProps> = ({
       />
 
       {/* 2. Auto-playing YouTube Background Trailer (Layer 2) */}
-      {trailerId && (
+      {trailerId && !isPlayerActive && (
         <div className={`tv-details-trailer-bg ${isTrailerReady ? 'visible' : 'hidden'}`}>
           <iframe
             src={`https://www.youtube.com/embed/${trailerId}?autoplay=1&mute=1&controls=0&showinfo=0&rel=0&loop=1&playlist=${trailerId}&modestbranding=1&iv_load_policy=3&enablejsapi=1`}
