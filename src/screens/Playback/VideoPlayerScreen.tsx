@@ -24,6 +24,7 @@ import { DriverType } from '../../services/player/types';
 import { addonService } from '../../services/addons/AddonService';
 import { introService } from '../../services/playback/IntroService';
 import { spatialNav } from '../../services/spatialNav/spatialNavEngine';
+import { gamepadManager } from '../../services/controller/gamepadManager';
 import { PlaybackSource } from '../../types/media';
 import { AddonStream, SubtitleTrack } from '../../types/addons';
 import { Focusable } from '../../components/Focusable/Focusable';
@@ -237,6 +238,9 @@ export const VideoPlayerScreen: React.FC<VideoPlayerScreenProps> = ({
 
   // 5. Remote Controller & Physical Keyboard Mapping
   useEffect(() => {
+    // Focus play/pause button on mount
+    spatialNav.setFocus('player-playpause-main-btn');
+
     const handleKeyDown = (e: KeyboardEvent) => {
       pingHud();
 
@@ -245,26 +249,39 @@ export const VideoPlayerScreen: React.FC<VideoPlayerScreenProps> = ({
         e.preventDefault();
         if (isMenuOpen) {
           setIsMenuOpen(false);
+          spatialNav.setFocus('player-playpause-main-btn');
         } else {
           onExit();
         }
         return;
       }
 
-      // Space / PlayPause key
-      if (e.key === ' ' || e.key === 'MediaPlayPause') {
+      // Space / PlayPause key / Key K
+      if (e.key === ' ' || e.key === 'MediaPlayPause' || e.key === 'k' || e.key === 'K') {
         e.preventDefault();
         handleTogglePlayPause();
         return;
       }
 
-      // Left / Right Arrow (Seek 10s)
-      if (e.key === 'ArrowLeft') {
+      // Dedicated Seek keys: [ / J (-10s) and ] / L (+10s)
+      if (e.key === '[' || e.key === 'j' || e.key === 'J' || (e.shiftKey && e.key === 'ArrowLeft')) {
         e.preventDefault();
         seekBy(-10);
         return;
       }
-      if (e.key === 'ArrowRight') {
+      if (e.key === ']' || e.key === 'l' || e.key === 'L' || (e.shiftKey && e.key === 'ArrowRight')) {
+        e.preventDefault();
+        seekBy(10);
+        return;
+      }
+
+      // Left / Right Arrow: If HUD is hidden, seek 10s. If HUD is visible or menu open, let SpatialNav move focus!
+      if (e.key === 'ArrowLeft' && !isHudVisible && !isMenuOpen) {
+        e.preventDefault();
+        seekBy(-10);
+        return;
+      }
+      if (e.key === 'ArrowRight' && !isHudVisible && !isMenuOpen) {
         e.preventDefault();
         seekBy(10);
         return;
@@ -286,16 +303,16 @@ export const VideoPlayerScreen: React.FC<VideoPlayerScreenProps> = ({
         return;
       }
 
-      // 'X' key: Quick subtitles
-      if (e.key === 'x' || e.key === 'X') {
+      // 'X' / 'S' key: Quick subtitles
+      if (e.key === 'x' || e.key === 'X' || e.key === 's' || e.key === 'S') {
         e.preventDefault();
         setMenuTab('subtitles');
         setIsMenuOpen(true);
         return;
       }
 
-      // Volume Keys (ArrowUp / ArrowDown / VolumeUp / VolumeDown / M)
-      if (e.key === 'ArrowUp' || e.key === '+' || e.key === '=' || e.key === 'VolumeUp') {
+      // Volume Keys: + / - / VolumeUp / VolumeDown / M
+      if (e.key === '+' || e.key === '=' || e.key === 'VolumeUp' || (e.key === 'ArrowUp' && !isHudVisible && !isMenuOpen)) {
         e.preventDefault();
         const next = engineRef.current ? engineRef.current.adjustVolume(0.05) : 1;
         setVolumeToast({ level: Math.round(next * 100), muted: next === 0 });
@@ -304,7 +321,7 @@ export const VideoPlayerScreen: React.FC<VideoPlayerScreenProps> = ({
         triggerFeedback(`Volume: ${Math.round(next * 100)}%`);
         return;
       }
-      if (e.key === 'ArrowDown' || e.key === '-' || e.key === '_' || e.key === 'VolumeDown') {
+      if (e.key === '-' || e.key === '_' || e.key === 'VolumeDown' || (e.key === 'ArrowDown' && !isHudVisible && !isMenuOpen)) {
         e.preventDefault();
         const next = engineRef.current ? engineRef.current.adjustVolume(-0.05) : 0;
         setVolumeToast({ level: Math.round(next * 100), muted: next === 0 });
@@ -335,7 +352,75 @@ export const VideoPlayerScreen: React.FC<VideoPlayerScreenProps> = ({
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [pingHud, isMenuOpen, onExit, handleTogglePlayPause, seekBy, introSegment, handleSkipIntro]);
+  }, [pingHud, isHudVisible, isMenuOpen, onExit, handleTogglePlayPause, seekBy, introSegment, handleSkipIntro, triggerFeedback]);
+
+  // 5b. Gamepad Action Handling
+  useEffect(() => {
+    const unsubGamepad = gamepadManager.subscribeAction((diag) => {
+      pingHud();
+      const action = diag.normalized;
+
+      switch (action) {
+        case 'BACK':
+          if (isMenuOpen) {
+            setIsMenuOpen(false);
+            spatialNav.setFocus('player-playpause-main-btn');
+          } else {
+            onExit();
+          }
+          break;
+        case 'PLAY_PAUSE':
+          handleTogglePlayPause();
+          break;
+        case 'SUBTITLES':
+          setMenuTab('subtitles');
+          setIsMenuOpen(true);
+          break;
+        case 'MENU':
+          setIsMenuOpen((prev) => !prev);
+          break;
+        case 'SEEK_BACKWARD':
+        case 'TAB_PREV':
+          seekBy(-10);
+          break;
+        case 'SEEK_FORWARD':
+        case 'TAB_NEXT':
+          seekBy(10);
+          break;
+        case 'VOLUME_UP': {
+          const next = engineRef.current ? engineRef.current.adjustVolume(0.05) : 1;
+          setVolumeToast({ level: Math.round(next * 100), muted: next === 0 });
+          if (volumeToastTimerRef.current) clearTimeout(volumeToastTimerRef.current);
+          volumeToastTimerRef.current = setTimeout(() => setVolumeToast(null), 1800);
+          triggerFeedback(`Volume: ${Math.round(next * 100)}%`);
+          break;
+        }
+        case 'VOLUME_DOWN': {
+          const next = engineRef.current ? engineRef.current.adjustVolume(-0.05) : 0;
+          setVolumeToast({ level: Math.round(next * 100), muted: next === 0 });
+          if (volumeToastTimerRef.current) clearTimeout(volumeToastTimerRef.current);
+          volumeToastTimerRef.current = setTimeout(() => setVolumeToast(null), 1800);
+          triggerFeedback(`Volume: ${Math.round(next * 100)}%`);
+          break;
+        }
+        case 'MUTE': {
+          const muted = engineRef.current ? engineRef.current.toggleMute() : false;
+          const curVol = engineRef.current ? engineRef.current.getState().volume : 1;
+          setVolumeToast({ level: muted ? 0 : Math.round(curVol * 100), muted });
+          if (volumeToastTimerRef.current) clearTimeout(volumeToastTimerRef.current);
+          volumeToastTimerRef.current = setTimeout(() => setVolumeToast(null), 1800);
+          triggerFeedback(muted ? 'Muted 🔇' : `Volume: ${Math.round(curVol * 100)}% 🔊`);
+          break;
+        }
+        default:
+          break;
+      }
+    });
+
+    return () => {
+      unsubGamepad();
+    };
+  }, [pingHud, isMenuOpen, onExit, handleTogglePlayPause, seekBy, triggerFeedback]);
 
   // 6. Scrubber Drag & Pointer Handlers
   const handleScrubberPointer = (e: React.PointerEvent<HTMLDivElement>) => {
@@ -374,6 +459,15 @@ export const VideoPlayerScreen: React.FC<VideoPlayerScreenProps> = ({
     >
       {/* 1. Underlying Playback Viewport Container (Driver attaches here) */}
       <div ref={containerRef} className="tv-player-viewport-wrapper" />
+
+      {/* 1b. Viewport Click Shield for Play/Pause and HUD reveal */}
+      <div
+        className="tv-player-viewport-shield"
+        onClick={() => {
+          pingHud();
+          handleTogglePlayPause();
+        }}
+      />
 
       {/* 2. Live Subtitle Rendering Layer */}
       {engineState.currentSubtitleText && (

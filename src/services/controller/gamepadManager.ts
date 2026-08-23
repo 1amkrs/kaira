@@ -268,16 +268,26 @@ class GamepadManager {
       this.callbacks.onSubtitles?.();
     }
 
-    // Button 4: LB (Left Bumper) -> Previous Tab
+    // Button 4: LB (Left Bumper) -> Previous Tab / Rewind
     if (isJustPressed(4)) {
       this.dispatchAction('Xbox: Left Bumper (LB)', 'TAB_PREV', 'Switch to previous tab');
       this.callbacks.onTabPrev?.();
     }
 
-    // Button 5: RB (Right Bumper) -> Next Tab
+    // Button 5: RB (Right Bumper) -> Next Tab / FastForward
     if (isJustPressed(5)) {
       this.dispatchAction('Xbox: Right Bumper (RB)', 'TAB_NEXT', 'Switch to next tab');
       this.callbacks.onTabNext?.();
+    }
+
+    // Button 6: LT (Left Trigger) -> Seek Backward
+    if (isJustPressed(6)) {
+      this.dispatchAction('Xbox: Left Trigger (LT)', 'SEEK_BACKWARD', 'Seek backward 10s');
+    }
+
+    // Button 7: RT (Right Trigger) -> Seek Forward
+    if (isJustPressed(7)) {
+      this.dispatchAction('Xbox: Right Trigger (RT)', 'SEEK_FORWARD', 'Seek forward 10s');
     }
 
     // Button 8: View / Select -> Search

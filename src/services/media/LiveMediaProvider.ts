@@ -971,6 +971,9 @@ class LiveMediaProviderService implements MediaProvider {
 
       if (targetUrl && (targetUrl.endsWith('.mp4') || targetUrl.endsWith('.mkv') || targetUrl.endsWith('.m3u8'))) {
         targetStreamType = 'direct';
+      } else if (DIRECT_CINEMA_STREAMS[cleanImdb] || DIRECT_CINEMA_STREAMS[mov.id]) {
+        targetUrl = DIRECT_CINEMA_STREAMS[cleanImdb] || DIRECT_CINEMA_STREAMS[mov.id];
+        targetStreamType = 'direct';
       } else {
         targetUrl = `https://vidlink.pro/movie/${cleanImdb}?primaryColor=8ab4f8`;
         targetStreamType = 'embed';
@@ -1006,6 +1009,9 @@ class LiveMediaProviderService implements MediaProvider {
       let targetStreamType: 'direct' | 'embed' | 'youtube' = 'embed';
 
       if (targetUrl && (targetUrl.endsWith('.mp4') || targetUrl.endsWith('.mkv') || targetUrl.endsWith('.m3u8'))) {
+        targetStreamType = 'direct';
+      } else if (DIRECT_CINEMA_STREAMS[cleanImdb] || DIRECT_CINEMA_STREAMS[cleanShowId]) {
+        targetUrl = DIRECT_CINEMA_STREAMS[cleanImdb] || DIRECT_CINEMA_STREAMS[cleanShowId];
         targetStreamType = 'direct';
       } else {
         targetUrl = `https://vidlink.pro/tv/${cleanImdb}/${ep.seasonNumber || 1}/${ep.number || 1}?primaryColor=8ab4f8`;
