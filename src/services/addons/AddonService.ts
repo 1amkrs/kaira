@@ -236,40 +236,24 @@ class AddonService {
 
     const streams: AddonStream[] = [];
 
-    // 1. Direct Hardware Accelerated Native Stream (Primary for full custom transport controls)
+    // 1. Primary Full Feature Stream (VidLink Mirror)
     if (isImdb) {
-      const seedKey = type === 'series' && seasonNumber && episodeNumber ? `${cleanImdbId}-s${seasonNumber}e${episodeNumber}` : cleanImdbId;
-      const directUrl = DIRECT_CINEMA_STREAMS[cleanImdbId] || getDirectFallbackStream(seedKey);
-
-      streams.push({
-        name: 'Direct 4K Master • High-Speed Stream [Hardware Native]',
-        title: `${titleHint || 'Master Feature'} • Direct 4K Hardware Stream`,
-        description: 'Direct CDN • Full hardware acceleration with instant seeking & transport control',
-        url: directUrl,
-        streamType: 'direct',
-        quality: '4K',
-        resolution: '4K UHD',
-        audio: 'Dolby Atmos / 5.1',
-        providerName: 'Direct CDN',
-        isDebrid: true,
-      });
-
       const vidLinkUrl =
         type === 'movie'
           ? `https://vidlink.pro/movie/${cleanImdbId}?primaryColor=8ab4f8&secondaryColor=ffffff&iconColor=ffffff`
           : `https://vidlink.pro/tv/${cleanImdbId}/${seasonNumber || 1}/${episodeNumber || 1}?primaryColor=8ab4f8&secondaryColor=ffffff&iconColor=ffffff`;
 
       streams.push({
-        name: 'VidLink Stream • Fast Server [Web Mirror]',
-        title: `${titleHint || 'Full Feature'} • 1080p FHD Web Stream`,
-        description: '1080p FHD • High Speed Web Player Mirror',
+        name: 'VidLink Server 1 • High-Speed [Full Movie]',
+        title: `${titleHint || 'Full Feature'} • 1080p/4K FHD Stream`,
+        description: 'Multi-CDN Cloud Server • Instant Playback & Auto-Resolution',
         url: vidLinkUrl,
         streamType: 'embed',
         quality: '1080p',
         resolution: '1080p FHD',
         audio: 'Dolby Digital / 5.1',
         providerName: 'VidLink CDN',
-        isDebrid: false,
+        isDebrid: true,
       });
 
       const vidSrcUrl =
@@ -278,9 +262,9 @@ class AddonService {
           : `https://vidsrc.pm/embed/tv/${cleanImdbId}/${seasonNumber || 1}/${episodeNumber || 1}?autoplay=1`;
 
       streams.push({
-        name: 'VidSrc Stream • Backup Server [Web Mirror]',
+        name: 'VidSrc Server 2 • Alternate [Full Movie]',
         title: `${titleHint || 'Full Feature'} • 1080p Web Stream`,
-        description: '1080p FHD • Alternate Web Player Mirror',
+        description: 'Fast Alternate Cloud Mirror (Full Feature)',
         url: vidSrcUrl,
         streamType: 'embed',
         quality: '1080p',
@@ -474,16 +458,16 @@ class AddonService {
     const calculateScore = (s: AddonStream): number => {
       let score = 0;
 
-      // 1. Debrid & Cloud CDN High-Speed Accelerator Bonus (only for direct streams)
+      // 1. Debrid Accelerator Bonus (for direct cached streams)
       if (s.isDebrid && s.streamType === 'direct') {
-        score += 600;
+        score += 800;
       }
 
-      // 2. Stream Type Reliability — direct ALWAYS wins over embed
+      // 2. Stream Type Priority
       if (s.streamType === 'direct') {
-        score += 1500; // Native hardware decoded video — full HUD control
+        score += 1800; // Native hardware decoded video (e.g. Debrid direct)
       } else if (s.streamType === 'embed') {
-        score += 100;  // Embed iframes: no custom HUD control — last resort only
+        score += 1500; // Full feature cloud web stream (VidLink / VidSrc)
       } else if (s.streamType === 'youtube') {
         score -= 500; // Promo trailer only (never default over full movie/show)
       }

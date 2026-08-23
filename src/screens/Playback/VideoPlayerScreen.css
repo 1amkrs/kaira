@@ -270,6 +270,16 @@
 .tv-player-hud.visible {
   opacity: 1;
   visibility: visible;
+  pointer-events: none; /* Container is transparent to clicks; only buttons capture */
+}
+
+.tv-player-hud.visible .tv-hud-top,
+.tv-player-hud.visible .tv-hud-bottom,
+.tv-player-hud.visible .tv-hud-back-btn,
+.tv-player-hud.visible .tv-hud-menu-pill,
+.tv-player-hud.visible .tv-hud-ctrl-btn-wrapper,
+.tv-player-hud.visible .tv-hud-progress-bar-container,
+.tv-player-hud.visible .tv-hud-volume-slider-track {
   pointer-events: auto;
 }
 

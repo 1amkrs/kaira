@@ -630,8 +630,9 @@ export const VideoPlayerScreen: React.FC<VideoPlayerScreenProps> = ({
           </div>
         </div>
 
-        {/* Bottom Transport Controls */}
-        <div className="tv-hud-bottom">
+        {/* Bottom Transport Controls (Rendered for Direct hardware streams) */}
+        {currentDriverType !== 'embed' && (
+          <div className="tv-hud-bottom">
           {/* Timeline Row */}
           <div className="tv-hud-timeline-row">
             <span className="tv-hud-time">{formatTime(engineState.currentTime)}</span>
@@ -857,7 +858,8 @@ export const VideoPlayerScreen: React.FC<VideoPlayerScreenProps> = ({
             </Focusable>
           </div>
         </div>
-      </div>
+      )}
+    </div>
 
       {/* 7. Floating Skip Intro Button (Appears during intro window) */}
       {isInsideIntro && !isMenuOpen && (
