@@ -55,7 +55,7 @@
 .tv-show-hero-badge {
   font-size: var(--font-caption);
   font-weight: 700;
-  color: var(--google-blue);
+  color: var(--google-blue-light);
   text-transform: uppercase;
   letter-spacing: 0.8px;
 }
@@ -78,11 +78,12 @@
 }
 
 .tv-show-hero-meta .rating-pill {
-  background: rgba(0, 0, 0, 0.7);
-  color: #fbbc04;
+  background: rgba(13, 14, 18, 0.85);
+  color: #fdd663;
   font-weight: 700;
-  padding: 2px 8px;
+  padding: 3px 8px;
   border-radius: 4px;
+  border: 1px solid rgba(253, 214, 99, 0.25);
 }
 
 .tv-show-hero-desc {
@@ -93,8 +94,15 @@
 
 .tv-show-hero-actions {
   display: flex;
+  align-items: center;
   gap: var(--space-md);
-  margin-top: var(--space-sm);
+  margin-top: var(--space-md);
+  padding: 4px 0;
+}
+
+.tv-hero-btn-focusable {
+  border-radius: var(--radius-pill);
+  display: inline-flex;
 }
 
 .tv-hero-play-btn {
@@ -104,20 +112,20 @@
   padding: 14px 28px;
   border-radius: var(--radius-pill);
   background-color: #ffffff;
-  color: #0f0f0f;
+  color: #0b1528;
   font-size: var(--font-body);
   font-weight: 700;
   letter-spacing: 0.2px;
-  transition:
-    transform var(--duration-micro) var(--easing-enter),
-    background-color var(--duration-base) var(--easing-standard),
-    box-shadow var(--duration-base) var(--easing-standard);
+  cursor: pointer;
+  transition: background-color var(--duration-base) var(--easing-standard),
+              color var(--duration-base) var(--easing-standard);
 }
 
-.tv-hero-play-btn.focused {
-  transform: scale(var(--focus-scale));
-  background-color: var(--google-blue-hover);
-  box-shadow: var(--focus-shadow);
+.tv-hero-play-btn.focused,
+.tv-hero-play-btn:hover {
+  background-color: var(--google-blue);
+  color: #ffffff;
+  box-shadow: 0 4px 14px rgba(26, 115, 232, 0.35);
 }
 
 .tv-hero-info-btn {
@@ -125,18 +133,23 @@
   align-items: center;
   gap: 8px;
   padding: 12px 22px;
-  background-color: rgba(255, 255, 255, 0.15);
+  background-color: rgba(255, 255, 255, 0.12);
   color: var(--text-primary);
   border-radius: var(--radius-pill);
+  border: 1px solid var(--border-subtle);
   font-size: var(--font-body);
   font-weight: 600;
-  transition: all var(--duration-base) var(--easing-standard);
+  cursor: pointer;
+  transition: background-color var(--duration-base) var(--easing-standard),
+              border-color var(--duration-base) var(--easing-standard);
 }
 
-.tv-hero-info-btn.focused {
-  background-color: rgba(255, 255, 255, 0.3);
-  transform: scale(var(--focus-scale));
+.tv-hero-info-btn.focused,
+.tv-hero-info-btn:hover {
+  background-color: rgba(255, 255, 255, 0.22);
+  border-color: rgba(138, 180, 248, 0.5);
 }
+
 
 .tv-shows-rails-container {
   display: flex;

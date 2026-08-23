@@ -394,7 +394,8 @@ class AddonService {
       if (isSelfDebrid) {
         const selfUrl = (this.debridConfig.endpointUrl || 'http://localhost:8081').replace(/\/+$/, '');
         // an0mal1a/self-debrid route is /stream/<torrent_hash>
-        streamUrl = `${selfUrl}/stream/${raw.infoHash}`;
+        const fileParam = raw.fileIdx !== undefined ? `?file=${raw.fileIdx}` : '';
+        streamUrl = `${selfUrl}/stream/${raw.infoHash}${fileParam}`;
         streamType = 'direct';
 
         // Proactively register magnet link with local qBittorrent via Web UI if available
@@ -568,7 +569,7 @@ class AddonService {
     const sorted = [...streams].sort((a, b) => calculateScore(b) - calculateScore(a));
     const chosen = sorted[0] || null;
     if (chosen) {
-      console.log(`[AddonService] ⚡ Auto-selected best & fastest source: "${chosen.name}" (${chosen.quality || '1080p'}) - Score: ${calculateScore(chosen)}`);
+      console.log(`[AddonService] Auto-selected best & fastest source: "${chosen.name}" (${chosen.quality || '1080p'}) - Score: ${calculateScore(chosen)}`);
     }
     return chosen;
   }

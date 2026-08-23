@@ -214,6 +214,7 @@ export const SearchScreen: React.FC<SearchScreenProps> = ({
               groupId="search-filters"
               indexInGroup={idx}
               className="tv-filter-pill-focusable"
+              scaleEffect={false}
               onSelect={() => setActiveFilter(fil)}
             >
               {(isFocused) => (

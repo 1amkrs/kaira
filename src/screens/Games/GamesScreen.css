@@ -101,16 +101,18 @@
   font-size: 16px;
   font-weight: 700;
   background: #fff;
-  color: #000;
+  color: #0b1528;
   cursor: pointer;
-  transition: transform 180ms cubic-bezier(0.2, 0.8, 0.2, 1), box-shadow 180ms ease;
+  transition: background-color var(--duration-base) var(--easing-standard),
+              color var(--duration-base) var(--easing-standard),
+              box-shadow var(--duration-base) var(--easing-standard);
 }
 
-.tv-game-hero-btn.focused {
-  transform: scale(1.06);
-  background: #ff453a;
-  color: #000;
-  box-shadow: 0 0 24px rgba(255, 69, 58, 0.6);
+.tv-game-hero-btn.focused,
+.tv-game-hero-btn:hover {
+  background: var(--google-blue);
+  color: #ffffff;
+  box-shadow: 0 4px 14px rgba(26, 115, 232, 0.35);
 }
 
 /* Rails */
@@ -148,14 +150,15 @@
   background: #1e1e1e;
   position: relative;
   cursor: pointer;
-  transition: transform 180ms cubic-bezier(0.2, 0.8, 0.2, 1), box-shadow 180ms ease;
+  border: 1px solid var(--border-subtle);
+  transition: border-color var(--duration-base) var(--easing-standard),
+              box-shadow var(--duration-base) var(--easing-standard);
   flex-shrink: 0;
 }
 
 .tv-game-card.focused {
-  transform: scale(1.06);
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.9), 0 0 16px rgba(255, 69, 58, 0.4);
-  border: 2px solid #ff453a;
+  border-color: rgba(255, 255, 255, 0.4);
+  box-shadow: 0 12px 30px -4px rgba(0, 0, 0, 0.65);
 }
 
 .tv-game-card-img {

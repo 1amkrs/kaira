@@ -351,7 +351,7 @@ export const VideoPlayerScreen: React.FC<VideoPlayerScreenProps> = ({
         setVolumeToast({ level: muted ? 0 : Math.round(curVol * 100), muted });
         if (volumeToastTimerRef.current) clearTimeout(volumeToastTimerRef.current);
         volumeToastTimerRef.current = setTimeout(() => setVolumeToast(null), 1800);
-        triggerFeedback(muted ? 'Muted 🔇' : `Volume: ${Math.round(curVol * 100)}% 🔊`);
+        triggerFeedback(muted ? 'Muted' : `Volume: ${Math.round(curVol * 100)}%`);
         return;
       }
 
@@ -423,7 +423,7 @@ export const VideoPlayerScreen: React.FC<VideoPlayerScreenProps> = ({
           setVolumeToast({ level: muted ? 0 : Math.round(curVol * 100), muted });
           if (volumeToastTimerRef.current) clearTimeout(volumeToastTimerRef.current);
           volumeToastTimerRef.current = setTimeout(() => setVolumeToast(null), 1800);
-          triggerFeedback(muted ? 'Muted 🔇' : `Volume: ${Math.round(curVol * 100)}% 🔊`);
+          triggerFeedback(muted ? 'Muted' : `Volume: ${Math.round(curVol * 100)}%`);
           break;
         }
         default:
@@ -774,7 +774,7 @@ export const VideoPlayerScreen: React.FC<VideoPlayerScreenProps> = ({
                   setVolumeToast({ level: muted ? 0 : Math.round(curVol * 100), muted });
                   if (volumeToastTimerRef.current) clearTimeout(volumeToastTimerRef.current);
                   volumeToastTimerRef.current = setTimeout(() => setVolumeToast(null), 1800);
-                  triggerFeedback(muted ? 'Muted 🔇' : `Volume: ${Math.round(curVol * 100)}%`);
+                  triggerFeedback(muted ? 'Muted' : `Volume: ${Math.round(curVol * 100)}%`);
                 }}
               >
                 {(isFocused) => (
@@ -788,7 +788,7 @@ export const VideoPlayerScreen: React.FC<VideoPlayerScreenProps> = ({
                       setVolumeToast({ level: muted ? 0 : Math.round(curVol * 100), muted });
                       if (volumeToastTimerRef.current) clearTimeout(volumeToastTimerRef.current);
                       volumeToastTimerRef.current = setTimeout(() => setVolumeToast(null), 1800);
-                      triggerFeedback(muted ? 'Muted 🔇' : `Volume: ${Math.round(curVol * 100)}%`);
+                      triggerFeedback(muted ? 'Muted' : `Volume: ${Math.round(curVol * 100)}%`);
                     }}
                   >
                     {engineState.isMuted || engineState.volume === 0 ? (
@@ -1233,14 +1233,14 @@ export const VideoPlayerScreen: React.FC<VideoPlayerScreenProps> = ({
             boxShadow: '0 8px 32px rgba(0,0,0,0.7)',
           }}
         >
-          <div style={{ color: '#ff453a', fontWeight: 'bold', marginBottom: '8px', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
-            🛠️ PLAYER ENGINE RUNTIME DIAGNOSTICS (D to toggle)
+          <div style={{ color: 'var(--google-blue-light, #8ab4f8)', fontWeight: 'bold', marginBottom: '8px', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
+            PLAYER ENGINE RUNTIME DIAGNOSTICS (D to toggle)
           </div>
           <div><strong>Active Driver:</strong> {engineState.driverType.toUpperCase()}</div>
           <div><strong>Status:</strong> {engineState.status.toUpperCase()}</div>
           <div><strong>Paused:</strong> {engineState.status === 'paused' ? 'TRUE (video.paused = true)' : 'FALSE (video.paused = false)'}</div>
           <div><strong>Time:</strong> {formatTime(engineState.currentTime)} ({Math.round(engineState.currentTime)}s) / {formatTime(engineState.duration)} ({Math.round(engineState.duration)}s)</div>
-          <div><strong>Volume / Mute:</strong> {Math.round(engineState.volume * 100)}% {engineState.isMuted ? '🔇 MUTED' : '🔊 UNMUTED'}</div>
+          <div><strong>Volume / Mute:</strong> {Math.round(engineState.volume * 100)}% {engineState.isMuted ? 'MUTED' : 'UNMUTED'}</div>
           <div><strong>Subtitles:</strong> {availableSubtitles.length} tracks | {engineState.currentSubtitleText ? `"${engineState.currentSubtitleText.slice(0, 30)}..."` : 'None active'}</div>
           <div><strong>Intro Window:</strong> {introSegment ? `${formatTime(introSegment.start)} → ${formatTime(introSegment.end)}` : 'None detected'}</div>
           <div><strong>Auto-Skip Intro:</strong> {autoSkipIntro ? 'ENABLED' : 'DISABLED'}</div>

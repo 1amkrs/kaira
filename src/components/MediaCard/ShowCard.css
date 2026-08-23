@@ -5,17 +5,17 @@
 }
 
 .tv-show-card-wrapper.ratio-poster {
-  width: clamp(160px, 13vw, 220px);
+  width: clamp(170px, 13.5vw, 250px);
 }
 
 .tv-show-card-wrapper.ratio-16\:9 {
-  width: clamp(260px, 22vw, 360px);
+  width: clamp(280px, 22.5vw, 420px);
 }
 
 .tv-show-card {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 8px;
   width: 100%;
 }
 
@@ -26,7 +26,7 @@
   overflow: hidden;
   background-color: var(--bg-surface-2);
   border: 1px solid var(--border-subtle);
-  transition: border-color var(--duration-base) var(--easing-standard), filter var(--duration-base) var(--easing-standard);
+  transition: border-color var(--duration-base) var(--easing-standard), box-shadow var(--duration-base) var(--easing-standard), filter var(--duration-base) var(--easing-standard);
 }
 
 .tv-show-card-wrapper.ratio-poster .tv-show-poster-box {
@@ -38,8 +38,9 @@
 }
 
 .tv-show-card.focused .tv-show-poster-box {
-  border-color: var(--border-focus);
-  filter: brightness(1.03);
+  border-color: rgba(255, 255, 255, 0.35);
+  box-shadow: 0 12px 30px -4px rgba(0, 0, 0, 0.65);
+  filter: brightness(1.05);
 }
 
 .tv-show-img {
@@ -47,12 +48,12 @@
   height: 100%;
   object-fit: cover;
   display: block;
-  filter: brightness(1.04) contrast(1.02);
+  filter: brightness(1.03) contrast(1.02);
   transition: filter var(--duration-base) var(--easing-standard);
 }
 
 .tv-show-card.focused .tv-show-img {
-  filter: brightness(1.06) contrast(1.02);
+  filter: brightness(1.08) contrast(1.02);
 }
 
 .tv-show-scrim {
@@ -63,39 +64,41 @@
   position: absolute;
   top: 8px;
   right: 8px;
-  background: rgba(0, 0, 0, 0.7);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
-  color: #ffffff;
+  background: rgba(13, 14, 18, 0.82);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  color: var(--google-blue-light);
   font-size: var(--font-caption);
   font-weight: 700;
-  padding: 3px 6px;
+  padding: 3px 7px;
   border-radius: var(--radius-sm);
-  border: 1px solid rgba(255, 255, 255, 0.15);
+  border: 1px solid rgba(138, 180, 248, 0.25);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
 }
 
 .tv-show-network-tag {
   position: absolute;
   top: 8px;
   left: 8px;
-  background: rgba(0, 0, 0, 0.6);
+  background: rgba(13, 14, 18, 0.82);
   backdrop-filter: blur(8px);
-  color: var(--text-secondary);
+  color: rgba(255, 255, 255, 0.9);
   font-size: var(--font-caption);
   font-weight: 600;
-  padding: 2px 6px;
+  padding: 2px 8px;
   border-radius: var(--radius-sm);
+  border: 1px solid var(--border-subtle);
 }
 
 .tv-show-meta {
-  padding: 2px 2px 0 2px;
+  padding: 2px 4px 0 4px;
 }
 
 .tv-show-title {
   font-size: var(--font-title-sm);
   font-weight: 500;
   color: var(--text-primary);
-  line-height: 1.25;
+  line-height: 1.3;
 }
 
 .tv-show-subrow {
@@ -104,7 +107,7 @@
   gap: var(--space-xs);
   font-size: var(--font-caption);
   color: var(--text-secondary);
-  margin-top: 2px;
+  margin-top: 3px;
 }
 
 .tv-show-dot {

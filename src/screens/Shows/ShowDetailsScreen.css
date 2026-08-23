@@ -256,6 +256,12 @@
   flex-wrap: wrap;
   gap: var(--space-md);
   margin-bottom: 48px;
+  padding: 4px 0;
+}
+
+.tv-action-btn-focusable {
+  border-radius: var(--radius-pill);
+  display: inline-flex;
 }
 
 .tv-details-play-btn {
@@ -268,18 +274,17 @@
   border-radius: var(--radius-pill);
   font-size: var(--font-body-lg);
   font-weight: 700;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
-  transition:
-    transform var(--duration-micro) var(--easing-enter),
-    background-color var(--duration-base) var(--easing-standard),
-    box-shadow var(--duration-base) var(--easing-standard);
+  cursor: pointer;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+  transition: background-color var(--duration-base) var(--easing-standard),
+              color var(--duration-base) var(--easing-standard);
 }
 
-.tv-details-play-btn.focused {
+.tv-details-play-btn.focused,
+.tv-details-play-btn:hover {
   background-color: var(--google-blue);
   color: #ffffff;
-  transform: scale(var(--focus-scale));
-  box-shadow: var(--focus-shadow);
+  box-shadow: 0 4px 16px rgba(26, 115, 232, 0.4);
 }
 
 .tv-details-audio-btn {
@@ -295,14 +300,15 @@
   border-radius: var(--radius-pill);
   font-size: var(--font-body);
   font-weight: 600;
-  transition: all var(--duration-base) var(--easing-standard);
+  cursor: pointer;
+  transition: background-color var(--duration-base) var(--easing-standard),
+              border-color var(--duration-base) var(--easing-standard);
 }
 
-.tv-details-audio-btn.focused {
-  background-color: rgba(255, 255, 255, 0.28);
-  border-color: var(--border-focus);
-  transform: scale(var(--focus-scale));
-  box-shadow: var(--focus-shadow);
+.tv-details-audio-btn.focused,
+.tv-details-audio-btn:hover {
+  background-color: rgba(255, 255, 255, 0.22);
+  border-color: rgba(138, 180, 248, 0.5);
 }
 
 .tv-details-fav-btn {
@@ -318,14 +324,15 @@
   border-radius: var(--radius-pill);
   font-size: var(--font-body);
   font-weight: 600;
-  transition: all var(--duration-base) var(--easing-standard);
+  cursor: pointer;
+  transition: background-color var(--duration-base) var(--easing-standard),
+              border-color var(--duration-base) var(--easing-standard);
 }
 
-.tv-details-fav-btn.focused {
-  background-color: rgba(255, 255, 255, 0.25);
-  border-color: var(--border-focus);
-  transform: scale(var(--focus-scale));
-  box-shadow: var(--focus-shadow);
+.tv-details-fav-btn.focused,
+.tv-details-fav-btn:hover {
+  background-color: rgba(255, 255, 255, 0.22);
+  border-color: rgba(138, 180, 248, 0.5);
 }
 
 /* 6. Season Selector Tabs & Episodes Rail */
@@ -346,13 +353,23 @@
 
 .tv-seasons-tabs-row {
   display: flex;
+  align-items: center;
   gap: var(--space-sm);
-  margin-bottom: 20px;
-  padding: 0 var(--screen-padding-x);
+  margin-bottom: 16px;
+  padding: 4px var(--screen-padding-x) 8px var(--screen-padding-x);
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+}
+
+.tv-seasons-tabs-row::-webkit-scrollbar {
+  display: none;
 }
 
 .tv-season-tab-focusable {
   border-radius: var(--radius-pill);
+  flex-shrink: 0;
+  display: inline-flex;
 }
 
 .tv-season-tab-pill {
@@ -363,22 +380,26 @@
   color: var(--text-secondary);
   font-size: var(--font-body);
   font-weight: 500;
-  transition: all var(--duration-base) var(--easing-standard);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background-color var(--duration-base) var(--easing-standard),
+              color var(--duration-base) var(--easing-standard),
+              border-color var(--duration-base) var(--easing-standard);
 }
 
 .tv-season-tab-pill.active {
-  background-color: rgba(255, 255, 255, 0.15);
-  color: var(--text-primary);
-  border-color: rgba(255, 255, 255, 0.3);
-}
-
-.tv-season-tab-pill.focused {
   background-color: var(--google-blue);
   color: #ffffff;
-  border-color: var(--border-focus);
-  transform: scale(var(--focus-scale));
-  box-shadow: var(--focus-shadow);
+  border-color: var(--google-blue);
 }
+
+.tv-season-tab-pill.focused:not(.active),
+.tv-season-tab-pill:hover:not(.active) {
+  background-color: rgba(255, 255, 255, 0.18);
+  color: #ffffff;
+  border-color: rgba(138, 180, 248, 0.5);
+}
+
 
 .tv-episodes-horizontal-rail {
   display: flex;

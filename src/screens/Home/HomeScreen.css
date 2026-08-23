@@ -7,11 +7,11 @@
 /* 1. Featured Hero Banner */
 .tv-hero-section {
   position: relative;
-  min-height: 56vh;
-  margin-bottom: var(--space-xl);
+  min-height: 52vh;
+  margin-bottom: clamp(36px, 4vh, 56px);
   display: flex;
   align-items: flex-end;
-  padding: calc(var(--top-nav-height) + 24px) var(--screen-padding-x) var(--space-lg) var(--screen-padding-x);
+  padding: calc(var(--top-nav-height) + 20px) var(--screen-padding-x) var(--space-xl) var(--screen-padding-x);
 }
 
 .tv-hero-backdrop-wrapper {
@@ -29,7 +29,7 @@
   height: 100%;
   object-fit: cover;
   object-position: center 20%;
-  filter: brightness(0.95) contrast(1.02);
+  filter: brightness(0.92) contrast(1.02);
 }
 
 .tv-hero-gradient-overlay {
@@ -37,16 +37,16 @@
   inset: 0;
   background: linear-gradient(
     90deg,
-    rgba(15, 15, 15, 0.9) 0%,
-    rgba(15, 15, 15, 0.65) 35%,
-    rgba(15, 15, 15, 0.2) 60%,
-    rgba(15, 15, 15, 0) 85%
+    rgba(13, 14, 18, 0.94) 0%,
+    rgba(13, 14, 18, 0.72) 36%,
+    rgba(13, 14, 18, 0.2) 65%,
+    rgba(13, 14, 18, 0) 85%
   ),
   linear-gradient(
     180deg,
-    rgba(15, 15, 15, 0.2) 0%,
-    rgba(15, 15, 15, 0) 30%,
-    rgba(15, 15, 15, 0.85) 85%,
+    rgba(13, 14, 18, 0.15) 0%,
+    rgba(13, 14, 18, 0) 30%,
+    rgba(13, 14, 18, 0.85) 85%,
     var(--bg-app) 100%
   );
 }
@@ -54,7 +54,7 @@
 .tv-hero-content-container {
   position: relative;
   z-index: 2;
-  max-width: 720px;
+  max-width: 800px;
   display: flex;
   flex-direction: column;
   gap: var(--space-xs);
@@ -64,29 +64,30 @@
   display: flex;
   align-items: center;
   gap: var(--space-sm);
-  margin-bottom: 4px;
+  margin-bottom: 6px;
 }
 
 .tv-hero-badge-pill {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  background: rgba(255, 255, 255, 0.12);
-  color: var(--text-primary);
+  background: rgba(26, 115, 232, 0.16);
+  border: 1px solid rgba(138, 180, 248, 0.3);
+  color: var(--google-blue-light);
   font-size: var(--font-caption);
   font-weight: 600;
-  padding: 4px 10px;
+  padding: 4px 12px;
   border-radius: var(--radius-pill);
   letter-spacing: 0.3px;
 }
 
 .badge-icon {
-  color: var(--google-blue);
+  color: var(--google-blue-light);
 }
 
 .tv-hero-source {
   font-size: var(--font-caption);
-  font-weight: 600;
+  font-weight: 500;
   color: var(--text-secondary);
 }
 
@@ -96,67 +97,86 @@
   color: var(--text-primary);
   line-height: 1.15;
   letter-spacing: -0.5px;
-  text-shadow: 0 4px 16px rgba(0, 0, 0, 0.6);
+  text-shadow: 0 4px 20px rgba(0, 0, 0, 0.7);
 }
 
 .tv-hero-subtitle {
   font-size: var(--font-title-sm);
   font-weight: 500;
-  color: var(--google-blue);
-  margin-top: 2px;
+  color: var(--google-blue-light);
+  margin-top: 4px;
+}
+
+.tv-hero-rating-score {
+  font-weight: 700;
+  color: #fdd663;
 }
 
 .tv-hero-description {
   font-size: var(--font-body);
   color: var(--text-secondary);
-  line-height: 1.5;
-  margin-top: 6px;
+  line-height: 1.55;
+  margin-top: 8px;
+  max-width: 680px;
 }
 
 .tv-hero-actions-row {
   display: flex;
   align-items: center;
   gap: var(--space-md);
-  margin-top: var(--space-md);
+  margin-top: var(--space-lg);
+  padding: 4px 0;
 }
 
 .tv-hero-btn {
   border-radius: var(--radius-pill);
+  display: inline-flex;
 }
 
 .tv-btn-inner {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 12px 26px;
+  padding: 12px 28px;
   border-radius: var(--radius-pill);
   font-size: var(--font-body);
   font-weight: 600;
-  transition: background-color var(--duration-base) var(--easing-standard), color var(--duration-base) var(--easing-standard), box-shadow var(--duration-base) var(--easing-standard);
+  cursor: pointer;
+  transition: background-color var(--duration-base) var(--easing-standard),
+              color var(--duration-base) var(--easing-standard),
+              border-color var(--duration-base) var(--easing-standard),
+              box-shadow var(--duration-base) var(--easing-standard),
+              transform var(--duration-micro) var(--easing-enter);
 }
 
 .tv-hero-btn.primary-btn .tv-btn-inner {
   background-color: #ffffff;
-  color: #0f0f0f;
+  color: #0b1528;
+  transition: background-color var(--duration-base) var(--easing-standard),
+              color var(--duration-base) var(--easing-standard);
 }
 
-.tv-hero-btn.primary-btn .tv-btn-inner.focused {
+.tv-hero-btn.primary-btn .tv-btn-inner.focused,
+.tv-hero-btn.primary-btn:hover .tv-btn-inner {
   background-color: var(--google-blue);
-  color: #0f0f0f;
-  box-shadow: var(--focus-shadow);
+  color: #ffffff;
+  box-shadow: 0 4px 14px rgba(26, 115, 232, 0.35);
 }
 
 .tv-hero-btn.secondary-btn .tv-btn-inner {
-  background-color: rgba(255, 255, 255, 0.15);
+  background-color: rgba(255, 255, 255, 0.12);
   color: var(--text-primary);
   border: 1px solid var(--border-subtle);
+  transition: background-color var(--duration-base) var(--easing-standard),
+              border-color var(--duration-base) var(--easing-standard);
 }
 
-.tv-hero-btn.secondary-btn .tv-btn-inner.focused {
-  background-color: rgba(255, 255, 255, 0.3);
-  border-color: var(--border-focus);
-  box-shadow: var(--focus-shadow);
+.tv-hero-btn.secondary-btn .tv-btn-inner.focused,
+.tv-hero-btn.secondary-btn:hover .tv-btn-inner {
+  background-color: rgba(255, 255, 255, 0.22);
+  border-color: rgba(138, 180, 248, 0.5);
 }
+
 
 /* 2. Your Apps Row */
 .tv-home-section {

@@ -78,7 +78,7 @@ class UBlockService {
     window.open = (url?: string | URL, target?: string, features?: string) => {
       if (this.state.enabled && this.state.antiPopup) {
         this.recordBlocked();
-        console.log(`[uBlock Origin] 🛡️ Neutralized in-browser popup redirect: ${url}`);
+        console.log(`[uBlock Origin] Neutralized in-browser popup redirect: ${url}`);
         return null;
       }
       return originalWindowOpen.call(window, url, target, features);

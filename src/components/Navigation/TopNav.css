@@ -79,11 +79,9 @@
 }
 
 .tv-gtv-avatar-btn.focused {
-  background-color: rgba(255, 255, 255, 0.25);
-  border-color: #ffffff;
-  outline: 2px solid var(--google-blue);
-  outline-offset: 2px;
-  transform: scale(1.04);
+  background-color: rgba(255, 255, 255, 0.22);
+  border-color: rgba(138, 180, 248, 0.7);
+  box-shadow: 0 0 0 1.5px rgba(138, 180, 248, 0.55);
 }
 
 /* 2. Main Navigation Capsule (M3 Surface Container) */
@@ -118,10 +116,10 @@
   cursor: pointer;
 }
 
-.tv-gtv-search-btn.focused {
-  background-color: rgba(255, 255, 255, 0.22);
+.tv-gtv-search-btn.focused,
+.tv-gtv-search-btn:hover {
+  background-color: rgba(255, 255, 255, 0.2);
   color: #ffffff;
-  transform: scale(1.04);
 }
 
 /* Navigation Tabs (M3 Segmented Pill Navigation) */
@@ -145,27 +143,27 @@
   user-select: none;
 }
 
-/* Active Tab: M3 Primary Container Pill */
+/* Active Tab: M3 Primary Container Pill with Google Blue subtle glow when focused */
 .tv-gtv-tab-pill.active {
   background-color: #ffffff;
-  color: #001d35;
+  color: #0b1528;
   font-weight: 700;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
 }
 
 /* Focus States */
-.tv-gtv-tab-pill.focused:not(.active) {
-  background-color: rgba(255, 255, 255, 0.2);
+.tv-gtv-tab-pill.focused:not(.active),
+.tv-gtv-tab-pill:hover:not(.active) {
+  background-color: rgba(138, 180, 248, 0.18);
   color: #ffffff;
-  transform: scale(1.025);
+  box-shadow: 0 0 0 1.5px rgba(138, 180, 248, 0.45);
 }
 
-.tv-gtv-tab-pill.active.focused {
+.tv-gtv-tab-pill.active.focused,
+.tv-gtv-tab-pill.active:hover {
   background-color: #ffffff;
-  color: #001d35;
-  outline: 2px solid var(--google-blue);
-  outline-offset: 2px;
-  transform: scale(1.025);
+  color: #0b1528;
+  box-shadow: 0 0 0 1.5px rgba(138, 180, 248, 0.55), 0 2px 10px rgba(0, 0, 0, 0.3);
 }
 
 /* 3. Secondary Actions Capsule (M3 Surface Container) */
@@ -201,7 +199,7 @@
 }
 
 .tv-gtv-action-btn.active-sleep {
-  color: var(--google-blue);
+  color: var(--google-blue-light);
 }
 
 .tv-gtv-sleep-badge {
@@ -211,15 +209,16 @@
   font-size: 9px;
   font-weight: 700;
   background-color: var(--google-blue);
-  color: #001d35;
+  color: #ffffff;
   padding: 0 4px;
   border-radius: 4px;
 }
 
-.tv-gtv-action-btn.focused {
-  background-color: rgba(255, 255, 255, 0.22);
+.tv-gtv-action-btn.focused,
+.tv-gtv-action-btn:hover {
+  background-color: rgba(138, 180, 248, 0.18);
   color: #ffffff;
-  transform: scale(1.04);
+  box-shadow: 0 0 0 1.5px rgba(138, 180, 248, 0.45);
 }
 
 /* --------------------------------------------------------------------------

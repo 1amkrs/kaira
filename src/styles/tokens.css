@@ -1,77 +1,79 @@
 /**
- * Google TV Design Tokens
- * Scaled for 10-foot viewing experience (1080p / 1440p / 4K)
+ * Google TV & Kaira Design Tokens
+ * Scaled for 10-foot viewing experience (1080p / 1440p / 4K / Desktop)
  */
 
 :root {
   /* Surface Colors */
-  --bg-app: #0f0f0f;
-  --bg-surface-1: #121212;
-  --bg-surface-2: #181818;
-  --bg-surface-3: #222222;
-  --bg-surface-card: #1c1c1c;
-  --bg-surface-card-hover: #282828;
-  --bg-overlay: rgba(15, 15, 15, 0.85);
+  --bg-app: #0d0e12;
+  --bg-surface-1: #13151b;
+  --bg-surface-2: #1a1d26;
+  --bg-surface-3: #242834;
+  --bg-surface-card: #161820;
+  --bg-surface-card-hover: #222632;
+  --bg-overlay: rgba(13, 14, 18, 0.88);
 
   /* Text Colors */
-  --text-primary: rgba(255, 255, 255, 0.95);
-  --text-secondary: rgba(255, 255, 255, 0.65);
-  --text-tertiary: rgba(255, 255, 255, 0.40);
-  --text-inverse: #0f0f0f;
+  --text-primary: rgba(255, 255, 255, 0.96);
+  --text-secondary: rgba(255, 255, 255, 0.68);
+  --text-tertiary: rgba(255, 255, 255, 0.42);
+  --text-inverse: #0d0e12;
 
-  /* Accent Colors (TV Red & Functional) */
-  --google-blue: #ff453a;
-  --google-blue-hover: #ff6961;
-  --google-blue-active: #e50914;
-  --google-blue-subtle: rgba(255, 69, 58, 0.15);
-  --google-blue-glow: rgba(255, 69, 58, 0.35);
+  /* Google Blue & Functional Accents */
+  --google-blue: #1a73e8;
+  --google-blue-hover: #1b66c9;
+  --google-blue-active: #174ea6;
+  --google-blue-light: #8ab4f8;
+  --google-blue-subtle: rgba(26, 115, 232, 0.15);
+  --google-blue-glow: rgba(138, 180, 248, 0.35);
   
-  --accent-primary: #ff453a;
-  --accent-primary-hover: #ff6961;
-  --accent-primary-active: #e50914;
+  --accent-primary: #1a73e8;
+  --accent-primary-hover: #8ab4f8;
+  --accent-primary-active: #174ea6;
+  --accent-primary-glow: rgba(26, 115, 232, 0.35);
   --accent-green: #81c995;
   --accent-yellow: #fdd663;
-  --accent-red: #ff453a;
+  --accent-red: #ea4335;
 
   /* Border & Separator */
   --border-subtle: rgba(255, 255, 255, 0.08);
-  --border-medium: rgba(255, 255, 255, 0.15);
-  --border-focus: rgba(255, 255, 255, 0.9);
+  --border-medium: rgba(255, 255, 255, 0.16);
+  --border-focus: rgba(255, 255, 255, 0.35);
 
-  /* Focus Dynamics (Subtle & Apple tvOS-aligned) */
+  /* Focus Dynamics (Clean elevation & natural scaling without harsh strokes) */
   --focus-scale: 1.025;
-  --focus-duration: 200ms;
+  --focus-duration: 220ms;
   --focus-easing: cubic-bezier(0.16, 1, 0.3, 1);
-  --focus-shadow: 0 8px 24px -4px rgba(0, 0, 0, 0.5), 0 2px 6px rgba(0, 0, 0, 0.25);
-  --focus-border-glow: 0 0 0 1.5px rgba(255, 255, 255, 0.75);
+  --focus-shadow: 0 14px 36px -4px rgba(0, 0, 0, 0.7);
+  --focus-border-glow: none;
 
-  /* Spacing Scale */
+  /* Spacing Scale - Airy & Uncongested */
   --space-xs: 4px;
-  --space-sm: 8px;
-  --space-md: 16px;
-  --space-lg: 24px;
-  --space-xl: 32px;
-  --space-2xl: 48px;
-  --space-3xl: 64px;
+  --space-sm: 10px;
+  --space-md: 18px;
+  --space-lg: 28px;
+  --space-xl: 40px;
+  --space-2xl: 56px;
+  --space-3xl: 72px;
 
-  /* Layout / Margins (Optimized for 10-foot UI TV safe area) */
-  --screen-padding-x: 5.5vw;
+  /* Layout / Margins */
+  --screen-padding-x: clamp(36px, 5vw, 84px);
   --screen-padding-top: 24px;
-  --screen-padding-bottom: 48px;
-  --top-nav-height: 92px;
+  --screen-padding-bottom: 56px;
+  --top-nav-height: 88px;
 
   /* Typography Scale */
   --font-family: "Google Sans", "Roboto", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  --font-display: clamp(2.4rem, 3.8vw, 4.2rem);     /* Hero/detail titles */
-  --font-title-hero: clamp(2rem, 3.2vw, 3.6rem);
-  --font-title-lg: clamp(1.4rem, 2.2vw, 2.2rem);
-  --font-title-md: clamp(1.1rem, 1.5vw, 1.5rem);
-  --font-title-sm: clamp(0.95rem, 1.2vw, 1.2rem);
-  --font-body-lg: clamp(0.95rem, 1.1vw, 1.1rem);    /* Larger body for detail descriptions */
-  --font-body: clamp(0.85rem, 1vw, 1rem);
-  --font-caption: clamp(0.78rem, 0.88vw, 0.9rem);   /* Raised floor to ~12.5px */
+  --font-display: clamp(2rem, 3.2vw, 3.6rem);     /* Hero/detail titles */
+  --font-title-hero: clamp(1.8rem, 2.6vw, 3rem);
+  --font-title-lg: clamp(1.3rem, 1.8vw, 2rem);
+  --font-title-md: clamp(1.05rem, 1.3vw, 1.4rem);
+  --font-title-sm: clamp(0.9rem, 1vw, 1.15rem);
+  --font-body-lg: clamp(0.95rem, 1.05vw, 1.1rem);    /* Larger body for detail descriptions */
+  --font-body: clamp(0.85rem, 0.95vw, 1rem);
+  --font-caption: clamp(0.75rem, 0.8vw, 0.88rem);
 
-  /* Motion & Easing Tokens (Apple HIG aligned) */
+  /* Motion & Easing Tokens */
   --easing-enter: cubic-bezier(0.16, 1, 0.3, 1);    /* Spring-like: fast start, soft land */
   --easing-exit: cubic-bezier(0.4, 0, 1, 1);         /* Snappy ease-in for dismissal */
   --easing-standard: cubic-bezier(0.2, 0.0, 0.2, 1); /* Standard for state changes */
@@ -82,9 +84,9 @@
 
   /* Border Radii */
   --radius-sm: 6px;
-  --radius-md: 10px;
-  --radius-lg: 14px;
-  --radius-xl: 20px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 24px;
   --radius-pill: 9999px;
 
   /* Aspect Ratios */

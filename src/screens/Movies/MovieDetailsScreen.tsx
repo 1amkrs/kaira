@@ -242,6 +242,7 @@ export const MovieDetailsScreen: React.FC<MovieDetailsScreenProps> = ({
             indexInGroup={0}
             autoFocus={true}
             className="tv-action-btn-focusable"
+            scaleEffect={false}
             onSelect={handlePlayClick}
           >
             {(isFocused) => (
@@ -261,6 +262,7 @@ export const MovieDetailsScreen: React.FC<MovieDetailsScreenProps> = ({
             groupId="movie-details-actions"
             indexInGroup={1}
             className="tv-action-btn-focusable"
+            scaleEffect={false}
             onSelect={handleOpenSourceSelector}
           >
             {(isFocused) => (
@@ -277,6 +279,7 @@ export const MovieDetailsScreen: React.FC<MovieDetailsScreenProps> = ({
               groupId="movie-details-actions"
               indexInGroup={2}
               className="tv-action-btn-focusable"
+              scaleEffect={false}
               onSelect={() => setIsTrailerMuted((prev) => !prev)}
             >
               {(isFocused) => (
@@ -293,6 +296,7 @@ export const MovieDetailsScreen: React.FC<MovieDetailsScreenProps> = ({
             groupId="movie-details-actions"
             indexInGroup={3}
             className="tv-action-btn-focusable"
+            scaleEffect={false}
             onSelect={handleToggleFavorite}
           >
             {(isFocused) => (

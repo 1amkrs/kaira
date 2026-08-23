@@ -285,6 +285,7 @@ export const ShowDetailsScreen: React.FC<ShowDetailsScreenProps> = ({
               indexInGroup={0}
               autoFocus={true}
               className="tv-action-btn-focusable"
+              scaleEffect={false}
               onSelect={() => handleEpisodeSelect(firstEpisode)}
             >
               {(isFocused) => (
@@ -306,6 +307,7 @@ export const ShowDetailsScreen: React.FC<ShowDetailsScreenProps> = ({
               groupId="show-details-actions"
               indexInGroup={1}
               className="tv-action-btn-focusable"
+              scaleEffect={false}
               onSelect={() => handleOpenSourceSelector(firstEpisode)}
             >
               {(isFocused) => (
@@ -323,6 +325,7 @@ export const ShowDetailsScreen: React.FC<ShowDetailsScreenProps> = ({
               groupId="show-details-actions"
               indexInGroup={2}
               className="tv-action-btn-focusable"
+              scaleEffect={false}
               onSelect={() => setIsTrailerMuted((prev) => !prev)}
             >
               {(isFocused) => (
@@ -339,6 +342,7 @@ export const ShowDetailsScreen: React.FC<ShowDetailsScreenProps> = ({
             groupId="show-details-actions"
             indexInGroup={3}
             className="tv-action-btn-focusable"
+            scaleEffect={false}
             onSelect={handleToggleFavorite}
           >
             {(isFocused) => (
@@ -362,6 +366,7 @@ export const ShowDetailsScreen: React.FC<ShowDetailsScreenProps> = ({
               groupId="season-tabs"
               indexInGroup={idx}
               className="tv-season-tab-focusable"
+              scaleEffect={false}
               onSelect={() => setSelectedSeason(season.number)}
             >
               {(isFocused) => (

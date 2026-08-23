@@ -97,12 +97,12 @@ class GamepadManager {
   }
 
   private handleGamepadConnected = (e: GamepadEvent) => {
-    console.log('[GamepadManager] 🎮 Gamepad Connected:', e.gamepad.id, 'index:', e.gamepad.index);
+    console.log('[GamepadManager] Gamepad Connected:', e.gamepad.id, 'index:', e.gamepad.index);
     this.callbacks.onGamepadStatusChange?.(true, e.gamepad.id);
   };
 
   private handleGamepadDisconnected = (e: GamepadEvent) => {
-    console.log('[GamepadManager] ❌ Gamepad Disconnected:', e.gamepad.id);
+    console.log('[GamepadManager] Gamepad Disconnected:', e.gamepad.id);
     this.prevButtonStates.delete(e.gamepad.index);
     this.callbacks.onGamepadStatusChange?.(false, e.gamepad.id);
   };

@@ -242,7 +242,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onClose }) => {
           >
             {(isFocused) => (
               <div className={`tv-cat-row ${isFocused ? 'focused' : ''}`}>
-                <Users size={22} className="cat-icon" color="#ff453a" />
+                <Users size={22} className="cat-icon" color="var(--google-blue-light, #8ab4f8)" />
                 <div className="cat-text">
                   <span className="cat-title">Profiles & Accounts</span>
                   <span className="cat-desc">User accounts, avatars, and 4-digit PIN locks</span>
@@ -282,7 +282,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onClose }) => {
           >
             {(isFocused) => (
               <div className={`tv-cat-row ${isFocused ? 'focused' : ''}`}>
-                <ShieldCheck size={22} className="cat-icon" color="#ea4335" />
+                <ShieldCheck size={22} className="cat-icon" color="var(--google-blue-light, #8ab4f8)" />
                 <div className="cat-text">
                   <span className="cat-title">uBlock Origin Shield</span>
                   <span className="cat-desc">Ad blocking, anti-popup filters, and privacy protection</span>
@@ -566,9 +566,9 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onClose }) => {
                             <span className={hasPin ? (isUnlocked ? 'unlocked-pin-text' : 'has-pin-text') : 'no-pin-text'}>
                               {hasPin
                                 ? isUnlocked
-                                  ? '🔓 Unlocked (Memory)'
-                                  : '🔒 Locked (PIN Required)'
-                                : '🔓 No PIN'}
+                                  ? 'Unlocked (Memory)'
+                                  : 'Locked (PIN Required)'
+                                : 'No PIN'}
                             </span>
                             <span>•</span>
                             <span>{historyCount} watch history items</span>
@@ -752,7 +752,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onClose }) => {
                   )}
 
                   <div style={{ fontSize: '12px', color: 'var(--text-secondary)', lineHeight: 1.6, background: 'rgba(0,0,0,0.3)', padding: '12px', borderRadius: '8px' }}>
-                    <strong>🚀 Quick Start with an0mal1a/self-debrid:</strong><br />
+                    <strong>Quick Start with an0mal1a/self-debrid:</strong><br />
                     1. Ensure qBittorrent is running with Web UI enabled on port <code>8080</code> (Tools → Options → Web UI).<br />
                     2. In terminal, run <code>python main.py</code> inside your <code>self-debrid</code> folder.<br />
                     3. Kaira will automatically stream 4K movies with full native hardware transport controls!
@@ -946,7 +946,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onClose }) => {
                         className={`tv-settings-input ${isFocused ? 'focused' : ''}`}
                         style={{
                           background: isFocused ? 'rgba(255,255,255,0.14)' : 'rgba(255,255,255,0.08)',
-                          border: isFocused ? '1px solid #ff453a' : '1px solid rgba(255,255,255,0.2)',
+                          border: isFocused ? '1px solid var(--google-blue, #1a73e8)' : '1px solid rgba(255,255,255,0.2)',
                           borderRadius: '8px',
                           color: '#fff',
                           padding: '8px 12px',
@@ -1032,7 +1032,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onClose }) => {
                     </div>
                     <div className="tv-ublock-hero-stats">
                       <span className="tv-ublock-stat-badge">
-                        🛡️ {ublockState.blockedCount.toLocaleString()} Blocked
+                        {ublockState.blockedCount.toLocaleString()} Blocked
                       </span>
                       <span>•</span>
                       <span>{ublockService.getTotalRulesCount().toLocaleString()} Active Rules</span>

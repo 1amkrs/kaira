@@ -186,7 +186,16 @@
 
 .tv-pill-options {
   display: flex;
+  align-items: center;
   gap: 8px;
+  padding: 4px 2px 6px 2px;
+  overflow-x: auto;
+  overflow-y: visible;
+  scrollbar-width: none;
+}
+
+.tv-pill-options::-webkit-scrollbar {
+  display: none;
 }
 
 .tv-chip-inner {
@@ -197,7 +206,12 @@
   font-size: var(--font-caption);
   font-weight: 600;
   color: var(--text-secondary);
-  transition: all var(--duration-base) var(--easing-standard);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: transform var(--duration-base) var(--easing-standard),
+              background-color var(--duration-base) var(--easing-standard),
+              border-color var(--duration-base) var(--easing-standard),
+              box-shadow var(--duration-base) var(--easing-standard);
 }
 
 .tv-chip-inner.active {
@@ -206,10 +220,12 @@
   border-color: var(--google-blue);
 }
 
-.tv-chip-inner.focused {
+.tv-chip-inner.focused,
+.tv-chip-inner:hover {
   border-color: var(--border-focus);
-  box-shadow: var(--focus-shadow);
+  box-shadow: 0 0 0 2px #8ab4f8, 0 4px 12px rgba(26, 115, 232, 0.35);
   transform: scale(var(--focus-scale));
+  z-index: 2;
 }
 
 /* Addon Items Cards */

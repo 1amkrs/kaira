@@ -103,7 +103,7 @@ export const MoviesScreen: React.FC<MoviesScreenProps> = ({ onSelectMovie, onPla
               </span>
               {featured.rating && (
                 <span className="rating-pill">
-                  {featured.rating.includes('★') ? featured.rating : `${featured.rating} ★`}
+                  {featured.rating.replace('★', '').trim()}
                 </span>
               )}
             </div>
@@ -123,6 +123,7 @@ export const MoviesScreen: React.FC<MoviesScreenProps> = ({ onSelectMovie, onPla
                 groupId="movies-hero"
                 indexInGroup={0}
                 className="tv-hero-btn-focusable"
+                scaleEffect={false}
                 onSelect={() => onPlayMovie(featured)}
               >
                 {(isFocused) => (
@@ -138,6 +139,7 @@ export const MoviesScreen: React.FC<MoviesScreenProps> = ({ onSelectMovie, onPla
                 groupId="movies-hero"
                 indexInGroup={1}
                 className="tv-hero-btn-focusable"
+                scaleEffect={false}
                 onSelect={() => onSelectMovie(featured)}
               >
                 {(isFocused) => (
@@ -163,6 +165,7 @@ export const MoviesScreen: React.FC<MoviesScreenProps> = ({ onSelectMovie, onPla
               groupId="movies-categories"
               indexInGroup={idx}
               className="tv-movie-category-focusable"
+              scaleEffect={false}
               onSelect={() => setActiveCategory(cat.id)}
             >
               {(isFocused) => (
@@ -198,7 +201,7 @@ export const MoviesScreen: React.FC<MoviesScreenProps> = ({ onSelectMovie, onPla
         {(activeCategory === 'all' || activeCategory === 'hollywood') && (
           <ContentRail
             id="movies-hollywood"
-            title="🎬 Hollywood & Global Blockbusters"
+            title="Hollywood & Global Blockbusters"
             subtitle="Critically acclaimed 4K theatrical hits & box office champions"
             isLoading={isLoading}
             aspectRatio="poster"
@@ -220,7 +223,7 @@ export const MoviesScreen: React.FC<MoviesScreenProps> = ({ onSelectMovie, onPla
         {(activeCategory === 'all' || activeCategory === 'malayalam') && (
           <ContentRail
             id="movies-malayalam"
-            title="🌟 Malayalam Cinema & Hits (Mollywood)"
+            title="Malayalam Cinema & Hits (Mollywood)"
             subtitle="Acclaimed thrillers, dramas, and survival masterworks"
             isLoading={isLoading}
             error={error}
@@ -244,7 +247,7 @@ export const MoviesScreen: React.FC<MoviesScreenProps> = ({ onSelectMovie, onPla
         {(activeCategory === 'all' || activeCategory === 'hindi') && (
           <ContentRail
             id="movies-hindi"
-            title="🔥 Bollywood & Hindi Blockbusters"
+            title="Bollywood & Hindi Blockbusters"
             subtitle="High-octane action, drama, and heartwarming cinema"
             isLoading={isLoading}
             aspectRatio="poster"
@@ -266,7 +269,7 @@ export const MoviesScreen: React.FC<MoviesScreenProps> = ({ onSelectMovie, onPla
         {(activeCategory === 'all' || activeCategory === 'tamil') && (
           <ContentRail
             id="movies-tamil"
-            title="⚡ Tamil Cinema & Action (Kollywood)"
+            title="Tamil Cinema & Action (Kollywood)"
             subtitle="Mass blockbusters, gripping neo-noirs, and period epics"
             isLoading={isLoading}
             aspectRatio="poster"
@@ -288,7 +291,7 @@ export const MoviesScreen: React.FC<MoviesScreenProps> = ({ onSelectMovie, onPla
         {(activeCategory === 'all' || activeCategory === 'scifi') && (
           <ContentRail
             id="movies-scifi"
-            title="🌌 Sci-Fi & Action Universe"
+            title="Sci-Fi & Action Universe"
             subtitle="Futuristic spectacles, dystopian epics, and superhero adventures"
             isLoading={isLoading}
             aspectRatio="16:9"

@@ -132,7 +132,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
 
             <h1 className="tv-hero-title">{featured.title}</h1>
             <p className="tv-hero-subtitle">
-              {featured.rating.includes('★') ? featured.rating : `${featured.rating} ★`} • {featured.year} • {featured.runtime}
+              <span className="tv-hero-rating-score">{featured.rating.replace('★', '').trim()}</span> • {featured.year} • {featured.runtime}
             </p>
             <p className="tv-hero-description text-line-clamp-2">{featured.description}</p>
 

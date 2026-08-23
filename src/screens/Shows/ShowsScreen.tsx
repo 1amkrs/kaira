@@ -60,7 +60,9 @@ export const ShowsScreen: React.FC<ShowsScreenProps> = ({ onSelectShow, onPlaySh
             <span className="tv-show-hero-badge">Featured TV Series</span>
             <h1 className="tv-show-hero-title">{featured.title}</h1>
             <div className="tv-show-hero-meta">
-              <span className="rating-pill">{featured.rating}</span>
+              {featured.rating && (
+                <span className="rating-pill">{featured.rating.replace('★', '').trim()}</span>
+              )}
               <span>{featured.year}</span>
               <span className="tv-meta-dot" aria-hidden="true" />
               <span>{featured.genres.join(', ')}</span>
@@ -79,6 +81,7 @@ export const ShowsScreen: React.FC<ShowsScreenProps> = ({ onSelectShow, onPlaySh
                 groupId="shows-hero"
                 indexInGroup={0}
                 className="tv-hero-btn-focusable"
+                scaleEffect={false}
                 onSelect={() => {
                   if (onPlayShow) onPlayShow(featured);
                   else onSelectShow(featured);
@@ -97,6 +100,7 @@ export const ShowsScreen: React.FC<ShowsScreenProps> = ({ onSelectShow, onPlaySh
                 groupId="shows-hero"
                 indexInGroup={1}
                 className="tv-hero-btn-focusable"
+                scaleEffect={false}
                 onSelect={() => onSelectShow(featured)}
               >
                 {(isFocused) => (

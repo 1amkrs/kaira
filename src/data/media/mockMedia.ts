@@ -11,7 +11,7 @@ export const FEATURED_HERO: MediaItem = {
   genre: ['Sci-Fi', 'Adventure', 'Drama'],
   year: 2024,
   duration: '2h 49m',
-  rating: '8.7 ★',
+  rating: '8.7',
   source: 'Cinemeta 4K',
   featured: true,
   actionUrl: 'netflix:'
@@ -29,7 +29,7 @@ export const CONTINUE_WATCHING: MediaItem[] = [
     genre: ['Sci-Fi', 'Horror', 'Mystery'],
     year: 2023,
     duration: '1h 18m',
-    rating: '8.7 ★',
+    rating: '8.7',
     progress: 68,
     source: 'Netflix',
     actionUrl: 'netflix:'
@@ -45,7 +45,7 @@ export const CONTINUE_WATCHING: MediaItem[] = [
     genre: ['Anime', 'Sci-Fi', 'Action'],
     year: 2023,
     duration: '24m',
-    rating: '8.3 ★',
+    rating: '8.3',
     progress: 42,
     source: 'Netflix',
     actionUrl: 'netflix:'
@@ -61,7 +61,7 @@ export const CONTINUE_WATCHING: MediaItem[] = [
     genre: ['Sci-Fi', 'Adventure', 'Action'],
     year: 2024,
     duration: '2h 46m',
-    rating: '8.5 ★',
+    rating: '8.5',
     progress: 45,
     source: 'Prime Video',
     actionUrl: 'https://www.primevideo.com'
@@ -77,7 +77,7 @@ export const CONTINUE_WATCHING: MediaItem[] = [
     genre: ['Animation', 'Sci-Fi', 'Action'],
     year: 2024,
     duration: '42m',
-    rating: '9.0 ★',
+    rating: '9.0',
     progress: 85,
     source: 'Netflix',
     actionUrl: 'netflix:'
@@ -93,7 +93,7 @@ export const CONTINUE_WATCHING: MediaItem[] = [
     genre: ['Sci-Fi', 'Thriller', 'Mystery'],
     year: 2023,
     duration: '52m',
-    rating: '8.7 ★',
+    rating: '8.7',
     progress: 90,
     source: 'Apple TV',
     actionUrl: 'https://tv.apple.com'
@@ -112,7 +112,7 @@ export const RECOMMENDED_MEDIA: MediaItem[] = [
     genre: ['Biography', 'Drama', 'History'],
     year: 2023,
     duration: '3h 00m',
-    rating: '8.9 ★',
+    rating: '8.9',
     source: 'Prime Video',
     actionUrl: 'https://www.primevideo.com'
   },
@@ -127,7 +127,7 @@ export const RECOMMENDED_MEDIA: MediaItem[] = [
     genre: ['Action', 'Adventure', 'Drama'],
     year: 2023,
     duration: '9 Episodes',
-    rating: '8.8 ★',
+    rating: '8.8',
     source: 'HBO Max',
     actionUrl: 'https://max.com'
   },
@@ -142,7 +142,7 @@ export const RECOMMENDED_MEDIA: MediaItem[] = [
     genre: ['Sci-Fi', 'Mystery', 'Action'],
     year: 2017,
     duration: '2h 44m',
-    rating: '8.0 ★',
+    rating: '8.0',
     source: 'Netflix',
     actionUrl: 'netflix:'
   },
@@ -157,7 +157,7 @@ export const RECOMMENDED_MEDIA: MediaItem[] = [
     genre: ['Drama', 'History', 'War'],
     year: 2024,
     duration: '10 Episodes',
-    rating: '8.7 ★',
+    rating: '8.7',
     source: 'Disney+',
     actionUrl: 'https://www.disneyplus.com'
   },
@@ -172,7 +172,7 @@ export const RECOMMENDED_MEDIA: MediaItem[] = [
     genre: ['Action', 'Thriller'],
     year: 2024,
     duration: '1h 49m',
-    rating: '7.1 ★',
+    rating: '7.1',
     source: 'Prime Video',
     actionUrl: 'https://www.primevideo.com'
   }
@@ -189,7 +189,7 @@ export const POPULAR_MOVIES: MediaItem[] = [
     genre: ['Action', 'Crime', 'Drama'],
     year: 2022,
     duration: '2h 56m',
-    rating: '7.8 ★',
+    rating: '7.8',
     source: 'HBO Max',
     actionUrl: 'https://max.com'
   },
@@ -203,7 +203,7 @@ export const POPULAR_MOVIES: MediaItem[] = [
     genre: ['Animation', 'Action', 'Sci-Fi'],
     year: 2023,
     duration: '2h 20m',
-    rating: '8.6 ★',
+    rating: '8.6',
     source: 'Netflix',
     actionUrl: 'netflix:'
   },
@@ -217,7 +217,7 @@ export const POPULAR_MOVIES: MediaItem[] = [
     genre: ['Action', 'Sci-Fi', 'Drama'],
     year: 2023,
     duration: '2h 05m',
-    rating: '7.9 ★',
+    rating: '7.9',
     source: 'Netflix',
     actionUrl: 'netflix:'
   },
@@ -231,7 +231,7 @@ export const POPULAR_MOVIES: MediaItem[] = [
     genre: ['Horror', 'Sci-Fi', 'Thriller'],
     year: 2024,
     duration: '1h 59m',
-    rating: '7.2 ★',
+    rating: '7.2',
     source: 'Disney+',
     actionUrl: 'https://www.disneyplus.com'
   }
@@ -248,7 +248,7 @@ export const POPULAR_SHOWS: MediaItem[] = [
     genre: ['Drama'],
     year: 2023,
     duration: '4 Seasons',
-    rating: '8.9 ★',
+    rating: '8.9',
     source: 'HBO Max',
     actionUrl: 'https://max.com'
   },
@@ -262,7 +262,7 @@ export const POPULAR_SHOWS: MediaItem[] = [
     genre: ['Comedy', 'Drama'],
     year: 2024,
     duration: '3 Seasons',
-    rating: '8.6 ★',
+    rating: '8.6',
     source: 'Disney+',
     actionUrl: 'https://www.disneyplus.com'
   },
@@ -276,7 +276,7 @@ export const POPULAR_SHOWS: MediaItem[] = [
     genre: ['Action', 'Adventure', 'Drama', 'Fantasy'],
     year: 2024,
     duration: '2 Seasons',
-    rating: '8.4 ★',
+    rating: '8.4',
     source: 'HBO Max',
     actionUrl: 'https://max.com'
   },
@@ -290,7 +290,7 @@ export const POPULAR_SHOWS: MediaItem[] = [
     genre: ['Action', 'Adventure', 'Sci-Fi'],
     year: 2024,
     duration: '1 Season',
-    rating: '8.4 ★',
+    rating: '8.4',
     source: 'Prime Video',
     actionUrl: 'https://www.primevideo.com'
   }

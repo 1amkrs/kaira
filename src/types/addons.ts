@@ -30,7 +30,7 @@ export interface SubtitleTrack {
 
 export interface AddonStream {
   name: string; // e.g. "Torrentio [RD+]", "Torrentio [4K]", "Web Stream", "Trailer"
-  title: string; // e.g. "Interstellar (2014) • 4K HDR • 18.2 GB\n💾 1000+ seeds • Atmos"
+  title: string; // e.g. "Interstellar (2014) • 4K HDR • 18.2 GB\n1000+ seeds • Atmos"
   description?: string;
   url: string; // Direct HTTPS stream link / Web embed / YouTube embed
   streamType?: 'direct' | 'embed' | 'youtube' | 'torrent';

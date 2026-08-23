@@ -2,7 +2,7 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-sm);
-  margin-bottom: var(--space-xl);
+  margin-bottom: clamp(32px, 4vh, 52px);
   overflow: visible;
 }
 
@@ -28,8 +28,8 @@
 
 .tv-rail-scroll-track {
   display: flex;
-  gap: var(--space-md);
-  padding: 16px var(--screen-padding-x) 28px var(--screen-padding-x);
+  gap: clamp(16px, 1.4vw, 24px);
+  padding: 16px var(--screen-padding-x) 32px var(--screen-padding-x);
   align-items: flex-start;
   overflow-x: auto;
   overflow-y: visible;
@@ -46,25 +46,25 @@
   flex: 0 0 auto;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 8px;
 }
 
 .tv-rail-skeleton-card.ratio-poster {
-  width: clamp(160px, 13vw, 220px);
+  width: clamp(170px, 13.5vw, 250px);
 }
 .tv-rail-skeleton-card.ratio-poster .tv-skeleton-box {
   aspect-ratio: 2 / 3;
 }
 
 .tv-rail-skeleton-card.ratio-16\:9 {
-  width: clamp(260px, 22vw, 360px);
+  width: clamp(280px, 22.5vw, 420px);
 }
 .tv-rail-skeleton-card.ratio-16\:9 .tv-skeleton-box {
   aspect-ratio: 16 / 9;
 }
 
 .tv-rail-skeleton-card.ratio-1\:1 {
-  width: clamp(160px, 14vw, 220px);
+  width: clamp(170px, 13.5vw, 240px);
 }
 .tv-rail-skeleton-card.ratio-1\:1 .tv-skeleton-box {
   aspect-ratio: 1 / 1;

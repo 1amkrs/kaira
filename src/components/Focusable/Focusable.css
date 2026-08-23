@@ -5,18 +5,18 @@
   transform-origin: center center;
   transition: transform var(--focus-duration) var(--focus-easing),
               box-shadow var(--focus-duration) var(--focus-easing),
-              background-color var(--focus-duration) var(--focus-easing),
-              border-color var(--focus-duration) var(--focus-easing);
+              background-color var(--duration-base) var(--easing-standard),
+              border-color var(--duration-base) var(--easing-standard),
+              opacity var(--duration-base) var(--easing-standard),
+              color var(--duration-base) var(--easing-standard);
   will-change: transform;
-  /* Prevent parent from clipping scaled children */
   overflow: visible;
 }
 
 .tv-focusable.tv-focus-scale.is-focused {
   transform: scale(var(--focus-scale));
-  z-index: 20;
+  z-index: 10;
   box-shadow: var(--focus-shadow);
-  /* Ensure focused item renders above siblings */
   isolation: isolate;
 }
 
@@ -25,4 +25,5 @@
   pointer-events: none;
   cursor: default;
 }
+
 
