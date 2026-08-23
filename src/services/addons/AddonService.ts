@@ -393,8 +393,19 @@ class AddonService {
     } else if (raw.infoHash) {
       if (isSelfDebrid) {
         const selfUrl = (this.debridConfig.endpointUrl || 'http://localhost:8081').replace(/\/+$/, '');
-        streamUrl = `${selfUrl}/stream/${raw.infoHash}${raw.fileIdx !== undefined ? `/${raw.fileIdx}` : ''}`;
+        // an0mal1a/self-debrid route is /stream/<torrent_hash>
+        streamUrl = `${selfUrl}/stream/${raw.infoHash}`;
         streamType = 'direct';
+
+        // Proactively register magnet link with local qBittorrent via Web UI if available
+        try {
+          const magnetUrl = `magnet:?xt=urn:btih:${raw.infoHash}`;
+          fetch('http://localhost:8080/api/v2/torrents/add', {
+            method: 'POST',
+            body: new URLSearchParams({ urls: magnetUrl, sequentialDownload: 'true', firstLastPiecePrio: 'true' }),
+            mode: 'no-cors'
+          }).catch(() => {});
+        } catch (_) {}
       } else {
         // If direct Debrid link is not returned, route via fast web player for this exact title
         streamType = 'embed';
