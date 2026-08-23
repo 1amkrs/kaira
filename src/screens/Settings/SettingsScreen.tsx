@@ -27,7 +27,8 @@ import {
   Lock,
   Unlock,
   Edit3,
-  Moon
+  Moon,
+  Zap
 } from 'lucide-react';
 import { Focusable } from '../../components/Focusable/Focusable';
 import { spatialNav } from '../../services/spatialNav/spatialNavEngine';
@@ -166,14 +167,40 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onClose }) => {
     }
   };
 
+  const [debridEndpoint, setDebridEndpoint] = useState<string>(() => debridConfig.endpointUrl || 'http://localhost:8081');
+  const [debridApiKey, setDebridApiKey] = useState<string>(() => debridConfig.apiKey || '');
+  const [debridTestResult, setDebridTestResult] = useState<{ success: boolean; message: string } | null>(null);
+  const [isTestingDebrid, setIsTestingDebrid] = useState<boolean>(false);
+
   const handleDebridProviderChange = (provider: DebridConfig['provider']) => {
     const updated: DebridConfig = {
       ...debridConfig,
       provider,
+      endpointUrl: debridEndpoint.trim(),
+      apiKey: debridApiKey.trim(),
       enabled: provider !== 'none',
     };
     addonService.setDebridConfig(updated);
     setDebridConfig(updated);
+  };
+
+  const handleSaveDebridSettings = (prov?: DebridConfig['provider']) => {
+    const updated: DebridConfig = {
+      provider: prov || debridConfig.provider,
+      apiKey: debridApiKey.trim(),
+      endpointUrl: debridEndpoint.trim(),
+      enabled: (prov || debridConfig.provider) !== 'none',
+    };
+    addonService.setDebridConfig(updated);
+    setDebridConfig(updated);
+  };
+
+  const handleTestSelfDebrid = async () => {
+    setIsTestingDebrid(true);
+    setDebridTestResult(null);
+    const res = await addonService.testSelfDebrid(debridEndpoint);
+    setDebridTestResult(res);
+    setIsTestingDebrid(false);
   };
 
   return (
@@ -635,31 +662,140 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onClose }) => {
                 Supports the open Stremio & Nuvio Community Addon Protocol. Query high-speed 4K HDR & 1080p HTTPS video streams.
               </p>
 
-              {/* Debrid Fast CDN Section */}
+              {/* Debrid & Self-Hosted Stream Accelerator */}
               <div className="tv-setting-row-card">
                 <div className="tv-row-text">
-                  <span className="tv-row-title">Debrid Cloud CDN Accelerator</span>
-                  <span className="tv-row-desc">Converts media hashes into instant high-bandwidth HTTPS streams</span>
+                  <span className="tv-row-title">Debrid & Self-Hosted Stream Accelerator</span>
+                  <span className="tv-row-desc">
+                    Connect an0mal1a/self-debrid (local qBittorrent) or Real-Debrid for uncompressed 4K HDR playback
+                  </span>
                 </div>
                 <div className="tv-pill-options">
-                  {(['realdebrid', 'alldebrid', 'torbox', 'none'] as const).map((prov, idx) => (
+                  {(['selfdebrid', 'realdebrid', 'alldebrid', 'torbox', 'none'] as const).map((prov, idx) => (
                     <Focusable
                       key={prov}
                       id={`opt-debrid-${prov}`}
                       groupId="settings-debrid-options"
                       indexInGroup={idx}
                       className="tv-option-chip"
-                      onSelect={() => handleDebridProviderChange(prov)}
+                      onSelect={() => {
+                        handleDebridProviderChange(prov);
+                        handleSaveDebridSettings(prov);
+                      }}
                     >
                       {(isFocused) => (
                         <div className={`tv-chip-inner ${debridConfig.provider === prov ? 'active' : ''} ${isFocused ? 'focused' : ''}`}>
-                          {prov === 'realdebrid' ? 'Real-Debrid' : prov === 'alldebrid' ? 'AllDebrid' : prov === 'torbox' ? 'TorBox' : 'Disabled'}
+                          {prov === 'selfdebrid'
+                            ? 'Self-Debrid (Local / Free)'
+                            : prov === 'realdebrid'
+                            ? 'Real-Debrid'
+                            : prov === 'alldebrid'
+                            ? 'AllDebrid'
+                            : prov === 'torbox'
+                            ? 'TorBox'
+                            : 'Disabled'}
                         </div>
                       )}
                     </Focusable>
                   ))}
                 </div>
               </div>
+
+              {/* Self-Debrid Configuration Card */}
+              {debridConfig.provider === 'selfdebrid' && (
+                <div className="tv-setting-row-card" style={{ flexDirection: 'column', alignItems: 'stretch', gap: '14px', background: 'rgba(66, 133, 244, 0.08)', borderColor: 'rgba(66, 133, 244, 0.3)' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div className="tv-row-text">
+                      <span className="tv-row-title" style={{ color: 'var(--google-blue)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <Zap size={16} /> Self-Debrid Server Configuration (an0mal1a/self-debrid)
+                      </span>
+                      <span className="tv-row-desc">
+                        Streams torrents through your local qBittorrent on port 8080 & streams live HTTP video on port 8081.
+                      </span>
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+                    <input
+                      type="text"
+                      className="tv-settings-text-input"
+                      style={{ flex: 1, padding: '10px 14px', borderRadius: '8px', background: 'rgba(0,0,0,0.5)', color: '#fff', border: '1px solid var(--border-subtle)' }}
+                      placeholder="http://localhost:8081 or http://192.168.x.x:8081"
+                      value={debridEndpoint}
+                      onChange={(e) => setDebridEndpoint(e.target.value)}
+                      onBlur={() => handleSaveDebridSettings()}
+                    />
+
+                    <Focusable
+                      id="btn-save-self-debrid"
+                      groupId="settings-self-debrid"
+                      indexInGroup={0}
+                      className="tv-addon-btn-focusable"
+                      onSelect={() => {
+                        handleSaveDebridSettings();
+                        handleTestSelfDebrid();
+                      }}
+                    >
+                      {(isFocused) => (
+                        <div className={`tv-addon-action-pill active ${isFocused ? 'focused' : ''}`}>
+                          <Check size={16} />
+                          <span>{isTestingDebrid ? 'Testing...' : 'Save & Test'}</span>
+                        </div>
+                      )}
+                    </Focusable>
+                  </div>
+
+                  {debridTestResult && (
+                    <div style={{ padding: '8px 12px', borderRadius: '6px', fontSize: '13px', background: debridTestResult.success ? 'rgba(52, 168, 83, 0.15)' : 'rgba(234, 67, 53, 0.15)', color: debridTestResult.success ? '#34a853' : '#ea4335' }}>
+                      {debridTestResult.message}
+                    </div>
+                  )}
+
+                  <div style={{ fontSize: '12px', color: 'var(--text-secondary)', lineHeight: 1.6, background: 'rgba(0,0,0,0.3)', padding: '12px', borderRadius: '8px' }}>
+                    <strong>🚀 Quick Start with an0mal1a/self-debrid:</strong><br />
+                    1. Ensure qBittorrent is running with Web UI enabled on port <code>8080</code> (Tools → Options → Web UI).<br />
+                    2. In terminal, run <code>python main.py</code> inside your <code>self-debrid</code> folder.<br />
+                    3. Kaira will automatically stream 4K movies with full native hardware transport controls!
+                  </div>
+                </div>
+              )}
+
+              {/* Cloud Debrid API Key Card */}
+              {(debridConfig.provider === 'realdebrid' || debridConfig.provider === 'alldebrid' || debridConfig.provider === 'torbox') && (
+                <div className="tv-setting-row-card" style={{ flexDirection: 'column', alignItems: 'stretch', gap: '14px' }}>
+                  <div className="tv-row-text">
+                    <span className="tv-row-title">API Token / Secret Key</span>
+                    <span className="tv-row-desc">Enter your {debridConfig.provider.toUpperCase()} API key to unlock cached 4K torrents</span>
+                  </div>
+
+                  <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+                    <input
+                      type="password"
+                      className="tv-settings-text-input"
+                      style={{ flex: 1, padding: '10px 14px', borderRadius: '8px', background: 'rgba(0,0,0,0.5)', color: '#fff', border: '1px solid var(--border-subtle)' }}
+                      placeholder="Paste your API key here..."
+                      value={debridApiKey}
+                      onChange={(e) => setDebridApiKey(e.target.value)}
+                      onBlur={() => handleSaveDebridSettings()}
+                    />
+
+                    <Focusable
+                      id="btn-save-cloud-debrid"
+                      groupId="settings-cloud-debrid"
+                      indexInGroup={0}
+                      className="tv-addon-btn-focusable"
+                      onSelect={() => handleSaveDebridSettings()}
+                    >
+                      {(isFocused) => (
+                        <div className={`tv-addon-action-pill active ${isFocused ? 'focused' : ''}`}>
+                          <Check size={16} />
+                          <span>Save Key</span>
+                        </div>
+                      )}
+                    </Focusable>
+                  </div>
+                </div>
+              )}
 
               {/* Installed Addons List */}
               <h4 className="tv-subgroup-title">Installed Addons ({addons.length})</h4>

@@ -359,6 +359,22 @@ class AddonService {
     return streams;
   }
 
+  public async testSelfDebrid(endpointUrl?: string): Promise<{ success: boolean; message: string }> {
+    const url = (endpointUrl || this.debridConfig.endpointUrl || 'http://localhost:8081').replace(/\/+$/, '');
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 3500);
+      const res = await fetch(`${url}/`, { method: 'HEAD', signal: controller.signal }).catch(() => null);
+      clearTimeout(timeoutId);
+      if (res) {
+        return { success: true, message: `Connected to Self-Debrid on ${url}` };
+      }
+      return { success: false, message: `Could not reach Self-Debrid at ${url}. Make sure python main.py is running.` };
+    } catch (e: any) {
+      return { success: false, message: `Connection error: ${e.message}` };
+    }
+  }
+
   private normalizeStream(
     raw: any,
     providerName: string,
@@ -372,21 +388,28 @@ class AddonService {
 
     let streamUrl = raw.url || '';
     let streamType: AddonStream['streamType'] = 'direct';
+    const isSelfDebrid = this.debridConfig.enabled && this.debridConfig.provider === 'selfdebrid';
 
     if (raw.url) {
       streamUrl = raw.url;
-      streamType = raw.url.includes('.mp4') || raw.url.includes('.mkv') ? 'direct' : 'embed';
+      streamType = raw.url.includes('.mp4') || raw.url.includes('.mkv') || raw.url.includes('.m3u8') ? 'direct' : 'embed';
     } else if (raw.infoHash) {
-      // If direct Debrid link is not returned, route via fast web player for this exact title
-      streamType = 'embed';
-      streamUrl =
-        type === 'movie'
-          ? `https://vidsrc.pm/embed/movie/${imdbId}?autoplay=1`
-          : `https://vidsrc.pm/embed/tv/${imdbId}/${seasonNumber || 1}/${episodeNumber || 1}?autoplay=1`;
+      if (isSelfDebrid) {
+        const selfUrl = (this.debridConfig.endpointUrl || 'http://localhost:8081').replace(/\/+$/, '');
+        streamUrl = `${selfUrl}/stream/${raw.infoHash}${raw.fileIdx !== undefined ? `/${raw.fileIdx}` : ''}`;
+        streamType = 'direct';
+      } else {
+        // If direct Debrid link is not returned, route via fast web player for this exact title
+        streamType = 'embed';
+        streamUrl =
+          type === 'movie'
+            ? `https://vidsrc.pm/embed/movie/${imdbId}?autoplay=1`
+            : `https://vidsrc.pm/embed/tv/${imdbId}/${seasonNumber || 1}/${episodeNumber || 1}?autoplay=1`;
+      }
     }
 
     return {
-      name: raw.name ? raw.name.replace(/\n/g, ' ') : providerName,
+      name: isSelfDebrid ? `Self-Debrid [${parsed.quality}]` : (raw.name ? raw.name.replace(/\n/g, ' ') : providerName),
       title: rawTitle,
       description: raw.description || parsed.qualityDesc,
       url: streamUrl,
@@ -397,8 +420,8 @@ class AddonService {
       resolution: parsed.resolution,
       fileSize: parsed.fileSize,
       audio: parsed.audio,
-      providerName: providerName,
-      isDebrid: raw.name?.includes('RD') || raw.name?.includes('Debrid') || Boolean(raw.url),
+      providerName: isSelfDebrid ? 'Self-Debrid Local' : providerName,
+      isDebrid: isSelfDebrid || raw.name?.includes('RD') || raw.name?.includes('Debrid') || Boolean(raw.url),
       behaviorHints: raw.behaviorHints,
     };
   }

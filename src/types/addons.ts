@@ -59,7 +59,8 @@ export interface InstalledAddon {
 }
 
 export interface DebridConfig {
-  provider: 'realdebrid' | 'alldebrid' | 'torbox' | 'premiumize' | 'none';
+  provider: 'realdebrid' | 'alldebrid' | 'selfdebrid' | 'torbox' | 'premiumize' | 'none';
   apiKey: string;
+  endpointUrl?: string; // e.g. "http://localhost:8081" or "http://127.0.0.1:8081"
   enabled: boolean;
 }
