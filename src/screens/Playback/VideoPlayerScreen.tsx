@@ -577,7 +577,7 @@ export const VideoPlayerScreen: React.FC<VideoPlayerScreenProps> = ({
             {(isFocused) => (
               <div className={`tv-hud-back-btn ${isFocused ? 'focused' : ''}`}>
                 <ArrowLeft size={20} />
-                <span>Back (B)</span>
+                <span>Back</span>
               </div>
             )}
           </Focusable>
@@ -589,7 +589,7 @@ export const VideoPlayerScreen: React.FC<VideoPlayerScreenProps> = ({
               <span className="tv-hud-stream-badge">
                 <Zap size={12} />
                 {currentDriverType === 'direct'
-                  ? '4K UHD Direct'
+                  ? 'Direct Hardware Stream'
                   : currentDriverType === 'youtube'
                   ? 'YouTube Studio'
                   : 'Fast CDN Mirror'}
@@ -624,7 +624,7 @@ export const VideoPlayerScreen: React.FC<VideoPlayerScreenProps> = ({
               {(isFocused) => (
                 <div className={`tv-hud-menu-pill ${isFocused ? 'focused' : ''}`}>
                   <Sliders size={18} />
-                  <span>Settings (Y)</span>
+                  <span>Settings</span>
                 </div>
               )}
             </Focusable>
@@ -723,7 +723,6 @@ export const VideoPlayerScreen: React.FC<VideoPlayerScreenProps> = ({
               autoFocus={true}
               className="tv-hud-ctrl-btn-wrapper"
               onSelect={handleTogglePlayPause}
-              onClick={handleTogglePlayPause}
             >
               {(isFocused) => (
                 <div
@@ -762,7 +761,6 @@ export const VideoPlayerScreen: React.FC<VideoPlayerScreenProps> = ({
             </Focusable>
 
             {/* Volume Control Button & Slider */}
-            {/* Volume Control Button & Slider */}
             <div className="tv-hud-volume-cluster">
               <Focusable
                 id="player-volume-btn"
@@ -770,14 +768,6 @@ export const VideoPlayerScreen: React.FC<VideoPlayerScreenProps> = ({
                 indexInGroup={3}
                 className="tv-hud-ctrl-btn-wrapper"
                 onSelect={() => {
-                  const muted = engineRef.current ? engineRef.current.toggleMute() : false;
-                  const curVol = engineRef.current ? engineRef.current.getState().volume : 1;
-                  setVolumeToast({ level: muted ? 0 : Math.round(curVol * 100), muted });
-                  if (volumeToastTimerRef.current) clearTimeout(volumeToastTimerRef.current);
-                  volumeToastTimerRef.current = setTimeout(() => setVolumeToast(null), 1800);
-                  triggerFeedback(muted ? 'Muted 🔇' : `Volume: ${Math.round(curVol * 100)}%`);
-                }}
-                onClick={() => {
                   const muted = engineRef.current ? engineRef.current.toggleMute() : false;
                   const curVol = engineRef.current ? engineRef.current.getState().volume : 1;
                   setVolumeToast({ level: muted ? 0 : Math.round(curVol * 100), muted });

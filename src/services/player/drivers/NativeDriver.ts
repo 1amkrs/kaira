@@ -307,7 +307,7 @@ export class NativeDriver implements IPlaybackDriver {
     if (!isFinite(seconds)) return;
 
     const dur = this.getValidDuration();
-    const target = Math.max(0, Math.min(dur, seconds));
+    const target = dur > 0 ? Math.max(0, Math.min(dur, seconds)) : Math.max(0, seconds);
 
     try {
       this.videoElement.currentTime = target;
@@ -316,12 +316,12 @@ export class NativeDriver implements IPlaybackDriver {
     }
 
     this.state.currentTime = target;
-    this.callbacks?.onTimeUpdate(target, dur);
+    this.callbacks?.onTimeUpdate(target, dur > 0 ? dur : this.state.duration);
   }
 
   public seekBy(deltaSeconds: number): void {
     if (!this.videoElement || this.isDestroyed || !isFinite(deltaSeconds)) return;
-    const cur = isFinite(this.videoElement.currentTime) ? this.videoElement.currentTime : this.state.currentTime;
+    const cur = isFinite(this.videoElement.currentTime) ? this.videoElement.currentTime : (this.state.currentTime || 0);
     this.seekTo(cur + deltaSeconds);
   }
 
@@ -370,6 +370,24 @@ export class NativeDriver implements IPlaybackDriver {
   }
 
   public getState(): DriverState {
+    if (this.videoElement) {
+      if (this.videoElement.paused) {
+        if (this.state.status === 'playing') {
+          this.state.status = 'paused';
+        }
+      } else if (!this.videoElement.ended) {
+        if (this.state.status === 'paused' || this.state.status === 'idle') {
+          this.state.status = 'playing';
+        }
+      }
+      if (isFinite(this.videoElement.currentTime)) {
+        this.state.currentTime = this.videoElement.currentTime;
+      }
+      const dur = this.getValidDuration();
+      if (dur > 0) this.state.duration = dur;
+      this.state.volume = this.videoElement.volume;
+      this.state.isMuted = this.videoElement.muted;
+    }
     return { ...this.state };
   }
 
