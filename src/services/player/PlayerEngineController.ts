@@ -166,7 +166,10 @@ export class PlayerEngineController {
 
   public togglePlayPause(): void {
     if (!this.currentDriver) return;
-    // Read live state from driver (not cached engine state) to avoid desync
+    if (typeof this.currentDriver.togglePlayPause === 'function') {
+      this.currentDriver.togglePlayPause();
+      return;
+    }
     const driverState = this.currentDriver.getState();
     if (driverState.status === 'playing') {
       this.currentDriver.pause();

@@ -302,6 +302,15 @@ export class NativeDriver implements IPlaybackDriver {
     this.callbacks?.onStatusChange('paused');
   }
 
+  public togglePlayPause(): void {
+    if (!this.videoElement || this.isDestroyed) return;
+    if (this.videoElement.paused) {
+      this.play();
+    } else {
+      this.pause();
+    }
+  }
+
   public seekTo(seconds: number): void {
     if (!this.videoElement || this.isDestroyed) return;
     if (!isFinite(seconds)) return;

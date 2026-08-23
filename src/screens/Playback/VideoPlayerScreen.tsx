@@ -207,10 +207,9 @@ export const VideoPlayerScreen: React.FC<VideoPlayerScreenProps> = ({
   // 3. Transport Handlers
   const handleTogglePlayPause = useCallback(() => {
     if (!engineRef.current) return;
-    // Read LIVE driver state to avoid React stale closure desync
-    const liveStatus = engineRef.current.getState().status;
     engineRef.current.togglePlayPause();
-    triggerFeedback(liveStatus === 'playing' ? 'Paused ⏸' : 'Play ▶');
+    const nextStatus = engineRef.current.getState().status;
+    triggerFeedback(nextStatus === 'playing' ? 'Play ▶' : 'Paused ⏸');
     pingHud();
   }, [triggerFeedback, pingHud]);
 

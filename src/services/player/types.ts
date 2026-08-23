@@ -30,6 +30,7 @@ export interface IPlaybackDriver {
   loadSource(url: string, initialPosition?: number, expectedDuration?: number): Promise<void> | void;
   play(): Promise<void> | void;
   pause(): void;
+  togglePlayPause?(): void;
   seekTo(seconds: number): void;
   seekBy(deltaSeconds: number): void;
   setVolume(volume: number): void;
