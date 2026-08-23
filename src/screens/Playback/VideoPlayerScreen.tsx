@@ -460,15 +460,6 @@ export const VideoPlayerScreen: React.FC<VideoPlayerScreenProps> = ({
       {/* 1. Underlying Playback Viewport Container (Driver attaches here) */}
       <div ref={containerRef} className="tv-player-viewport-wrapper" />
 
-      {/* 1b. Viewport Click Shield for Play/Pause and HUD reveal */}
-      <div
-        className="tv-player-viewport-shield"
-        onClick={() => {
-          pingHud();
-          handleTogglePlayPause();
-        }}
-      />
-
       {/* 2. Live Subtitle Rendering Layer */}
       {engineState.currentSubtitleText && (
         <div className="tv-player-live-subtitles-container">

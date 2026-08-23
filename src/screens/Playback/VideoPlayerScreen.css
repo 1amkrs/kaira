@@ -44,17 +44,6 @@
   background-color: #000000;
 }
 
-/* 1b. Viewport Click Shield for Play/Pause & Focus Retention */
-.tv-player-viewport-shield {
-  position: absolute;
-  inset: 0;
-  width: 100vw;
-  height: 100vh;
-  z-index: 5;
-  cursor: pointer;
-  background: transparent;
-}
-
 /* 2. Live Subtitles Layer */
 .tv-player-live-subtitles-container {
   position: absolute;

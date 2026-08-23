@@ -229,10 +229,20 @@ export class NativeDriver implements IPlaybackDriver {
       await this.videoElement.play();
       this.state.status = 'playing';
       this.callbacks?.onStatusChange('playing');
+      this.callbacks?.onBuffering(false);
     } catch (e) {
-      console.warn('[NativeDriver] play() exception:', e);
-      this.state.status = 'paused';
-      this.callbacks?.onStatusChange('paused');
+      console.warn('[NativeDriver] play() exception, attempting muted retry:', e);
+      try {
+        this.videoElement.muted = true;
+        this.state.isMuted = true;
+        await this.videoElement.play();
+        this.state.status = 'playing';
+        this.callbacks?.onStatusChange('playing');
+        this.callbacks?.onBuffering(false);
+      } catch (e2) {
+        this.state.status = 'paused';
+        this.callbacks?.onStatusChange('paused');
+      }
     }
   }
 
