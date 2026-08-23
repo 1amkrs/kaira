@@ -140,8 +140,11 @@ export class NativeDriver implements IPlaybackDriver {
     this.callbacks?.onBuffering(true);
   };
 
+  private retryCount = 0;
+
   private onCanPlay = (): void => {
     if (this.isDestroyed) return;
+    this.retryCount = 0;
     this.callbacks?.onBuffering(false);
   };
 
@@ -167,6 +170,21 @@ export class NativeDriver implements IPlaybackDriver {
 
   private onError = (): void => {
     if (this.isDestroyed) return;
+    if (this.retryCount < 20 && this.state.currentTime === 0) {
+      this.retryCount++;
+      console.log(`[NativeDriver] Waiting for torrent buffer from Self-Debrid (attempt ${this.retryCount}/20)...`);
+      this.state.status = 'buffering';
+      this.callbacks?.onBuffering(true);
+      setTimeout(() => {
+        if (!this.isDestroyed && this.videoElement && this.videoElement.src) {
+          try {
+            this.videoElement.load();
+            this.doPlay();
+          } catch (_) {}
+        }
+      }, 2500);
+      return;
+    }
     const msg = this.videoElement?.error?.message || 'Video playback error';
     this.state.status = 'error';
     this.state.error = msg;
