@@ -127,10 +127,15 @@ export class EmbedDriver implements IPlaybackDriver {
     if (this.tickerTimer) clearInterval(this.tickerTimer);
     this.tickerTimer = setInterval(() => {
       if (this.isDestroyed) return;
+      if (this.state.status === 'playing') {
+        const dur = this.state.duration > 0 ? this.state.duration : 7200;
+        this.state.currentTime = Math.min(dur, this.state.currentTime + 0.5 * (this.state.playbackSpeed || 1));
+        this.callbacks?.onTimeUpdate(this.state.currentTime, dur);
+      }
       if (typeof window !== 'undefined' && (window as any).electronAPI?.controlMedia) {
         (window as any).electronAPI.controlMedia('sync', 0);
       }
-    }, 750);
+    }, 500);
   }
 
   private sendPostMessage(payload: any): void {
@@ -149,46 +154,55 @@ export class EmbedDriver implements IPlaybackDriver {
   public play(): void {
     if (this.isDestroyed) return;
     this.state.status = 'playing';
+    this.startInternalTicker();
     this.sendPostMessage({ command: 'play', action: 'play' });
     this.sendPostMessage({ command: 'unmute', action: 'unmute' });
     this.sendPostMessage({ command: 'setVolume', action: 'setVolume', value: this.state.volume || 1.0 });
     this.callbacks?.onStatusChange('playing');
+    this.callbacks?.onBuffering(false);
   }
 
   public pause(): void {
     if (this.isDestroyed) return;
     this.state.status = 'paused';
+    if (this.tickerTimer) {
+      clearInterval(this.tickerTimer);
+      this.tickerTimer = null;
+    }
     this.sendPostMessage({ command: 'pause', action: 'pause' });
     this.callbacks?.onStatusChange('paused');
   }
 
   public seekTo(seconds: number): void {
     if (this.isDestroyed) return;
-    const target = Math.max(0, Math.min(this.state.duration, seconds));
+    const dur = this.state.duration > 0 ? this.state.duration : 7200;
+    const target = Math.max(0, Math.min(dur, typeof seconds === 'number' && isFinite(seconds) ? seconds : 0));
     this.state.currentTime = target;
     this.sendPostMessage({ command: 'seek', action: 'seek', value: target, time: target });
-    this.callbacks?.onTimeUpdate(target, this.state.duration);
+    this.callbacks?.onTimeUpdate(target, dur);
   }
 
   public seekBy(deltaSeconds: number): void {
-    const cur = this.state.currentTime || 0;
-    this.seekTo(cur + deltaSeconds);
+    const cur = typeof this.state.currentTime === 'number' && isFinite(this.state.currentTime) ? this.state.currentTime : 0;
+    const delta = typeof deltaSeconds === 'number' && isFinite(deltaSeconds) ? deltaSeconds : 0;
+    this.seekTo(cur + delta);
   }
 
   public setVolume(volume: number): void {
     if (this.isDestroyed) return;
-    this.state.volume = volume;
-    this.state.isMuted = volume === 0;
-    this.sendPostMessage({ command: 'setVolume', action: 'setVolume', value: volume });
-    if (volume > 0) {
+    const vol = Math.max(0, Math.min(1, typeof volume === 'number' && isFinite(volume) ? volume : 1));
+    this.state.volume = vol;
+    this.state.isMuted = vol === 0;
+    this.sendPostMessage({ command: 'setVolume', action: 'setVolume', value: vol });
+    if (vol > 0) {
       this.sendPostMessage({ command: 'unmute', action: 'unmute' });
     }
   }
 
   public setMuted(muted: boolean): void {
     if (this.isDestroyed) return;
-    this.state.isMuted = muted;
-    this.sendPostMessage({ command: 'setMuted', action: 'setMuted', value: muted });
+    this.state.isMuted = Boolean(muted);
+    this.sendPostMessage({ command: 'setMuted', action: 'setMuted', value: Boolean(muted) });
   }
 
   public setSpeed(speed: number): void {
