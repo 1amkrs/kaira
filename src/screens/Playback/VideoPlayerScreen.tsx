@@ -690,9 +690,16 @@ export const VideoPlayerScreen: React.FC<VideoPlayerScreenProps> = ({
               indexInGroup={0}
               className="tv-hud-ctrl-btn-wrapper"
               onSelect={() => seekBy(-10)}
+              onClick={() => seekBy(-10)}
             >
               {(isFocused) => (
-                <div className={`tv-hud-ctrl-btn ${isFocused ? 'focused' : ''}`}>
+                <div
+                  className={`tv-hud-ctrl-btn ${isFocused ? 'focused' : ''}`}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    seekBy(-10);
+                  }}
+                >
                   <RotateCcw size={22} />
                   <span className="tv-hud-badge-10">10s</span>
                 </div>
@@ -707,9 +714,16 @@ export const VideoPlayerScreen: React.FC<VideoPlayerScreenProps> = ({
               autoFocus={true}
               className="tv-hud-ctrl-btn-wrapper"
               onSelect={handleTogglePlayPause}
+              onClick={handleTogglePlayPause}
             >
               {(isFocused) => (
-                <div className={`tv-hud-ctrl-btn primary ${isFocused ? 'focused' : ''}`}>
+                <div
+                  className={`tv-hud-ctrl-btn primary ${isFocused ? 'focused' : ''}`}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleTogglePlayPause();
+                  }}
+                >
                   {engineState.status === 'playing' ? (
                     <Pause size={32} fill="currentColor" />
                   ) : (
@@ -726,9 +740,16 @@ export const VideoPlayerScreen: React.FC<VideoPlayerScreenProps> = ({
               indexInGroup={2}
               className="tv-hud-ctrl-btn-wrapper"
               onSelect={() => seekBy(10)}
+              onClick={() => seekBy(10)}
             >
               {(isFocused) => (
-                <div className={`tv-hud-ctrl-btn ${isFocused ? 'focused' : ''}`}>
+                <div
+                  className={`tv-hud-ctrl-btn ${isFocused ? 'focused' : ''}`}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    seekBy(10);
+                  }}
+                >
                   <RotateCw size={22} />
                   <span className="tv-hud-badge-10">10s</span>
                 </div>

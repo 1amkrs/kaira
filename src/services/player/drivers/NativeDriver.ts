@@ -248,24 +248,36 @@ export class NativeDriver implements IPlaybackDriver {
 
   public pause(): void {
     if (!this.videoElement || this.isDestroyed) return;
-    this.videoElement.pause();
+    try {
+      this.videoElement.pause();
+    } catch (e) {}
     this.state.status = 'paused';
     this.callbacks?.onStatusChange('paused');
   }
 
   public seekTo(seconds: number): void {
     if (!this.videoElement || this.isDestroyed) return;
-    const maxDur = this.videoElement.duration || this.state.duration || Infinity;
-    const target = Math.max(0, Math.min(maxDur, seconds));
-    this.videoElement.currentTime = target;
+    const rawDur = this.videoElement.duration;
+    const maxDur = typeof rawDur === 'number' && isFinite(rawDur) && rawDur > 0
+      ? rawDur
+      : (typeof this.state.duration === 'number' && isFinite(this.state.duration) && this.state.duration > 0 ? this.state.duration : 86400);
+    const validSecs = typeof seconds === 'number' && isFinite(seconds) ? seconds : 0;
+    const target = Math.max(0, Math.min(maxDur, validSecs));
+    try {
+      this.videoElement.currentTime = target;
+    } catch (e) {
+      console.warn('[NativeDriver] currentTime assignment exception:', e);
+    }
     this.state.currentTime = target;
     this.callbacks?.onTimeUpdate(target, this.state.duration);
   }
 
   public seekBy(deltaSeconds: number): void {
     if (!this.videoElement || this.isDestroyed) return;
-    const cur = this.videoElement.currentTime || this.state.currentTime || 0;
-    this.seekTo(cur + deltaSeconds);
+    const rawCur = this.videoElement.currentTime;
+    const cur = typeof rawCur === 'number' && isFinite(rawCur) ? rawCur : (this.state.currentTime || 0);
+    const delta = typeof deltaSeconds === 'number' && isFinite(deltaSeconds) ? deltaSeconds : 0;
+    this.seekTo(cur + delta);
   }
 
   public setVolume(volume: number): void {
