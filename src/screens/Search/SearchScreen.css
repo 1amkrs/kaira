@@ -340,3 +340,106 @@
   border-radius: var(--radius-md);
   padding: var(--space-sm);
 }
+
+/* ==========================================================================
+   Mobile Responsive Search Screen (Screens <= 768px down to 350px)
+   ========================================================================== */
+
+@media (max-width: 768px) {
+  .tv-search-screen {
+    padding: 14px 14px 24px 14px;
+  }
+
+  .tv-search-header-bar {
+    gap: 8px;
+    margin-bottom: 12px;
+  }
+
+  .tv-search-icon-btn {
+    padding: 8px 12px;
+    font-size: 13px;
+  }
+
+  .tv-search-icon-btn span {
+    display: none;
+  }
+
+  .tv-search-input-box {
+    padding: 6px 14px;
+    gap: 8px;
+  }
+
+  .tv-search-native-input {
+    font-size: 15px;
+  }
+
+  .tv-search-filter-pills {
+    padding: 4px 0 8px 0;
+    gap: 6px;
+  }
+
+  .tv-search-filter-pill {
+    padding: 6px 14px;
+    font-size: 12px;
+  }
+
+  .tv-search-body-layout {
+    flex-direction: column;
+    overflow-y: auto;
+    gap: 16px;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .tv-search-left-panel {
+    width: 100%;
+    gap: 12px;
+    padding-right: 0;
+    overflow: visible;
+  }
+
+  /* On touch mobile, hide large TV on-screen keyboard to let native keyboard or trending chips shine */
+  .tv-search-keyboard-container {
+    display: none;
+  }
+
+  .tv-recent-searches-box {
+    padding: 0;
+  }
+
+  .tv-search-results-panel {
+    width: 100%;
+    padding-right: 0;
+    overflow: visible;
+  }
+
+  .tv-search-posters-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px;
+  }
+
+  .tv-search-albums-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px;
+  }
+}
+
+@media (max-width: 380px) {
+  .tv-search-screen {
+    padding: 10px 10px 20px 10px;
+  }
+
+  .tv-search-input-box {
+    padding: 6px 10px;
+  }
+
+  .tv-search-native-input {
+    font-size: 13px;
+  }
+
+  .tv-search-posters-grid,
+  .tv-search-albums-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 8px;
+  }
+}
+

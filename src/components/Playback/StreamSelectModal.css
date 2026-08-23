@@ -255,3 +255,85 @@
   background-color: var(--google-blue);
   transform: scale(1.1);
 }
+
+/* ==========================================================================
+   Mobile Responsive Stream Select Modal (Screens <= 768px down to 350px)
+   ========================================================================== */
+
+@media (max-width: 768px) {
+  .tv-stream-modal-backdrop {
+    padding: 10px;
+  }
+
+  .tv-stream-modal-card {
+    min-width: 0;
+    width: 100%;
+    max-height: 88vh;
+  }
+
+  .tv-stream-modal-header {
+    padding: 16px;
+    gap: 12px;
+  }
+
+  .tv-stream-media-title {
+    font-size: 1.15rem;
+  }
+
+  .tv-modal-close-btn {
+    height: 38px;
+    padding: 0 14px;
+    font-size: 13px;
+  }
+
+  .tv-streams-list-container {
+    padding: 14px;
+    gap: 10px;
+  }
+
+  .tv-stream-row {
+    padding: 12px 14px;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+
+  .tv-stream-left-col {
+    gap: 10px;
+  }
+
+  .tv-stream-name {
+    font-size: 13px;
+  }
+
+  .tv-stream-right-col {
+    width: 100%;
+    justify-content: space-between;
+    padding-top: 4px;
+  }
+}
+
+@media (max-width: 380px) {
+  .tv-stream-modal-header {
+    padding: 12px;
+  }
+
+  .tv-stream-media-title {
+    font-size: 1rem;
+  }
+
+  .tv-streams-list-container {
+    padding: 10px;
+  }
+
+  .tv-stream-row {
+    padding: 10px;
+  }
+
+  .tv-stream-meta-pill,
+  .tv-stream-debrid-badge {
+    height: 24px;
+    padding: 0 8px;
+    font-size: 10px;
+  }
+}
+

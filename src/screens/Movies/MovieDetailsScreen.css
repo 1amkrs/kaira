@@ -380,3 +380,89 @@
   margin-top: 16px;
 }
 
+/* ==========================================================================
+   Mobile Responsive Movie Details (Screens <= 768px down to 350px)
+   ========================================================================== */
+
+@media (max-width: 768px) {
+  .tv-details-top-bar {
+    padding: 16px var(--screen-padding-x) 0 var(--screen-padding-x);
+  }
+
+  .tv-details-hero-content {
+    padding: 16px var(--screen-padding-x) 0 var(--screen-padding-x);
+  }
+
+  .tv-details-backdrop,
+  .tv-details-trailer-bg,
+  .tv-details-scrim {
+    height: 50vh;
+  }
+
+  .tv-details-title {
+    font-size: clamp(1.6rem, 6vw, 2.4rem);
+    margin-bottom: 10px;
+  }
+
+  .tv-details-meta-row {
+    gap: 8px;
+    margin-bottom: 12px;
+  }
+
+  .tv-meta-badge {
+    font-size: 12px;
+  }
+
+  .tv-details-description {
+    font-size: 13px;
+    line-height: 1.5;
+    margin-bottom: 16px;
+  }
+
+  .tv-details-credits {
+    gap: 8px;
+    margin-bottom: 20px;
+  }
+
+  .tv-details-actions-row {
+    gap: 8px;
+    margin-bottom: 28px;
+  }
+
+  .tv-details-play-btn,
+  .tv-details-audio-btn,
+  .tv-details-fav-btn {
+    height: 44px;
+    padding: 0 18px;
+    font-size: 13px;
+  }
+}
+
+@media (max-width: 420px) {
+  .tv-details-title {
+    font-size: 1.4rem;
+  }
+
+  .tv-details-actions-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    width: 100%;
+  }
+
+  .tv-details-actions-row > .tv-action-btn-focusable:first-child {
+    grid-column: 1 / -1;
+  }
+
+  .tv-details-play-btn,
+  .tv-details-audio-btn,
+  .tv-details-fav-btn {
+    width: 100%;
+    justify-content: center;
+    padding: 0 12px;
+    font-size: 12px;
+    height: 42px;
+  }
+}
+
+

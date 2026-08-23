@@ -16,6 +16,11 @@
   user-select: none;
 }
 
+.tv-video-player-container.hide-cursor,
+.tv-video-player-container.hide-cursor * {
+  cursor: none !important;
+}
+
 /* 1. Underlying Playback Viewport Wrapper */
 .tv-player-viewport-wrapper {
   position: absolute;
@@ -1093,3 +1098,164 @@
   transform: scale(var(--focus-scale));
   box-shadow: var(--focus-shadow);
 }
+
+/* ==========================================================================
+   Mobile Responsive Video Player & HUD (Screens <= 768px down to 350px)
+   ========================================================================== */
+
+@media (max-width: 768px) {
+  .tv-player-hud {
+    padding: 16px 14px 24px 14px;
+  }
+
+  .tv-hud-top {
+    gap: 12px;
+  }
+
+  .tv-hud-back-btn,
+  .tv-hud-menu-pill {
+    padding: 8px 14px;
+    font-size: 12px;
+    gap: 6px;
+  }
+
+  .tv-hud-title {
+    font-size: 15px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .tv-hud-subtitle {
+    font-size: 11px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .tv-hud-stream-badge {
+    display: none;
+  }
+
+  .tv-hud-timeline-row {
+    gap: 10px;
+  }
+
+  .tv-hud-time {
+    font-size: 11px;
+    min-width: 44px;
+  }
+
+  .tv-hud-controls-row {
+    gap: 16px;
+  }
+
+  .tv-hud-ctrl-btn {
+    width: 44px;
+    height: 44px;
+  }
+
+  .tv-hud-ctrl-btn.primary {
+    width: 56px;
+    height: 56px;
+  }
+
+  .tv-hud-volume-cluster {
+    display: none;
+  }
+
+  .tv-player-floating-skip-intro {
+    bottom: 90px;
+    right: 14px;
+  }
+
+  .tv-skip-intro-btn {
+    padding: 8px 16px;
+    gap: 8px;
+  }
+
+  .tv-skip-intro-title {
+    font-size: 13px;
+  }
+
+  .tv-skip-intro-sub {
+    font-size: 10px;
+  }
+
+  .tv-player-menu-backdrop {
+    padding: 10px;
+  }
+
+  .tv-player-menu-card {
+    min-width: 0;
+    width: 100%;
+    max-height: 88vh;
+  }
+
+  .tv-player-menu-header {
+    padding: 14px 16px;
+    gap: 10px;
+  }
+
+  .tv-player-menu-tabs {
+    gap: 6px;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .tv-menu-tab-pill,
+  .tv-menu-close-btn {
+    height: 36px;
+    padding: 0 12px;
+    font-size: 12px;
+  }
+
+  .tv-player-menu-content {
+    padding: 14px 16px;
+  }
+
+  .tv-menu-items-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .tv-player-live-subtitles-container {
+    bottom: 80px;
+    max-width: 90vw;
+  }
+
+  .tv-player-live-subtitles-text {
+    font-size: 16px;
+    padding: 6px 14px;
+  }
+}
+
+@media (max-width: 420px) {
+  .tv-player-hud {
+    padding: 10px 10px 16px 10px;
+  }
+
+  .tv-hud-back-btn span,
+  .tv-hud-menu-pill span {
+    display: none;
+  }
+
+  .tv-hud-back-btn,
+  .tv-hud-menu-pill {
+    padding: 8px 10px;
+  }
+
+  .tv-hud-controls-row {
+    gap: 12px;
+  }
+
+  .tv-hud-ctrl-btn {
+    width: 40px;
+    height: 40px;
+  }
+
+  .tv-hud-ctrl-btn.primary {
+    width: 50px;
+    height: 50px;
+  }
+}
+

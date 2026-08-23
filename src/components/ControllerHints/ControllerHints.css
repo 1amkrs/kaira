@@ -41,3 +41,10 @@
   font-weight: 500;
   color: var(--text-secondary);
 }
+
+@media (max-width: 768px) {
+  .tv-controller-hints-bar {
+    display: none !important;
+  }
+}
+

@@ -198,3 +198,46 @@
   border-color: var(--accent-red);
   box-shadow: 0 0 14px rgba(234, 67, 53, 0.6);
 }
+
+/* ==========================================================================
+   Mobile Responsive Mini Player (Screens <= 768px down to 350px)
+   ========================================================================== */
+
+@media (max-width: 768px) {
+  .tv-mini-player-bar {
+    bottom: 66px;
+    left: 10px;
+    right: 10px;
+    height: 54px;
+    border-radius: var(--radius-sm);
+  }
+
+  .tv-mini-player-content {
+    height: 51px;
+    padding: 0 10px;
+    gap: 8px;
+  }
+
+  .tv-mini-art-box {
+    width: 36px;
+    height: 36px;
+  }
+
+  .tv-mini-title {
+    font-size: 12px;
+  }
+
+  .tv-mini-artist {
+    font-size: 10px;
+  }
+
+  .tv-mini-controls {
+    gap: 6px;
+  }
+
+  .tv-mini-btn {
+    width: 34px;
+    height: 34px;
+  }
+}
+

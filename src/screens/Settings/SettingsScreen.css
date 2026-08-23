@@ -762,3 +762,166 @@
 .tv-log-ui {
   color: #ffffff;
 }
+
+/* ==========================================================================
+   Mobile Responsive Settings (Screens <= 768px down to 350px)
+   ========================================================================== */
+
+@media (max-width: 768px) {
+  .tv-settings-screen {
+    padding: 14px 14px 28px 14px;
+    overflow-y: auto;
+  }
+
+  .tv-settings-header {
+    margin-bottom: 14px;
+    padding-bottom: 10px;
+  }
+
+  .tv-settings-title {
+    font-size: 1.3rem;
+  }
+
+  .tv-settings-subtitle {
+    font-size: 12px;
+  }
+
+  .tv-btn-close-inner {
+    height: 38px;
+    padding: 0 14px;
+    font-size: 12px;
+  }
+
+  .tv-settings-layout {
+    flex-direction: column;
+    gap: 16px;
+    overflow: visible;
+  }
+
+  .tv-settings-categories-list {
+    width: 100%;
+    flex-direction: row;
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding-bottom: 6px;
+    gap: 8px;
+    flex-shrink: 0;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+
+  .tv-settings-categories-list::-webkit-scrollbar {
+    display: none;
+  }
+
+  .tv-setting-cat-item {
+    flex-shrink: 0;
+  }
+
+  .tv-cat-row {
+    padding: 8px 16px;
+    border-radius: var(--radius-pill);
+    gap: 8px;
+  }
+
+  .cat-desc,
+  .cat-chevron {
+    display: none;
+  }
+
+  .cat-title {
+    font-size: 13px;
+    white-space: nowrap;
+  }
+
+  .tv-settings-details-panel {
+    padding-right: 0;
+    width: 100%;
+    overflow: visible;
+  }
+
+  .tv-setting-row-card {
+    flex-direction: column;
+    align-items: flex-start;
+    padding: 14px;
+    gap: 12px;
+  }
+
+  .tv-pill-options {
+    width: 100%;
+    flex-wrap: wrap;
+  }
+
+  .tv-ublock-hero-card {
+    flex-direction: column;
+    align-items: flex-start;
+    padding: 16px;
+    gap: 14px;
+  }
+
+  .tv-ublock-filter-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .tv-diagnostics-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .tv-addon-item-card {
+    flex-direction: column;
+    align-items: flex-start;
+    padding: 14px;
+    gap: 10px;
+  }
+
+  .tv-addon-item-actions {
+    width: 100%;
+    justify-content: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .tv-settings-profile-card {
+    flex-direction: column;
+    align-items: flex-start;
+    padding: 14px;
+    gap: 12px;
+  }
+
+  .tv-profile-item-actions {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .tv-controller-pipeline-card {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+
+  .tv-pipeline-arrow {
+    transform: rotate(90deg);
+    align-self: center;
+  }
+}
+
+@media (max-width: 380px) {
+  .tv-settings-screen {
+    padding: 10px 10px 24px 10px;
+  }
+
+  .tv-setting-row-card {
+    padding: 10px;
+  }
+
+  .tv-chip-inner {
+    padding: 6px 12px;
+    font-size: 11px;
+  }
+
+  .tv-toggle-btn,
+  .tv-power-btn {
+    padding: 8px 14px;
+    font-size: 11px;
+  }
+}
+

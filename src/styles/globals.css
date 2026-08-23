@@ -288,8 +288,64 @@ a {
 }
 
 /* Tablets / Compact windows */
-@media screen and (max-width: 899px) {
+@media screen and (min-width: 769px) and (max-width: 899px) {
   html, body { font-size: 13px; }
   :root { --screen-padding-x: 24px; --screen-padding-y: 16px; }
 }
+
+/* Mobile Screens (<= 768px down to 350px) */
+@media screen and (max-width: 768px) {
+  html, body {
+    font-size: 14px;
+    overflow-x: hidden;
+  }
+
+  :root {
+    --screen-padding-x: 16px;
+    --screen-padding-y: 12px;
+    --top-nav-height: 56px;
+    --space-xs: 4px;
+    --space-sm: 8px;
+    --space-md: 14px;
+    --space-lg: 20px;
+    --space-xl: 28px;
+    --space-2xl: 36px;
+  }
+
+  .tv-screen-bottom-spacer {
+    height: 96px;
+  }
+
+  .tv-main-viewport {
+    padding-bottom: 60px;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* Touch scrolling smoothness */
+  .tv-scroll-container,
+  .tv-horizontal-scroll,
+  .tv-rail-scroll-track {
+    -webkit-overflow-scrolling: touch;
+    touch-action: pan-x;
+  }
+}
+
+/* Small Mobile Screens (<= 420px down to 350px) */
+@media screen and (max-width: 420px) {
+  html, body {
+    font-size: 13px;
+  }
+
+  :root {
+    --screen-padding-x: 12px;
+    --screen-padding-y: 10px;
+    --top-nav-height: 52px;
+  }
+
+  .tv-screen-bottom-spacer {
+    height: 92px;
+  }
+}
+
 

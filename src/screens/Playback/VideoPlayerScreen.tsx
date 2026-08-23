@@ -60,6 +60,7 @@ export const VideoPlayerScreen: React.FC<VideoPlayerScreenProps> = ({
 
   // HUD & UI States
   const [isHudVisible, setIsHudVisible] = useState<boolean>(true);
+  const [isCursorHidden, setIsCursorHidden] = useState<boolean>(false);
   const [isMenuOpen, setIsMenuOpen] = useState<boolean>(false);
   const [menuTab, setMenuTab] = useState<'sources' | 'subtitles' | 'audio' | 'speed' | 'intro'>('sources');
   const [feedbackBadge, setFeedbackBadge] = useState<string | null>(null);
@@ -91,6 +92,7 @@ export const VideoPlayerScreen: React.FC<VideoPlayerScreenProps> = ({
   const volumeToastTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   const hudTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const cursorTimerRef = useRef<NodeJS.Timeout | null>(null);
   const feedbackTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   // Helper: Trigger visual feedback badge
@@ -101,16 +103,36 @@ export const VideoPlayerScreen: React.FC<VideoPlayerScreenProps> = ({
     feedbackTimerRef.current = setTimeout(() => setFeedbackBadge(null), 1200);
   }, []);
 
-  // Helper: Reset HUD auto-hide timer
+  // Helper: Reset HUD and cursor auto-hide timers
   const pingHud = useCallback(() => {
     setIsHudVisible(true);
+    setIsCursorHidden(false);
     if (hudTimerRef.current) clearTimeout(hudTimerRef.current);
+    if (cursorTimerRef.current) clearTimeout(cursorTimerRef.current);
+
     if (engineRef.current?.getState().status === 'playing' && !isMenuOpen && !isScrubbing) {
+      // Hide HUD after 3.5s
       hudTimerRef.current = setTimeout(() => {
         setIsHudVisible(false);
       }, 3500);
+
+      // Hide mouse pointer after 2.5s of inactivity
+      cursorTimerRef.current = setTimeout(() => {
+        setIsCursorHidden(true);
+      }, 2500);
     }
   }, [isMenuOpen, isScrubbing]);
+
+  // Clean up cursor timer when playback status changes (e.g. paused)
+  useEffect(() => {
+    if (engineState.status !== 'playing' || isMenuOpen || isScrubbing) {
+      setIsCursorHidden(false);
+      if (cursorTimerRef.current) clearTimeout(cursorTimerRef.current);
+    } else {
+      // When playing, start cursor hide timer
+      pingHud();
+    }
+  }, [engineState.status, isMenuOpen, isScrubbing, pingHud]);
 
   // 1. Initialize Player Engine Controller
   useEffect(() => {
@@ -465,8 +487,9 @@ export const VideoPlayerScreen: React.FC<VideoPlayerScreenProps> = ({
 
   return (
     <div
-      className="tv-video-player-container"
+      className={`tv-video-player-container ${isCursorHidden ? 'hide-cursor' : ''}`}
       onPointerMove={pingHud}
+      onMouseMove={pingHud}
       onClick={pingHud}
       role="region"
       aria-label="Video Player"

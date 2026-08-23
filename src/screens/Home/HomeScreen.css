@@ -376,3 +376,87 @@
   height: 80px;
   width: 100%;
 }
+
+/* ==========================================================================
+   Mobile Responsive Adjustments (Screens <= 768px down to 350px)
+   ========================================================================== */
+
+@media (max-width: 768px) {
+  .tv-hero-section {
+    min-height: 44vh;
+    padding: calc(var(--top-nav-height) + 12px) var(--screen-padding-x) var(--space-lg) var(--screen-padding-x);
+    margin-bottom: var(--space-lg);
+  }
+
+  .tv-hero-title {
+    font-size: clamp(1.5rem, 5.5vw, 2.2rem);
+    line-height: 1.2;
+  }
+
+  .tv-hero-subtitle {
+    font-size: 14px;
+  }
+
+  .tv-hero-description {
+    font-size: 13px;
+    line-height: 1.45;
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    margin-top: 6px;
+  }
+
+  .tv-hero-actions-row {
+    margin-top: var(--space-md);
+    gap: 10px;
+  }
+
+  .tv-btn-inner {
+    height: 44px;
+    padding: 0 20px;
+    font-size: 14px;
+    gap: 8px;
+  }
+
+  .tv-ambient-card {
+    padding: var(--space-md);
+  }
+
+  .tv-ambient-bulbs-grid {
+    grid-template-columns: 1fr;
+    gap: var(--space-sm);
+  }
+}
+
+@media (max-width: 420px) {
+  .tv-hero-section {
+    min-height: 40vh;
+    padding: calc(var(--top-nav-height) + 8px) var(--screen-padding-x) var(--space-md) var(--screen-padding-x);
+  }
+
+  .tv-hero-badge-row {
+    gap: 6px;
+  }
+
+  .tv-hero-badge-pill {
+    padding: 3px 8px;
+    font-size: 11px;
+  }
+
+  .tv-hero-title {
+    font-size: 1.35rem;
+  }
+
+  .tv-hero-description {
+    -webkit-line-clamp: 2;
+    font-size: 12px;
+  }
+
+  .tv-btn-inner {
+    height: 40px;
+    padding: 0 16px;
+    font-size: 13px;
+  }
+}
+

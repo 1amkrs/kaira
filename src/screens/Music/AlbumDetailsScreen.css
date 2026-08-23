@@ -207,3 +207,76 @@
   border-radius: var(--radius-sm);
   background-color: var(--bg-surface-2);
 }
+
+/* ==========================================================================
+   Mobile Responsive Album Details (Screens <= 768px down to 350px)
+   ========================================================================== */
+
+@media (max-width: 768px) {
+  .tv-album-top-bar {
+    padding: 16px var(--screen-padding-x) 0 var(--screen-padding-x);
+  }
+
+  .tv-album-hero-content {
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    gap: 16px;
+    padding: 16px var(--screen-padding-x) 0 var(--screen-padding-x);
+  }
+
+  .tv-album-cover-art {
+    width: 140px;
+    height: 140px;
+  }
+
+  .tv-album-hero-info {
+    align-items: center;
+  }
+
+  .tv-album-title {
+    font-size: clamp(1.4rem, 5.5vw, 2rem);
+    margin-bottom: 6px;
+  }
+
+  .tv-album-meta-row {
+    justify-content: center;
+    gap: 8px;
+    margin-bottom: 12px;
+  }
+
+  .tv-album-actions-row {
+    justify-content: center;
+    gap: 8px;
+    margin-bottom: 24px;
+  }
+
+  .tv-album-actions-row .tv-btn-primary,
+  .tv-album-actions-row .tv-details-fav-btn {
+    height: 44px;
+    padding: 0 18px;
+    font-size: 13px;
+  }
+
+  .tv-album-tracks-section {
+    padding: 0 var(--screen-padding-x);
+  }
+}
+
+@media (max-width: 420px) {
+  .tv-album-cover-art {
+    width: 120px;
+    height: 120px;
+  }
+
+  .tv-album-title {
+    font-size: 1.3rem;
+  }
+
+  .tv-album-actions-row .tv-btn-primary,
+  .tv-album-actions-row .tv-details-fav-btn {
+    padding: 0 14px;
+    font-size: 12px;
+  }
+}
+

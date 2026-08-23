@@ -137,3 +137,42 @@
   font-size: var(--font-caption);
   color: var(--text-secondary);
 }
+
+/* Mobile Media Card Sizing (Screens <= 768px down to 350px) */
+@media (max-width: 768px) {
+  .tv-media-card-wrapper {
+    width: 180px;
+  }
+
+  .tv-media-card-wrapper.aspect-hero {
+    width: 220px;
+  }
+
+  .tv-card-title {
+    font-size: 13px;
+  }
+
+  .tv-card-subtitle-row {
+    font-size: 11px;
+    gap: 4px;
+  }
+}
+
+@media (max-width: 420px) {
+  .tv-media-card-wrapper {
+    width: 155px;
+  }
+
+  .tv-media-card-wrapper.aspect-hero {
+    width: 195px;
+  }
+
+  .tv-card-title {
+    font-size: 12px;
+  }
+
+  .tv-card-subtitle-row {
+    font-size: 10px;
+  }
+}
+
