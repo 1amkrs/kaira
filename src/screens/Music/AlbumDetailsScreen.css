@@ -105,8 +105,75 @@
 
 .tv-album-actions-row {
   display: flex;
+  align-items: center;
   gap: 14px;
   margin-top: 20px;
+  overflow: visible;
+}
+
+.tv-album-actions-row .tv-action-btn-focusable {
+  border-radius: var(--radius-pill);
+  display: inline-flex;
+  overflow: visible;
+}
+
+.tv-album-actions-row .tv-details-play-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  height: 52px;
+  padding: 0 28px;
+  box-sizing: border-box;
+  line-height: 1;
+  white-space: nowrap;
+  background-color: #ffffff;
+  color: #0f0f0f;
+  border-radius: var(--radius-pill);
+  font-size: var(--font-body-lg);
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+  transition: background-color var(--duration-base) var(--easing-standard),
+              color var(--duration-base) var(--easing-standard),
+              transform var(--duration-micro) var(--easing-enter);
+}
+
+.tv-album-actions-row .tv-details-play-btn.focused,
+.tv-album-actions-row .tv-details-play-btn:hover {
+  background-color: var(--google-blue);
+  color: #ffffff;
+  box-shadow: 0 4px 16px rgba(26, 115, 232, 0.4);
+}
+
+.tv-album-actions-row .tv-details-fav-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  height: 52px;
+  padding: 0 24px;
+  box-sizing: border-box;
+  line-height: 1;
+  white-space: nowrap;
+  background-color: rgba(255, 255, 255, 0.12);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  color: var(--text-primary);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-pill);
+  font-size: var(--font-body);
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color var(--duration-base) var(--easing-standard),
+              border-color var(--duration-base) var(--easing-standard),
+              transform var(--duration-micro) var(--easing-enter);
+}
+
+.tv-album-actions-row .tv-details-fav-btn.focused,
+.tv-album-actions-row .tv-details-fav-btn:hover {
+  background-color: rgba(255, 255, 255, 0.22);
+  border-color: rgba(138, 180, 248, 0.5);
 }
 
 .tv-album-tracks-section {

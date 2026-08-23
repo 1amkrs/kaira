@@ -131,17 +131,23 @@
 .tv-hero-btn {
   border-radius: var(--radius-pill);
   display: inline-flex;
+  overflow: visible;
 }
 
 .tv-btn-inner {
-  display: flex;
+  display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 10px;
-  padding: 12px 28px;
+  height: 52px;
+  padding: 0 28px;
   border-radius: var(--radius-pill);
   font-size: var(--font-body);
   font-weight: 600;
   cursor: pointer;
+  box-sizing: border-box;
+  line-height: 1;
+  white-space: nowrap;
   transition: background-color var(--duration-base) var(--easing-standard),
               color var(--duration-base) var(--easing-standard),
               border-color var(--duration-base) var(--easing-standard),

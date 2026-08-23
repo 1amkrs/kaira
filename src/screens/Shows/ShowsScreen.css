@@ -103,13 +103,19 @@
 .tv-hero-btn-focusable {
   border-radius: var(--radius-pill);
   display: inline-flex;
+  overflow: visible;
 }
 
 .tv-hero-play-btn {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: var(--space-sm);
-  padding: 14px 28px;
+  height: 52px;
+  padding: 0 28px;
+  box-sizing: border-box;
+  line-height: 1;
+  white-space: nowrap;
   border-radius: var(--radius-pill);
   background-color: #ffffff;
   color: #0b1528;
@@ -118,7 +124,9 @@
   letter-spacing: 0.2px;
   cursor: pointer;
   transition: background-color var(--duration-base) var(--easing-standard),
-              color var(--duration-base) var(--easing-standard);
+              color var(--duration-base) var(--easing-standard),
+              box-shadow var(--duration-base) var(--easing-standard),
+              transform var(--duration-micro) var(--easing-enter);
 }
 
 .tv-hero-play-btn.focused,
@@ -129,10 +137,15 @@
 }
 
 .tv-hero-info-btn {
-  display: flex;
+  display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 8px;
-  padding: 12px 22px;
+  height: 52px;
+  padding: 0 24px;
+  box-sizing: border-box;
+  line-height: 1;
+  white-space: nowrap;
   background-color: rgba(255, 255, 255, 0.12);
   color: var(--text-primary);
   border-radius: var(--radius-pill);
@@ -141,7 +154,8 @@
   font-weight: 600;
   cursor: pointer;
   transition: background-color var(--duration-base) var(--easing-standard),
-              border-color var(--duration-base) var(--easing-standard);
+              border-color var(--duration-base) var(--easing-standard),
+              transform var(--duration-micro) var(--easing-enter);
 }
 
 .tv-hero-info-btn.focused,

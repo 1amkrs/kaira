@@ -156,8 +156,13 @@ a {
 .tv-btn-primary {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: var(--space-sm);
-  padding: 14px 28px;
+  height: 52px;
+  padding: 0 28px;
+  box-sizing: border-box;
+  line-height: 1;
+  white-space: nowrap;
   border-radius: var(--radius-pill);
   background-color: #ffffff;
   color: #0f0f0f;
@@ -168,7 +173,7 @@ a {
     transform var(--duration-micro) var(--easing-enter),
     background-color var(--duration-base) var(--easing-standard),
     box-shadow var(--duration-base) var(--easing-standard);
-  cursor: default;
+  cursor: pointer;
 }
 
 .tv-btn-primary.focused {
@@ -181,8 +186,13 @@ a {
 .tv-btn-secondary {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: var(--space-sm);
-  padding: 14px 28px;
+  height: 52px;
+  padding: 0 28px;
+  box-sizing: border-box;
+  line-height: 1;
+  white-space: nowrap;
   border-radius: var(--radius-pill);
   background-color: rgba(255, 255, 255, 0.15);
   color: var(--text-primary);
@@ -193,7 +203,7 @@ a {
     transform var(--duration-micro) var(--easing-enter),
     background-color var(--duration-base) var(--easing-standard),
     box-shadow var(--duration-base) var(--easing-standard);
-  cursor: default;
+  cursor: pointer;
 }
 
 .tv-btn-secondary.focused {

@@ -3,14 +3,25 @@
   flex-direction: column;
   gap: var(--space-sm);
   margin-bottom: clamp(32px, 4vh, 52px);
+  position: relative;
   overflow: visible;
+  width: 100%;
 }
 
 .tv-rail-header {
   display: flex;
-  align-items: baseline;
+  align-items: flex-end;
+  justify-content: space-between;
   gap: var(--space-md);
   padding: 0 var(--screen-padding-x);
+  margin-bottom: 4px;
+}
+
+.tv-rail-header-text {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-md);
+  flex-wrap: wrap;
 }
 
 .tv-rail-title {
@@ -18,12 +29,68 @@
   font-weight: 600;
   color: var(--text-primary);
   letter-spacing: -0.2px;
+  margin: 0;
 }
 
 .tv-rail-subtitle {
   font-size: var(--font-caption);
   color: var(--text-secondary);
   font-weight: 400;
+  margin: 0;
+}
+
+/* Header Navigation Buttons - Visible on rail hover, smoothly fades out on mouse leave */
+.tv-rail-header-nav {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateX(4px);
+  transition: opacity 250ms ease, transform 250ms ease;
+}
+
+.tv-content-rail-section:hover .tv-rail-header-nav {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateX(0);
+}
+
+.tv-rail-nav-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: #ffffff;
+  cursor: pointer;
+  box-sizing: border-box;
+  transition: all var(--duration-base) var(--easing-standard);
+}
+
+.tv-rail-nav-btn:hover:not(.disabled) {
+  background: #ffffff;
+  color: #0b1528;
+  border-color: #ffffff;
+  transform: scale(1.08);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5), 0 0 12px rgba(255, 255, 255, 0.3);
+}
+
+.tv-rail-nav-btn:active:not(.disabled) {
+  transform: scale(0.95);
+}
+
+.tv-rail-nav-btn.disabled,
+.tv-rail-nav-btn:disabled {
+  opacity: 0.25;
+  cursor: not-allowed;
+  pointer-events: none;
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(255, 255, 255, 0.08);
 }
 
 .tv-rail-scroll-track {
@@ -35,6 +102,7 @@
   overflow-y: visible;
   scrollbar-width: none;
   -ms-overflow-style: none;
+  scroll-behavior: smooth;
 }
 
 .tv-rail-scroll-track::-webkit-scrollbar {

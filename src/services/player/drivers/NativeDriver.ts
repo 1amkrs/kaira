@@ -216,7 +216,12 @@ export class NativeDriver implements IPlaybackDriver {
   // ─── Source Loading ───────────────────────────────────────────────────────
 
   public async loadSource(url: string, initialPosition = 0, expectedDuration?: number): Promise<void> {
-    if (!this.videoElement || this.isDestroyed) return;
+    if (this.isDestroyed || !this.videoElement) return;
+
+    if (!url || !url.trim()) {
+      console.warn('[NativeDriver] loadSource called with empty URL');
+      return;
+    }
 
     if (expectedDuration && isFinite(expectedDuration) && expectedDuration > 0) {
       this.state.duration = expectedDuration;
@@ -228,7 +233,9 @@ export class NativeDriver implements IPlaybackDriver {
 
     // Tear down existing HLS instance
     if (this.hlsInstance) {
-      this.hlsInstance.destroy();
+      try {
+        this.hlsInstance.destroy();
+      } catch (_) {}
       this.hlsInstance = null;
     }
 
@@ -247,7 +254,7 @@ export class NativeDriver implements IPlaybackDriver {
       });
 
       hls.on(Hls.Events.ERROR, (_e, data) => {
-        if (!data.fatal) return;
+        if (!data.fatal || this.isDestroyed) return;
         if (data.type === Hls.ErrorTypes.NETWORK_ERROR) hls.startLoad();
         else if (data.type === Hls.ErrorTypes.MEDIA_ERROR) hls.recoverMediaError();
         else this.onError();
@@ -257,21 +264,25 @@ export class NativeDriver implements IPlaybackDriver {
       hls.attachMedia(this.videoElement);
     } else {
       // Direct MP4 / native HLS (Safari)
-      this.videoElement.src = url;
-      this.videoElement.load();
+      try {
+        this.videoElement.src = url;
+        this.videoElement.load();
 
-      if (initialPosition > 0) {
-        // Wait for metadata then seek
-        const seekOnce = () => {
-          if (this.videoElement && isFinite(this.videoElement.duration) && this.videoElement.duration > 0) {
-            try { this.videoElement.currentTime = initialPosition; } catch (_) {}
-          }
-          this.videoElement?.removeEventListener('loadedmetadata', seekOnce);
-        };
-        this.videoElement.addEventListener('loadedmetadata', seekOnce);
+        if (initialPosition > 0) {
+          // Wait for metadata then seek
+          const seekOnce = () => {
+            if (this.videoElement && isFinite(this.videoElement.duration) && this.videoElement.duration > 0) {
+              try { this.videoElement.currentTime = initialPosition; } catch (_) {}
+            }
+            this.videoElement?.removeEventListener('loadedmetadata', seekOnce);
+          };
+          this.videoElement.addEventListener('loadedmetadata', seekOnce);
+        }
+
+        await this.doPlay();
+      } catch (err) {
+        console.warn('[NativeDriver] Error loading source:', err);
       }
-
-      await this.doPlay();
     }
   }
 
@@ -280,52 +291,86 @@ export class NativeDriver implements IPlaybackDriver {
   private async doPlay(): Promise<void> {
     if (!this.videoElement || this.isDestroyed) return;
 
+    // Do not attempt play if no source is attached to avoid "The element has no supported sources"
+    if (!this.videoElement.src && !this.hlsInstance) {
+      console.warn('[NativeDriver] doPlay skipped: no video src or HLS instance');
+      return;
+    }
+
     // Always explicitly ensure unmuted + correct volume before every play call
     const targetVolume = (isFinite(this.state.volume) && this.state.volume > 0) ? this.state.volume : 1;
     try {
-      this.videoElement.volume = targetVolume;
-      if (!this.state.isMuted) {
-        this.videoElement.muted = false;
+      if (this.videoElement) {
+        this.videoElement.volume = targetVolume;
+        if (!this.state.isMuted) {
+          this.videoElement.muted = false;
+        }
       }
     } catch (_) {}
 
     try {
+      if (!this.videoElement || this.isDestroyed) return;
       await this.videoElement.play();
+      if (!this.videoElement || this.isDestroyed) return;
+
       // Ensure we're unmuted after play succeeds (in case browser kept it muted)
       if (!this.state.isMuted && this.videoElement.muted) {
         this.videoElement.muted = false;
         this.videoElement.volume = targetVolume;
         this.state.isMuted = false;
       }
-    } catch (err) {
-      console.warn('[NativeDriver] play() blocked by browser autoplay policy, retrying muted:', err);
-      // Autoplay policy blocked — try muted first, then unmute immediately after play starts
-      try {
-        this.videoElement.muted = true;
-        await this.videoElement.play();
+      this.state.status = 'playing';
+      this.callbacks?.onStatusChange('playing');
+      this.callbacks?.onBuffering(false);
+    } catch (err: any) {
+      if (!this.videoElement || this.isDestroyed) return;
 
-        // Unmute as soon as the first frame is playing
-        const unmute = () => {
+      // Autoplay policy blocked — only retry muted if the browser specifically threw NotAllowedError
+      if (err?.name === 'NotAllowedError') {
+        console.warn('[NativeDriver] play() blocked by browser autoplay policy, retrying muted:', err);
+        try {
           if (!this.videoElement || this.isDestroyed) return;
-          this.videoElement.muted = false;
-          this.videoElement.volume = targetVolume;
-          this.state.isMuted = false;
-          this.videoElement.removeEventListener('timeupdate', unmute);
-        };
-        // Try on next timeupdate (first frame playing) OR after 300ms fallback
-        this.videoElement.addEventListener('timeupdate', unmute, { once: true });
-        setTimeout(() => {
-          if (this.videoElement && !this.isDestroyed && this.videoElement.muted && !this.state.isMuted) {
-            this.videoElement.muted = false;
-            this.videoElement.volume = targetVolume;
-            this.state.isMuted = false;
+          this.videoElement.muted = true;
+          await this.videoElement.play();
+          if (!this.videoElement || this.isDestroyed) return;
+
+          // Unmute as soon as the first frame is playing
+          const unmute = () => {
+            if (!this.videoElement || this.isDestroyed) return;
+            try {
+              this.videoElement.muted = false;
+              this.videoElement.volume = targetVolume;
+              this.state.isMuted = false;
+            } catch (_) {}
             this.videoElement.removeEventListener('timeupdate', unmute);
-          }
-        }, 300);
-      } catch (err2) {
-        console.error('[NativeDriver] play() failed completely:', err2);
-        this.state.status = 'paused';
-        this.callbacks?.onStatusChange('paused');
+          };
+          this.videoElement.addEventListener('timeupdate', unmute, { once: true });
+          setTimeout(() => {
+            if (this.videoElement && !this.isDestroyed && this.videoElement.muted && !this.state.isMuted) {
+              try {
+                this.videoElement.muted = false;
+                this.videoElement.volume = targetVolume;
+                this.state.isMuted = false;
+              } catch (_) {}
+              this.videoElement.removeEventListener('timeupdate', unmute);
+            }
+          }, 300);
+          this.state.status = 'playing';
+          this.callbacks?.onStatusChange('playing');
+          this.callbacks?.onBuffering(false);
+        } catch (err2) {
+          console.warn('[NativeDriver] play() retry failed:', err2);
+          this.state.status = 'paused';
+          this.callbacks?.onStatusChange('paused');
+        }
+      } else {
+        console.warn('[NativeDriver] play() rejected:', err?.name, err?.message || err);
+        if (err?.name === 'NotSupportedError') {
+          this.onError();
+        } else if (err?.name !== 'AbortError') {
+          this.state.status = 'paused';
+          this.callbacks?.onStatusChange('paused');
+        }
       }
     }
   }
@@ -453,21 +498,24 @@ export class NativeDriver implements IPlaybackDriver {
     this.isDestroyed = true;
 
     if (this.hlsInstance) {
-      this.hlsInstance.destroy();
+      try {
+        this.hlsInstance.destroy();
+      } catch (_) {}
       this.hlsInstance = null;
     }
 
     if (this.videoElement) {
-      this.detachEventListeners(this.videoElement);
-      try {
-        this.videoElement.pause();
-        this.videoElement.removeAttribute('src');
-        this.videoElement.load();
-      } catch (_) {}
-      if (this.videoElement.parentElement) {
-        this.videoElement.parentElement.removeChild(this.videoElement);
-      }
+      const el = this.videoElement;
       this.videoElement = null;
+      this.detachEventListeners(el);
+      try {
+        el.pause();
+        el.removeAttribute('src');
+        el.load();
+      } catch (_) {}
+      if (el.parentElement) {
+        el.parentElement.removeChild(el);
+      }
     }
 
     this.callbacks = null;

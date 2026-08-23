@@ -510,9 +510,17 @@ export const VideoPlayerScreen: React.FC<VideoPlayerScreenProps> = ({
 
       {/* 5. Buffering Overlay */}
       {engineState.status === 'buffering' && (
-        <div className="tv-player-buffering-overlay" aria-label="Buffering Media">
-          <div className="tv-spinner-circle" />
-          <span className="tv-buffering-label">Loading stream...</span>
+        <div className="tv-player-buffering-overlay" aria-label="Buffering Media" role="status">
+          <div className="tv-buffering-spinner-container">
+            <div className="tv-buffering-glow" />
+            <div className="tv-spinner-circle" />
+          </div>
+          <div className="tv-buffering-content">
+            <span className="tv-buffering-label">Loading stream...</span>
+            {source.title && (
+              <span className="tv-buffering-sub">{source.title}</span>
+            )}
+          </div>
         </div>
       )}
 

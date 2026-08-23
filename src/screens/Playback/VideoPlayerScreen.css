@@ -165,41 +165,109 @@
   font-variant-numeric: tabular-nums;
 }
 
-/* 4. Buffering Overlay */
+/* 4. Buffering Overlay — Frosted Acrylic Glassmorphism */
 .tv-player-buffering-overlay {
   position: absolute;
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
   pointer-events: none;
-  z-index: 20;
+  z-index: 25;
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 16px;
-  background: rgba(15, 15, 18, 0.82);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
-  padding: 24px 38px;
+  min-width: 220px;
+  max-width: 380px;
+  background: linear-gradient(145deg, rgba(26, 29, 38, 0.85) 0%, rgba(16, 18, 24, 0.92) 100%);
+  backdrop-filter: blur(32px) saturate(180%);
+  -webkit-backdrop-filter: blur(32px) saturate(180%);
+  padding: 28px 36px;
   border-radius: var(--radius-xl);
-  border: 1px solid rgba(255, 255, 255, 0.15);
-  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.85);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow:
+    0 24px 64px -12px rgba(0, 0, 0, 0.9),
+    0 0 0 1px rgba(0, 0, 0, 0.4),
+    inset 0 1px 0 rgba(255, 255, 255, 0.15);
+  animation: tvBufferingPop 320ms var(--easing-enter) forwards;
+}
+
+@keyframes tvBufferingPop {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.92);
+  }
+  100% {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
+}
+
+.tv-buffering-spinner-container {
+  position: relative;
+  width: 48px;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.tv-buffering-glow {
+  position: absolute;
+  inset: -4px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(26, 115, 232, 0.4) 0%, rgba(138, 180, 248, 0.1) 45%, transparent 70%);
+  animation: tvBufferingPulse 2s ease-in-out infinite alternate;
+}
+
+@keyframes tvBufferingPulse {
+  0% {
+    opacity: 0.5;
+    transform: scale(0.9);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1.15);
+  }
 }
 
 .tv-spinner-circle {
-  width: 48px;
-  height: 48px;
-  border: 3.5px solid rgba(255, 255, 255, 0.2);
-  border-top-color: var(--google-blue);
+  position: relative;
+  width: 42px;
+  height: 42px;
+  border: 3px solid rgba(255, 255, 255, 0.08);
+  border-top-color: var(--google-blue-light, #8ab4f8);
+  border-right-color: rgba(138, 180, 248, 0.35);
   border-radius: 50%;
-  animation: tvPlayerSpin 0.8s linear infinite;
+  filter: drop-shadow(0 0 10px rgba(26, 115, 232, 0.55));
+  animation: tvPlayerSpin 0.9s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+
+.tv-buffering-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 4px;
+  max-width: 100%;
 }
 
 .tv-buffering-label {
+  font-size: var(--font-body);
+  color: var(--text-primary);
+  font-weight: 600;
+  letter-spacing: 0.2px;
+}
+
+.tv-buffering-sub {
   font-size: var(--font-caption);
   color: var(--text-secondary);
-  font-weight: 600;
-  letter-spacing: 0.4px;
+  font-weight: 500;
+  max-width: 280px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  opacity: 0.8;
 }
 
 @keyframes tvPlayerSpin {
@@ -246,7 +314,44 @@
 
 .error-actions {
   display: flex;
+  align-items: center;
   gap: var(--space-md);
+  overflow: visible;
+}
+
+.tv-action-pill {
+  border-radius: var(--radius-pill);
+  display: inline-flex;
+  overflow: visible;
+}
+
+.tv-player-error-modal .tv-btn-inner {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  height: 52px;
+  padding: 0 28px;
+  box-sizing: border-box;
+  line-height: 1;
+  white-space: nowrap;
+  border-radius: var(--radius-pill);
+  background-color: rgba(255, 255, 255, 0.12);
+  border: 1px solid var(--border-subtle);
+  color: #ffffff;
+  font-size: var(--font-body);
+  font-weight: 600;
+  cursor: pointer;
+  transition: all var(--duration-base) var(--easing-standard);
+}
+
+.tv-player-error-modal .tv-btn-inner.focused,
+.tv-player-error-modal .tv-btn-inner:hover {
+  background-color: var(--google-blue);
+  color: #ffffff;
+  border-color: #ffffff;
+  transform: scale(1.04);
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.8), 0 8px 24px rgba(26, 115, 232, 0.4);
 }
 
 /* 6. 10-Foot TV HUD Overlay */
@@ -672,27 +777,32 @@
 .tv-player-menu-backdrop {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.84);
-  backdrop-filter: blur(24px);
-  -webkit-backdrop-filter: blur(24px);
-  z-index: 100;
+  background: rgba(0, 0, 0, 0.85);
+  backdrop-filter: blur(32px);
+  -webkit-backdrop-filter: blur(32px);
+  z-index: 1100;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 40px;
+  padding: 32px;
 }
 
 .tv-player-menu-card {
-  width: 100%;
-  max-width: 880px;
-  background: rgba(22, 22, 26, 0.98);
-  border: 1.5px solid rgba(255, 255, 255, 0.15);
+  width: 92vw;
+  min-width: 780px;
+  max-width: 1080px;
+  background: linear-gradient(145deg, rgba(26, 29, 38, 0.97) 0%, rgba(16, 18, 24, 0.98) 100%);
+  border: 1.5px solid rgba(255, 255, 255, 0.12);
   border-radius: var(--radius-xl);
-  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.95);
+  box-shadow:
+    0 24px 64px -12px rgba(0, 0, 0, 0.95),
+    0 0 0 1px rgba(0, 0, 0, 0.4),
+    inset 0 1px 0 rgba(255, 255, 255, 0.12);
   display: flex;
   flex-direction: column;
-  max-height: 80vh;
+  max-height: 82vh;
   overflow: hidden;
+  box-sizing: border-box;
 }
 
 .animate-scale-up {
@@ -714,75 +824,116 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 22px 30px;
+  padding: 22px 32px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
   background-color: rgba(255, 255, 255, 0.02);
+  gap: 20px;
+  overflow: visible;
 }
 
 .tv-player-menu-tabs {
   display: flex;
+  align-items: center;
   gap: 10px;
+  flex-wrap: nowrap;
+  overflow: visible;
 }
 
 .tv-menu-tab-btn {
   border-radius: var(--radius-pill);
+  flex-shrink: 0;
+  display: inline-flex;
+  overflow: visible;
 }
 
 .tv-menu-tab-pill {
-  display: flex;
+  display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 8px;
-  padding: 10px 18px;
+  height: 44px;
+  padding: 0 20px;
   border-radius: var(--radius-pill);
   background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.12);
   color: var(--text-secondary);
   font-size: var(--font-body);
   font-weight: 600;
-  border: 1px solid transparent;
   transition: all var(--duration-base) var(--easing-standard);
   cursor: pointer;
+  white-space: nowrap;
+  box-sizing: border-box;
+  line-height: 1;
+}
+
+.tv-menu-tab-pill span {
+  white-space: nowrap;
+}
+
+.tv-menu-tab-pill:hover:not(.focused):not(.active) {
+  background: rgba(255, 255, 255, 0.14);
+  color: #ffffff;
 }
 
 .tv-menu-tab-pill.active {
-  background: rgba(255, 255, 255, 0.2);
-  color: #ffffff;
-  border-color: rgba(255, 255, 255, 0.2);
+  background: rgba(26, 115, 232, 0.18);
+  color: var(--google-blue-light, #8ab4f8);
+  border-color: var(--google-blue-light, #8ab4f8);
 }
 
 .tv-menu-tab-pill.focused {
-  background: var(--google-blue);
-  color: #0f0f0f;
+  background: #ffffff;
+  color: #000000;
   border-color: #ffffff;
-  transform: scale(var(--focus-scale));
-  box-shadow: var(--focus-shadow);
+  transform: scale(1.04);
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.8), 0 8px 24px rgba(0, 0, 0, 0.6);
 }
 
 .tv-menu-close-focusable {
   border-radius: var(--radius-pill);
+  flex-shrink: 0;
+  display: inline-flex;
+  overflow: visible;
 }
 
 .tv-menu-close-btn {
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 8px 18px;
+  justify-content: center;
+  gap: 8px;
+  height: 44px;
+  padding: 0 20px;
   border-radius: var(--radius-pill);
-  background: rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.12);
   color: #ffffff;
-  font-size: var(--font-caption);
+  font-size: var(--font-body);
   font-weight: 600;
   transition: all var(--duration-base) var(--easing-standard);
   cursor: pointer;
+  white-space: nowrap;
+  box-sizing: border-box;
+  line-height: 1;
+}
+
+.tv-menu-close-btn span {
+  white-space: nowrap;
+}
+
+.tv-menu-close-btn:hover:not(.focused) {
+  background: rgba(255, 255, 255, 0.16);
 }
 
 .tv-menu-close-btn.focused {
-  background: #ea4335;
-  color: #ffffff;
-  transform: scale(var(--focus-scale));
+  background: #ffffff;
+  color: #000000;
+  border-color: #ffffff;
+  transform: scale(1.04);
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.8), 0 8px 24px rgba(0, 0, 0, 0.6);
 }
 
 .tv-player-menu-content {
-  padding: 26px 30px;
+  padding: 24px 32px;
   overflow-y: auto;
   flex: 1;
 }

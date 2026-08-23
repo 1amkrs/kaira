@@ -89,15 +89,28 @@
 }
 
 .tv-games-hero-actions {
+  display: flex;
+  align-items: center;
   margin-top: 8px;
+}
+
+.tv-game-launch-btn-focusable {
+  border-radius: var(--radius-pill);
+  display: inline-flex;
+  overflow: visible;
 }
 
 .tv-game-hero-btn {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 10px;
-  padding: 12px 28px;
-  border-radius: 28px;
+  height: 52px;
+  padding: 0 28px;
+  box-sizing: border-box;
+  line-height: 1;
+  white-space: nowrap;
+  border-radius: var(--radius-pill);
   font-size: 16px;
   font-weight: 700;
   background: #fff;
@@ -105,7 +118,8 @@
   cursor: pointer;
   transition: background-color var(--duration-base) var(--easing-standard),
               color var(--duration-base) var(--easing-standard),
-              box-shadow var(--duration-base) var(--easing-standard);
+              box-shadow var(--duration-base) var(--easing-standard),
+              transform var(--duration-micro) var(--easing-enter);
 }
 
 .tv-game-hero-btn.focused,

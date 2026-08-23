@@ -262,13 +262,19 @@
 .tv-action-btn-focusable {
   border-radius: var(--radius-pill);
   display: inline-flex;
+  overflow: visible;
 }
 
 .tv-details-play-btn {
-  display: flex;
+  display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 10px;
-  padding: 14px 28px;
+  height: 52px;
+  padding: 0 28px;
+  box-sizing: border-box;
+  line-height: 1;
+  white-space: nowrap;
   background-color: #ffffff;
   color: #0f0f0f;
   border-radius: var(--radius-pill);
@@ -277,7 +283,8 @@
   cursor: pointer;
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
   transition: background-color var(--duration-base) var(--easing-standard),
-              color var(--duration-base) var(--easing-standard);
+              color var(--duration-base) var(--easing-standard),
+              transform var(--duration-micro) var(--easing-enter);
 }
 
 .tv-details-play-btn.focused,
@@ -288,10 +295,15 @@
 }
 
 .tv-details-audio-btn {
-  display: flex;
+  display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 8px;
-  padding: 14px 22px;
+  height: 52px;
+  padding: 0 24px;
+  box-sizing: border-box;
+  line-height: 1;
+  white-space: nowrap;
   background-color: rgba(255, 255, 255, 0.12);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
@@ -302,7 +314,8 @@
   font-weight: 600;
   cursor: pointer;
   transition: background-color var(--duration-base) var(--easing-standard),
-              border-color var(--duration-base) var(--easing-standard);
+              border-color var(--duration-base) var(--easing-standard),
+              transform var(--duration-micro) var(--easing-enter);
 }
 
 .tv-details-audio-btn.focused,
@@ -312,10 +325,15 @@
 }
 
 .tv-details-fav-btn {
-  display: flex;
+  display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 10px;
-  padding: 14px 24px;
+  height: 52px;
+  padding: 0 24px;
+  box-sizing: border-box;
+  line-height: 1;
+  white-space: nowrap;
   background-color: rgba(255, 255, 255, 0.12);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
@@ -326,7 +344,8 @@
   font-weight: 600;
   cursor: pointer;
   transition: background-color var(--duration-base) var(--easing-standard),
-              border-color var(--duration-base) var(--easing-standard);
+              border-color var(--duration-base) var(--easing-standard),
+              transform var(--duration-micro) var(--easing-enter);
 }
 
 .tv-details-fav-btn.focused,

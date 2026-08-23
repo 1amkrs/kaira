@@ -1,8 +1,9 @@
 .tv-quick-settings-backdrop {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.65);
-  backdrop-filter: blur(16px);
+  background: rgba(0, 0, 0, 0.75);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
   z-index: 9999;
   display: flex;
   justify-content: flex-end;
@@ -11,21 +12,25 @@
 
 .tv-quick-settings-drawer {
   width: 480px;
+  min-width: 440px;
   height: 100%;
-  background: rgba(22, 24, 28, 0.96);
-  border-left: 1px solid rgba(255, 255, 255, 0.12);
-  box-shadow: -10px 0 40px rgba(0, 0, 0, 0.8);
+  background: linear-gradient(180deg, rgba(26, 29, 38, 0.98) 0%, rgba(16, 18, 24, 0.99) 100%);
+  border-left: 1.5px solid rgba(255, 255, 255, 0.12);
+  box-shadow: -12px 0 48px rgba(0, 0, 0, 0.85);
   display: flex;
   flex-direction: column;
   animation: slideInRight 0.25s cubic-bezier(0.2, 0.8, 0.2, 1);
+  overflow: hidden;
 }
 
 .tv-qs-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 32px 28px 20px;
+  padding: 28px 32px 20px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  background-color: rgba(255, 255, 255, 0.02);
+  overflow: visible;
 }
 
 .tv-qs-title-row {
@@ -39,31 +44,44 @@
   font-weight: 700;
   color: #fff;
   margin: 0;
+  letter-spacing: -0.2px;
 }
 
 .tv-qs-back-btn {
-  display: flex;
+  display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 8px;
-  padding: 8px 16px;
-  border-radius: 20px;
+  height: 40px;
+  padding: 0 18px;
+  border-radius: var(--radius-pill);
   background: rgba(255, 255, 255, 0.08);
-  color: #bdc1c6;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: #ffffff;
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
-  transition: transform 180ms ease, background 180ms ease;
+  white-space: nowrap;
+  box-sizing: border-box;
+  line-height: 1;
+  transition: all var(--duration-base) var(--easing-standard);
+}
+
+.tv-qs-back-btn:hover:not(.focused) {
+  background: rgba(255, 255, 255, 0.16);
 }
 
 .tv-qs-back-btn.focused {
-  background: #fff;
-  color: #000;
-  transform: scale(1.05);
+  background: #ffffff;
+  color: #000000;
+  border-color: #ffffff;
+  transform: scale(1.04);
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.8), 0 8px 24px rgba(0, 0, 0, 0.6);
 }
 
 .tv-qs-body {
   flex: 1;
-  padding: 24px 28px;
+  padding: 24px 32px;
   overflow-y: auto;
   display: flex;
   flex-direction: column;
@@ -73,27 +91,30 @@
 .tv-qs-card {
   background: rgba(255, 255, 255, 0.04);
   border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 14px;
-  padding: 16px 18px;
+  border-radius: var(--radius-lg);
+  padding: 18px 20px;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 14px;
 }
 
 .tv-qs-card-header {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 14px;
 }
 
 .tv-qs-card-icon {
-  width: 36px;
-  height: 36px;
-  border-radius: 10px;
-  background: rgba(255, 255, 255, 0.08);
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius-md);
+  background: rgba(26, 115, 232, 0.15);
+  border: 1px solid rgba(26, 115, 232, 0.3);
+  color: var(--google-blue-light, #8ab4f8);
   display: flex;
   align-items: center;
   justify-content: center;
+  flex-shrink: 0;
 }
 
 .tv-qs-card-info {
@@ -110,7 +131,7 @@
 
 .tv-qs-card-sub {
   font-size: 12px;
-  color: #9aa0a6;
+  color: var(--text-secondary, rgba(255, 255, 255, 0.68));
 }
 
 .tv-qs-stepper-row {
@@ -119,37 +140,47 @@
 }
 
 .tv-qs-btn-inner {
-  display: flex;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 6px;
-  padding: 8px 14px;
-  border-radius: 8px;
+  height: 38px;
+  padding: 0 16px;
+  border-radius: var(--radius-pill);
   background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.12);
   color: #fff;
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
-  transition: transform 180ms ease, background 180ms ease;
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  white-space: nowrap;
+  box-sizing: border-box;
+  line-height: 1;
+  transition: all var(--duration-base) var(--easing-standard);
+}
+
+.tv-qs-btn-inner:hover:not(.focused) {
+  background: rgba(255, 255, 255, 0.14);
 }
 
 .tv-qs-btn-inner.focused {
-  background: #ff453a;
-  color: #000;
-  transform: scale(1.05);
-  box-shadow: 0 0 12px rgba(255, 69, 58, 0.5);
+  background: #ffffff;
+  color: #000000;
+  border-color: #ffffff;
+  transform: scale(1.04);
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.8), 0 8px 24px rgba(0, 0, 0, 0.6);
 }
 
 .tv-qs-btn-inner.active {
-  background: rgba(255, 69, 58, 0.2);
-  border-color: #ff453a;
-  color: #ff453a;
+  background: rgba(26, 115, 232, 0.2);
+  border-color: var(--google-blue-light, #8ab4f8);
+  color: var(--google-blue-light, #8ab4f8);
 }
 
 .tv-qs-btn-inner.danger.focused {
   background: #ea4335;
   color: #fff;
+  border-color: #ffffff;
 }
 
 .tv-qs-pills-row {
@@ -159,26 +190,39 @@
 }
 
 .tv-qs-pill-inner {
-  padding: 6px 12px;
-  border-radius: 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 32px;
+  padding: 0 14px;
+  border-radius: var(--radius-pill);
   background: rgba(255, 255, 255, 0.06);
-  color: #bdc1c6;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: var(--text-secondary, rgba(255, 255, 255, 0.68));
   font-size: 12px;
   font-weight: 600;
   cursor: pointer;
-  transition: transform 180ms ease, background 180ms ease;
+  white-space: nowrap;
+  transition: all var(--duration-base) var(--easing-standard);
+}
+
+.tv-qs-pill-inner:hover:not(.focused) {
+  background: rgba(255, 255, 255, 0.12);
+  color: #ffffff;
 }
 
 .tv-qs-pill-inner.focused {
-  background: #ff453a;
-  color: #000;
-  transform: scale(1.05);
+  background: #ffffff;
+  color: #000000;
+  border-color: #ffffff;
+  transform: scale(1.04);
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.8), 0 8px 24px rgba(0, 0, 0, 0.6);
 }
 
 .tv-qs-pill-inner.active {
-  background: rgba(255, 69, 58, 0.2);
-  color: #ff453a;
-  border: 1px solid #ff453a;
+  background: rgba(26, 115, 232, 0.2);
+  color: var(--google-blue-light, #8ab4f8);
+  border-color: var(--google-blue-light, #8ab4f8);
 }
 
 @keyframes slideInRight {
