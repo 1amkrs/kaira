@@ -1,5 +1,4 @@
 import { AddonManifest, AddonStream, InstalledAddon, DebridConfig, SubtitleTrack } from '../../types/addons';
-import { DIRECT_CINEMA_STREAMS } from '../media/LiveMediaProvider';
 
 const DEFAULT_ADDONS: InstalledAddon[] = [
   {
@@ -235,22 +234,6 @@ class AddonService {
     console.log(`[AddonService] Resolving streams for [${type}]: ${cleanImdbId}`);
 
     const streams: AddonStream[] = [];
-
-    // 0. High-Speed Direct Cinema Stream (Native Player)
-    if (isImdb && DIRECT_CINEMA_STREAMS[cleanImdbId]) {
-      streams.push({
-        name: 'Direct 4K Master • High-Speed Stream',
-        title: `${titleHint || 'Full Feature'} • 4K UHD Master Stream`,
-        description: '4K Ultra HD • Direct High-Speed Stream (Hardware Accelerated)',
-        url: DIRECT_CINEMA_STREAMS[cleanImdbId],
-        streamType: 'direct',
-        quality: '4K',
-        resolution: '4K UHD / 1080p Master',
-        audio: 'Dolby Atmos / 5.1',
-        providerName: 'Direct 4K Stream',
-        isDebrid: true,
-      });
-    }
 
     // 1. Primary Full Feature Stream (VidLink Mirror)
     if (isImdb) {

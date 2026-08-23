@@ -1025,16 +1025,13 @@ class LiveMediaProviderService implements MediaProvider {
       const subs = await addonService.fetchSubtitles('movie', cleanImdb);
 
       let targetUrl = mov.streamUrl;
-      let targetStreamType: 'direct' | 'embed' | 'youtube' = 'direct';
+      let targetStreamType: 'direct' | 'embed' | 'youtube' = 'embed';
 
       if (targetUrl && (targetUrl.endsWith('.mp4') || targetUrl.endsWith('.mkv') || targetUrl.endsWith('.m3u8'))) {
         targetStreamType = 'direct';
-      } else if (DIRECT_CINEMA_STREAMS[cleanImdb] || DIRECT_CINEMA_STREAMS[mov.id]) {
-        targetUrl = DIRECT_CINEMA_STREAMS[cleanImdb] || DIRECT_CINEMA_STREAMS[mov.id];
-        targetStreamType = 'direct';
       } else {
-        targetUrl = getDirectFallbackStream(cleanImdb);
-        targetStreamType = 'direct';
+        targetUrl = `https://vidlink.pro/movie/${cleanImdb}?primaryColor=8ab4f8&secondaryColor=ffffff&iconColor=ffffff`;
+        targetStreamType = 'embed';
       }
 
       const calculatedDuration = this.parseRuntimeToSeconds(mov.runtime, mov.runtimeMinutes, 7200);
@@ -1064,16 +1061,13 @@ class LiveMediaProviderService implements MediaProvider {
       const subs = await addonService.fetchSubtitles('series', cleanImdb);
 
       let targetUrl = ep.streamUrl;
-      let targetStreamType: 'direct' | 'embed' | 'youtube' = 'direct';
+      let targetStreamType: 'direct' | 'embed' | 'youtube' = 'embed';
 
       if (targetUrl && (targetUrl.endsWith('.mp4') || targetUrl.endsWith('.mkv') || targetUrl.endsWith('.m3u8'))) {
         targetStreamType = 'direct';
-      } else if (DIRECT_CINEMA_STREAMS[cleanImdb] || DIRECT_CINEMA_STREAMS[cleanShowId]) {
-        targetUrl = DIRECT_CINEMA_STREAMS[cleanImdb] || DIRECT_CINEMA_STREAMS[cleanShowId];
-        targetStreamType = 'direct';
       } else {
-        targetUrl = getDirectFallbackStream(`${cleanImdb}-s${ep.seasonNumber || 1}-e${ep.number || 1}`);
-        targetStreamType = 'direct';
+        targetUrl = `https://vidlink.pro/tv/${cleanImdb}/${ep.seasonNumber || 1}/${ep.number || 1}?primaryColor=8ab4f8&secondaryColor=ffffff&iconColor=ffffff`;
+        targetStreamType = 'embed';
       }
 
       const calculatedEpDuration = this.parseRuntimeToSeconds(ep.runtime, ep.runtimeMinutes, 2700);
