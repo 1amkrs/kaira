@@ -703,15 +703,11 @@ export const VideoPlayerScreen: React.FC<VideoPlayerScreenProps> = ({
               indexInGroup={0}
               className="tv-hud-ctrl-btn-wrapper"
               onSelect={() => seekBy(-10)}
-              onClick={() => seekBy(-10)}
             >
               {(isFocused) => (
                 <div
                   className={`tv-hud-ctrl-btn ${isFocused ? 'focused' : ''}`}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    seekBy(-10);
-                  }}
+                  onClick={(e) => { e.stopPropagation(); seekBy(-10); }}
                 >
                   <RotateCcw size={22} />
                   <span className="tv-hud-badge-10">10s</span>
@@ -753,15 +749,11 @@ export const VideoPlayerScreen: React.FC<VideoPlayerScreenProps> = ({
               indexInGroup={2}
               className="tv-hud-ctrl-btn-wrapper"
               onSelect={() => seekBy(10)}
-              onClick={() => seekBy(10)}
             >
               {(isFocused) => (
                 <div
                   className={`tv-hud-ctrl-btn ${isFocused ? 'focused' : ''}`}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    seekBy(10);
-                  }}
+                  onClick={(e) => { e.stopPropagation(); seekBy(10); }}
                 >
                   <RotateCw size={22} />
                   <span className="tv-hud-badge-10">10s</span>

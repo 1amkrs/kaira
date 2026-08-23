@@ -65,6 +65,7 @@ export const App: React.FC = () => {
   const [gamepadToast, setGamepadToast] = useState<{ message: string; connected: boolean } | null>(null);
   const [volumeToast, setVolumeToast] = useState<{ level: number; muted: boolean } | null>(null);
   const volumeToastTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const cursorTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   // --- TAB NAVIGATION ---
   const handleSelectTab = useCallback((tab: NavigationTab) => {
@@ -411,13 +412,12 @@ export const App: React.FC = () => {
 
     const handleMouseMove = () => {
       document.body.classList.remove('hide-cursor');
-      if (volumeToastTimerRef.current) clearTimeout(volumeToastTimerRef.current);
-      const timer = setTimeout(() => {
+      if (cursorTimerRef.current) clearTimeout(cursorTimerRef.current);
+      cursorTimerRef.current = setTimeout(() => {
         if (!isDetailOpen) {
           document.body.classList.add('hide-cursor');
         }
       }, 3500);
-      volumeToastTimerRef.current = timer;
     };
 
     window.addEventListener('mousemove', handleMouseMove);
@@ -463,7 +463,7 @@ export const App: React.FC = () => {
       {/* Main Screen Router */}
       <main
         className={`tv-main-viewport ${isDetailOpen ? 'is-detail-view' : ''}`}
-        style={{ display: activeVideoSource ? 'none' : undefined }}
+        style={activeVideoSource ? { visibility: 'hidden', pointerEvents: 'none' } : undefined}
       >
         {selectedMovie ? (
           <MovieDetailsScreen

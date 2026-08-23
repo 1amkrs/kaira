@@ -457,16 +457,16 @@ class AddonService {
     const calculateScore = (s: AddonStream): number => {
       let score = 0;
 
-      // 1. Debrid & Cloud CDN High-Speed Accelerator Bonus
-      if (s.isDebrid) {
+      // 1. Debrid & Cloud CDN High-Speed Accelerator Bonus (only for direct streams)
+      if (s.isDebrid && s.streamType === 'direct') {
         score += 600;
       }
 
-      // 2. Stream Type Reliability
+      // 2. Stream Type Reliability — direct ALWAYS wins over embed
       if (s.streamType === 'direct') {
-        score += 1500; // Native hardware decoded video
+        score += 1500; // Native hardware decoded video — full HUD control
       } else if (s.streamType === 'embed') {
-        score += 1200; // High speed full feature web stream mirror
+        score += 100;  // Embed iframes: no custom HUD control — last resort only
       } else if (s.streamType === 'youtube') {
         score -= 500; // Promo trailer only (never default over full movie/show)
       }
