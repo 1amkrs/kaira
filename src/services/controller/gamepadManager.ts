@@ -154,10 +154,18 @@ class GamepadManager {
         spatialNav.navigate('right');
         break;
       case 'Enter':
-      case ' ':
         e.preventDefault();
-        this.dispatchAction(`Keyboard: ${e.key}`, 'SELECT', 'Trigger focused element');
+        this.dispatchAction('Keyboard: Enter', 'SELECT', 'Trigger focused element');
         spatialNav.triggerSelect();
+        break;
+      case ' ':
+        // Space is reserved for Play/Pause in the video player.
+        // Only trigger select when NOT in the video player screen.
+        if (!(document.querySelector('.tv-player-screen') || document.querySelector('.tv-player-hud'))) {
+          e.preventDefault();
+          this.dispatchAction('Keyboard: Space', 'SELECT', 'Trigger focused element');
+          spatialNav.triggerSelect();
+        }
         break;
       case 'Escape':
       case 'Backspace':

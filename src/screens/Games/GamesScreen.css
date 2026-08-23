@@ -42,7 +42,7 @@
   border-radius: 20px;
   font-size: 13px;
   font-weight: 600;
-  color: #8ab4f8;
+  color: #ff453a;
   width: fit-content;
   backdrop-filter: blur(8px);
 }
@@ -108,9 +108,9 @@
 
 .tv-game-hero-btn.focused {
   transform: scale(1.06);
-  background: #8ab4f8;
+  background: #ff453a;
   color: #000;
-  box-shadow: 0 0 24px rgba(138, 180, 248, 0.6);
+  box-shadow: 0 0 24px rgba(255, 69, 58, 0.6);
 }
 
 /* Rails */
@@ -154,8 +154,8 @@
 
 .tv-game-card.focused {
   transform: scale(1.06);
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.9), 0 0 16px rgba(138, 180, 248, 0.4);
-  border: 2px solid #8ab4f8;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.9), 0 0 16px rgba(255, 69, 58, 0.4);
+  border: 2px solid #ff453a;
 }
 
 .tv-game-card-img {
@@ -211,8 +211,8 @@
 
 .tv-launcher-card.focused {
   transform: scale(1.04);
-  box-shadow: 0 0 20px rgba(138, 180, 248, 0.5);
-  border-color: #8ab4f8;
+  box-shadow: 0 0 20px rgba(255, 69, 58, 0.5);
+  border-color: #ff453a;
 }
 
 .tv-launcher-text {

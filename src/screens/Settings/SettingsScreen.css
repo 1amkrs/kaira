@@ -635,7 +635,7 @@
 }
 
 .tv-diag-value.highlight {
-  color: #8ab4f8;
+  color: #ff453a;
 }
 
 .tv-diag-value.green {
@@ -680,7 +680,7 @@
 }
 
 .tv-pipeline-stage-value.highlight {
-  color: #8ab4f8;
+  color: #ff453a;
 }
 
 .tv-pipeline-stage-value.green {
@@ -725,7 +725,7 @@
 }
 
 .tv-log-raw {
-  color: #8ab4f8;
+  color: #ff453a;
   font-weight: 600;
 }
 

@@ -55,7 +55,7 @@ export const AudioVisualizer: React.FC<AudioVisualizerProps> = ({ isPlaying }) =
       for (let layer = 0; layer < 3; layer++) {
         ctx.beginPath();
         const baseAlpha = layer === 0 ? 0.45 : layer === 1 ? 0.3 : 0.2;
-        const colorGlow = layer === 0 ? '#8ab4f8' : layer === 1 ? '#c58af9' : '#81c995';
+        const colorGlow = layer === 0 ? '#ff453a' : layer === 1 ? '#ff7b72' : '#e50914';
 
         ctx.strokeStyle = colorGlow;
         ctx.lineWidth = 3 - layer * 0.8;

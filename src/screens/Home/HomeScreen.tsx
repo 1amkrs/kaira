@@ -33,6 +33,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
 }) => {
   const [continueWatching, setContinueWatching] = useState<ContinueWatchingItem[]>([]);
   const [featured, setFeatured] = useState<Movie | null>(null);
+  const [top10Daily, setTop10Daily] = useState<Movie[]>([]);
   const [hollywoodMovies, setHollywoodMovies] = useState<Movie[]>([]);
   const [regionalMovies, setRegionalMovies] = useState<Movie[]>([]);
   const [popularShows, setPopularShows] = useState<Show[]>([]);
@@ -42,9 +43,10 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
   const loadData = async () => {
     setIsLoading(true);
     try {
-      const [cw, feat, hwMovs, regMovs, shows, albs] = await Promise.all([
+      const [cw, feat, top10, hwMovs, regMovs, shows, albs] = await Promise.all([
         mediaProvider.getContinueWatching(),
         mediaProvider.getFeaturedMovie(),
+        (mediaProvider as any).getTop10Daily(),
         mediaProvider.getHollywoodMovies(),
         mediaProvider.getRegionalMovies('all'),
         mediaProvider.getShows(),
@@ -52,6 +54,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
       ]);
       setContinueWatching(cw);
       setFeatured(feat);
+      setTop10Daily(top10 || []);
       setHollywoodMovies(hwMovs);
       setRegionalMovies(regMovs);
       setPopularShows(shows);
@@ -200,22 +203,41 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
         </ContentRail>
       )}
 
-      {/* 3. Top 10 Global Blockbusters & Hollywood Hits */}
+      {/* 3. Top 10 Today — Daily Trending from Cinemeta */}
       <ContentRail
         id="rail-trending-movies"
         title="Top 10 Today"
-        subtitle="What everyone is watching right now"
+        subtitle="Updated daily · What everyone is watching right now"
         isLoading={isLoading}
         aspectRatio="poster"
       >
-        {hollywoodMovies.slice(0, 10).map((mov, idx) => (
-          <MovieCard
-            key={`hw-${mov.id}`}
-            movie={mov}
-            groupId="rail-trending-movies"
-            indexInGroup={idx}
-            onSelect={onSelectMovie}
-          />
+        {(top10Daily.length > 0 ? top10Daily : hollywoodMovies.slice(0, 10)).map((mov, idx) => (
+          <div key={`top10-${mov.id}`} style={{ position: 'relative', display: 'inline-block' }}>
+            {/* Rank badge overlay */}
+            <div style={{
+              position: 'absolute',
+              bottom: 40,
+              left: -4,
+              zIndex: 10,
+              fontFamily: 'var(--font-family)',
+              fontSize: 'clamp(48px, 7vw, 86px)',
+              fontWeight: 900,
+              lineHeight: 1,
+              color: 'rgba(255, 255, 255, 0.92)',
+              textShadow: '0 2px 12px rgba(0,0,0,0.9), -2px 0 0 #e50914, 2px 0 0 #e50914',
+              letterSpacing: '-4px',
+              userSelect: 'none',
+              pointerEvents: 'none',
+            }}>
+              {(mov as any).rank || idx + 1}
+            </div>
+            <MovieCard
+              movie={mov}
+              groupId="rail-trending-movies"
+              indexInGroup={idx}
+              onSelect={onSelectMovie}
+            />
+          </div>
         ))}
       </ContentRail>
 

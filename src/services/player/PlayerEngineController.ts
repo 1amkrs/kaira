@@ -143,13 +143,15 @@ export class PlayerEngineController {
       this.subtitleEngine.clear();
     }
 
-    // Load source
-    await this.currentDriver.loadSource(url, initialPosition, expectedDuration);
+    // Sync volume/speed BEFORE loading (so doPlay uses correct settings)
+    if (this.currentDriver) {
+      this.currentDriver.setVolume(this.state.volume);
+      this.currentDriver.setMuted(this.state.isMuted);
+      this.currentDriver.setSpeed(this.state.playbackSpeed);
+    }
 
-    // Sync volume/speed from saved engine state
-    this.currentDriver.setVolume(this.state.volume);
-    this.currentDriver.setMuted(this.state.isMuted);
-    this.currentDriver.setSpeed(this.state.playbackSpeed);
+    // Load source (triggers doPlay internally)
+    await this.currentDriver.loadSource(url, initialPosition, expectedDuration);
 
     this.notify();
   }

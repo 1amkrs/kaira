@@ -3,6 +3,7 @@
   flex-direction: column;
   gap: var(--space-sm);
   margin-bottom: var(--space-xl);
+  overflow: visible;
 }
 
 .tv-rail-header {
@@ -28,8 +29,16 @@
 .tv-rail-scroll-track {
   display: flex;
   gap: var(--space-md);
-  padding: var(--space-sm) var(--screen-padding-x) var(--space-md) var(--screen-padding-x);
+  padding: 16px var(--screen-padding-x) 28px var(--screen-padding-x);
   align-items: flex-start;
+  overflow-x: auto;
+  overflow-y: visible;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.tv-rail-scroll-track::-webkit-scrollbar {
+  display: none;
 }
 
 /* TV Skeleton Placeholders */

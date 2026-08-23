@@ -148,6 +148,8 @@ export class NativeDriver implements IPlaybackDriver {
     this.callbacks?.onBuffering(false);
   };
 
+  private wasPlayingBeforeSeek = false;
+
   private onSeeking = (): void => {
     if (this.isDestroyed) return;
     this.callbacks?.onBuffering(true);
@@ -158,6 +160,11 @@ export class NativeDriver implements IPlaybackDriver {
     this.callbacks?.onBuffering(false);
     if (this.videoElement) {
       this.callbacks?.onTimeUpdate(this.videoElement.currentTime, this.getValidDuration());
+      if (this.wasPlayingBeforeSeek || this.state.status === 'playing') {
+        if (this.videoElement.paused) {
+          this.videoElement.play().catch(() => {});
+        }
+      }
     }
   };
 
@@ -273,30 +280,48 @@ export class NativeDriver implements IPlaybackDriver {
   private async doPlay(): Promise<void> {
     if (!this.videoElement || this.isDestroyed) return;
 
-    // Ensure not muted (from a previous autoplay workaround)
-    if (this.videoElement.muted && !this.state.isMuted) {
-      this.videoElement.muted = false;
-    }
-    this.videoElement.volume = this.state.volume;
+    // Always explicitly ensure unmuted + correct volume before every play call
+    const targetVolume = (isFinite(this.state.volume) && this.state.volume > 0) ? this.state.volume : 1;
+    try {
+      this.videoElement.volume = targetVolume;
+      if (!this.state.isMuted) {
+        this.videoElement.muted = false;
+      }
+    } catch (_) {}
 
     try {
       await this.videoElement.play();
-      // onPlaying event will set status = 'playing'
+      // Ensure we're unmuted after play succeeds (in case browser kept it muted)
+      if (!this.state.isMuted && this.videoElement.muted) {
+        this.videoElement.muted = false;
+        this.videoElement.volume = targetVolume;
+        this.state.isMuted = false;
+      }
     } catch (err) {
-      console.warn('[NativeDriver] play() blocked by browser, retrying muted:', err);
-      // Autoplay policy blocked — try muted
+      console.warn('[NativeDriver] play() blocked by browser autoplay policy, retrying muted:', err);
+      // Autoplay policy blocked — try muted first, then unmute immediately after play starts
       try {
         this.videoElement.muted = true;
-        this.state.isMuted = true;
         await this.videoElement.play();
-        // Unmute 500ms later (after user gesture or buffer stabilizes)
+
+        // Unmute as soon as the first frame is playing
+        const unmute = () => {
+          if (!this.videoElement || this.isDestroyed) return;
+          this.videoElement.muted = false;
+          this.videoElement.volume = targetVolume;
+          this.state.isMuted = false;
+          this.videoElement.removeEventListener('timeupdate', unmute);
+        };
+        // Try on next timeupdate (first frame playing) OR after 300ms fallback
+        this.videoElement.addEventListener('timeupdate', unmute, { once: true });
         setTimeout(() => {
-          if (this.videoElement && !this.isDestroyed) {
+          if (this.videoElement && !this.isDestroyed && this.videoElement.muted && !this.state.isMuted) {
             this.videoElement.muted = false;
-            this.videoElement.volume = this.state.volume;
+            this.videoElement.volume = targetVolume;
             this.state.isMuted = false;
+            this.videoElement.removeEventListener('timeupdate', unmute);
           }
-        }, 500);
+        }, 300);
       } catch (err2) {
         console.error('[NativeDriver] play() failed completely:', err2);
         this.state.status = 'paused';
@@ -333,11 +358,15 @@ export class NativeDriver implements IPlaybackDriver {
     if (!this.videoElement || this.isDestroyed) return;
     if (!isFinite(seconds)) return;
 
+    this.wasPlayingBeforeSeek = this.state.status === 'playing' || !this.videoElement.paused;
     const dur = this.getValidDuration();
     const target = dur > 0 ? Math.max(0, Math.min(dur, seconds)) : Math.max(0, seconds);
 
     try {
       this.videoElement.currentTime = target;
+      if (this.wasPlayingBeforeSeek && this.videoElement.paused) {
+        this.videoElement.play().catch(() => {});
+      }
     } catch (e) {
       console.warn('[NativeDriver] currentTime assignment failed:', e);
     }

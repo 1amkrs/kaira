@@ -135,16 +135,16 @@
 }
 
 .tv-qs-btn-inner.focused {
-  background: #8ab4f8;
+  background: #ff453a;
   color: #000;
   transform: scale(1.05);
-  box-shadow: 0 0 12px rgba(138, 180, 248, 0.5);
+  box-shadow: 0 0 12px rgba(255, 69, 58, 0.5);
 }
 
 .tv-qs-btn-inner.active {
-  background: rgba(129, 201, 149, 0.2);
-  border-color: #81c995;
-  color: #81c995;
+  background: rgba(255, 69, 58, 0.2);
+  border-color: #ff453a;
+  color: #ff453a;
 }
 
 .tv-qs-btn-inner.danger.focused {
@@ -170,15 +170,15 @@
 }
 
 .tv-qs-pill-inner.focused {
-  background: #8ab4f8;
+  background: #ff453a;
   color: #000;
   transform: scale(1.05);
 }
 
 .tv-qs-pill-inner.active {
-  background: rgba(138, 180, 248, 0.2);
-  color: #8ab4f8;
-  border: 1px solid #8ab4f8;
+  background: rgba(255, 69, 58, 0.2);
+  color: #ff453a;
+  border: 1px solid #ff453a;
 }
 
 @keyframes slideInRight {

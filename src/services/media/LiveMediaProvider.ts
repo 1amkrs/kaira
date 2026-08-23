@@ -129,6 +129,73 @@ class LiveMediaProviderService implements MediaProvider {
     return HOLLYWOOD_MOVIES;
   }
 
+  /**
+   * Returns the Top 10 trending movies for today.
+   * Fetches fresh data daily from Cinemeta/Stremio catalog.
+   * Uses date-keyed localStorage to cache until tomorrow.
+   */
+  public async getTop10Daily(): Promise<Movie[]> {
+    const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+    const cacheKey = `tv_top10_daily_${today}`;
+
+    try {
+      const cached = localStorage.getItem(cacheKey);
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed) && parsed.length >= 5) {
+          console.log('[LiveMediaProvider] ✅ Top 10 loaded from daily cache:', today);
+          return parsed;
+        }
+      }
+    } catch (e) {}
+
+    console.log('[LiveMediaProvider] 🔄 Fetching fresh Top 10 for:', today);
+    const top10: Movie[] = [];
+
+    try {
+      const res = await fetch('https://v3-cinemeta.strem.io/catalog/movie/top.json');
+      const data = await res.json();
+
+      if (data && Array.isArray(data.metas)) {
+        const cinemetaList = data.metas
+          .filter((m: any) => m.id && m.name && m.poster)
+          .slice(0, 10)
+          .map((m: any, idx: number) => ({
+            ...this.mapCinemetaMovie(m),
+            rank: idx + 1, // #1 to #10 rank badge
+          }));
+        top10.push(...cinemetaList);
+      }
+    } catch (e) {
+      console.warn('[LiveMediaProvider] Top 10 Cinemeta fetch failed, using local fallback:', e);
+    }
+
+    // Fallback to top-rated Hollywood movies if fetch fails
+    if (top10.length < 5) {
+      const fallback = [...HOLLYWOOD_MOVIES]
+        .sort((a, b) => {
+          const ra = parseFloat(a.rating) || 7.0;
+          const rb = parseFloat(b.rating) || 7.0;
+          return rb - ra;
+        })
+        .slice(0, 10)
+        .map((m, idx) => ({ ...m, rank: idx + 1 }));
+      top10.push(...fallback.filter(f => !top10.some(t => t.id === f.id)));
+    }
+
+    const result = top10.slice(0, 10);
+
+    // Purge old date caches to avoid localStorage bloat
+    try {
+      Object.keys(localStorage)
+        .filter(k => k.startsWith('tv_top10_daily_') && k !== cacheKey)
+        .forEach(k => localStorage.removeItem(k));
+      localStorage.setItem(cacheKey, JSON.stringify(result));
+    } catch (e) {}
+
+    return result;
+  }
+
   public async getFeaturedMovie(): Promise<Movie> {
     const movies = await this.getMovies();
     // Prioritize the latest releases with highest rating (e.g., Dune 2 (2024), Deadpool & Wolverine (2024), Alien Romulus (2024))

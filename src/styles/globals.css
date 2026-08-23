@@ -65,10 +65,15 @@ body.hide-cursor * {
 
 .tv-horizontal-scroll {
   overflow-x: auto;
-  overflow-y: hidden;
+  overflow-y: visible;
   display: flex;
   scroll-behavior: smooth;
   scrollbar-width: none;
+  /* Extra vertical padding so scaled/focused cards don't clip at top and bottom */
+  padding-top: 12px;
+  padding-bottom: 20px;
+  margin-top: -12px;
+  margin-bottom: -8px;
 }
 
 .tv-horizontal-scroll::-webkit-scrollbar {
@@ -241,5 +246,53 @@ a {
   border-color: var(--border-focus);
   transform: scale(var(--focus-scale));
   box-shadow: var(--focus-shadow);
+}
+
+/* ============================================================
+ * Responsive TV Resolution Scaling
+ * Scales the root font-size so all rem/em units adapt to screen.
+ * Breakpoints: 2160p, 1440p, 1080p (base), 720p, 540p, 480p, 360p
+ * ============================================================ */
+
+/* 4K / UHD – 3840×2160 */
+@media screen and (min-width: 3440px) {
+  html, body { font-size: 32px; }
+  :root { --screen-padding-x: 96px; --screen-padding-y: 56px; }
+}
+
+/* QHD / 2K – 2560×1440 */
+@media screen and (min-width: 2400px) and (max-width: 3439px) {
+  html, body { font-size: 24px; }
+  :root { --screen-padding-x: 72px; --screen-padding-y: 44px; }
+}
+
+/* Full HD – 1920×1080 (base) */
+@media screen and (min-width: 1400px) and (max-width: 2399px) {
+  html, body { font-size: 16px; }
+  :root { --screen-padding-x: 48px; --screen-padding-y: 32px; }
+}
+
+/* HD Ready – 1280×720 */
+@media screen and (min-width: 900px) and (max-width: 1399px) {
+  html, body { font-size: 11.5px; }
+  :root { --screen-padding-x: 36px; --screen-padding-y: 24px; }
+}
+
+/* qHD – 960×540 */
+@media screen and (min-width: 700px) and (max-width: 899px) {
+  html, body { font-size: 9px; }
+  :root { --screen-padding-x: 28px; --screen-padding-y: 18px; }
+}
+
+/* SD 480p – 854×480 */
+@media screen and (min-width: 560px) and (max-width: 699px) {
+  html, body { font-size: 8px; }
+  :root { --screen-padding-x: 22px; --screen-padding-y: 14px; }
+}
+
+/* LDTV 360p – 640×360 */
+@media screen and (max-width: 559px) {
+  html, body { font-size: 6.5px; }
+  :root { --screen-padding-x: 16px; --screen-padding-y: 10px; }
 }
 

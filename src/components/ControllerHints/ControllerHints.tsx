@@ -10,7 +10,7 @@ export const ControllerHints: React.FC<ControllerHintsProps> = ({ customHints })
     { button: 'A', label: 'Select', color: '#81c995' }, // Green
     { button: 'B', label: 'Back', color: '#f28b82' },   // Red
     { button: 'Y', label: 'Search', color: '#fdd663' }, // Yellow
-    { button: 'LB/RB', label: 'Tabs', color: '#8ab4f8' },
+    { button: 'LB/RB', label: 'Tabs', color: '#ff453a' },
     { button: 'Menu', label: 'Settings', color: 'rgba(255, 255, 255, 0.7)' },
   ];
 

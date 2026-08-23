@@ -19,16 +19,19 @@
   --text-tertiary: rgba(255, 255, 255, 0.40);
   --text-inverse: #0f0f0f;
 
-  /* Accent Colors (Google Blue & Functional) */
-  --google-blue: #8ab4f8;
-  --google-blue-hover: #aecbfa;
-  --google-blue-active: #1a73e8;
-  --google-blue-subtle: rgba(138, 180, 248, 0.12);
-  --google-blue-glow: rgba(138, 180, 248, 0.25);
+  /* Accent Colors (TV Red & Functional) */
+  --google-blue: #ff453a;
+  --google-blue-hover: #ff6961;
+  --google-blue-active: #e50914;
+  --google-blue-subtle: rgba(255, 69, 58, 0.15);
+  --google-blue-glow: rgba(255, 69, 58, 0.35);
   
+  --accent-primary: #ff453a;
+  --accent-primary-hover: #ff6961;
+  --accent-primary-active: #e50914;
   --accent-green: #81c995;
   --accent-yellow: #fdd663;
-  --accent-red: #f28b82;
+  --accent-red: #ff453a;
 
   /* Border & Separator */
   --border-subtle: rgba(255, 255, 255, 0.08);

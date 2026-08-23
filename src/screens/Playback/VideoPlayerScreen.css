@@ -112,23 +112,25 @@
   }
 }
 
-/* 3.5. Volume Toast OSD Overlay */
+/* 3.5. Volume Toast OSD Overlay — centered above the seeker bar */
 .tv-player-volume-osd {
   position: absolute;
-  top: 48px;
-  right: var(--screen-padding-x);
+  bottom: 140px;
+  left: 50%;
+  transform: translateX(-50%);
   display: flex;
   align-items: center;
   gap: 14px;
   background: rgba(18, 18, 22, 0.94);
   backdrop-filter: blur(24px);
   -webkit-backdrop-filter: blur(24px);
-  border: 1.5px solid rgba(255, 255, 255, 0.25);
+  border: 1.5px solid rgba(255, 69, 58, 0.4);
   border-radius: var(--radius-pill);
   padding: 12px 24px;
-  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.9);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.85), 0 0 24px rgba(255, 69, 58, 0.15);
   pointer-events: none;
   z-index: 90;
+  white-space: nowrap;
 }
 
 .tv-volume-osd-icon {
@@ -150,7 +152,7 @@
 
 .tv-volume-osd-fill {
   height: 100%;
-  background: linear-gradient(90deg, #1a73e8 0%, #8ab4f8 100%);
+  background: linear-gradient(90deg, #e50914 0%, #ff453a 100%);
   border-radius: var(--radius-pill);
   transition: width 120ms ease;
 }
@@ -441,7 +443,7 @@
 
 .tv-hud-progress-fill {
   height: 100%;
-  background: linear-gradient(90deg, #1a73e8 0%, #8ab4f8 100%);
+  background: linear-gradient(90deg, #e50914 0%, #ff453a 100%);
   border-radius: var(--radius-pill);
 }
 
@@ -461,7 +463,7 @@
 .tv-hud-progress-bar-container.scrubbing .tv-hud-scrubber-head {
   transform: translate(-50%, -50%) scale(1.4);
   background-color: var(--google-blue);
-  box-shadow: 0 0 16px rgba(138, 180, 248, 0.95);
+  box-shadow: 0 0 16px rgba(255, 69, 58, 0.95);
 }
 
 .tv-hud-scrubber-tooltip {
@@ -593,7 +595,7 @@
 
 .tv-hud-volume-slider-fill {
   height: 100%;
-  background: linear-gradient(90deg, #1a73e8 0%, #8ab4f8 100%);
+  background: linear-gradient(90deg, #e50914 0%, #ff453a 100%);
   border-radius: var(--radius-pill);
   transition: width 80ms ease;
 }
@@ -657,7 +659,7 @@
   color: #0f0f0f;
   border-color: #ffffff;
   transform: scale(1.05);
-  box-shadow: 0 14px 40px rgba(138, 180, 248, 0.4);
+  box-shadow: 0 14px 40px rgba(255, 69, 58, 0.4);
 }
 
 .tv-skip-intro-btn.focused .tv-skip-intro-icon,
@@ -809,8 +811,8 @@
 }
 
 .tv-menu-source-card.active {
-  background: rgba(138, 180, 248, 0.15);
-  border-color: rgba(138, 180, 248, 0.5);
+  background: rgba(255, 69, 58, 0.15);
+  border-color: rgba(255, 69, 58, 0.5);
 }
 
 .tv-menu-source-card.focused {
@@ -928,8 +930,8 @@
 }
 
 .tv-menu-option-card.active {
-  background: rgba(138, 180, 248, 0.18);
-  border-color: rgba(138, 180, 248, 0.5);
+  background: rgba(255, 69, 58, 0.18);
+  border-color: rgba(255, 69, 58, 0.5);
   color: var(--google-blue);
 }
 

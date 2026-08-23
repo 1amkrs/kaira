@@ -358,7 +358,7 @@ export const ProfileEditorModal: React.FC<ProfileEditorModalProps> = ({
                     <div className={`tv-type-card ${type === t.id ? 'active' : ''} ${isFocused ? 'focused' : ''}`}>
                       <div className="tv-type-card-top">
                         <span className="tv-type-title">{t.title}</span>
-                        {type === t.id && <Check size={16} color="#8ab4f8" />}
+                        {type === t.id && <Check size={16} color="#ff453a" />}
                       </div>
                       <span className="tv-type-desc">{t.desc}</span>
                     </div>
@@ -414,7 +414,7 @@ export const ProfileEditorModal: React.FC<ProfileEditorModalProps> = ({
                   >
                     {(isFocused) => (
                       <div className={`tv-icon-chip ${isSelected ? 'selected' : ''} ${isFocused ? 'focused' : ''}`}>
-                        {renderAvatarIcon(item.id, 22, isSelected ? '#8ab4f8' : '#ffffff')}
+                        {renderAvatarIcon(item.id, 22, isSelected ? '#ff453a' : '#ffffff')}
                         <span className="tv-icon-chip-label">{item.label}</span>
                       </div>
                     )}

@@ -60,7 +60,7 @@ export const GamesScreen: React.FC<GamesScreenProps> = () => {
         <div className="tv-games-hero-overlay" />
         <div className="tv-games-hero-content">
           <div className="tv-games-badge">
-            <Gamepad size={16} color="#8ab4f8" />
+            <Gamepad size={16} color="#ff453a" />
             <span>TV Gaming Hub • Controller Optimized</span>
           </div>
 

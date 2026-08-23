@@ -8,12 +8,16 @@
               background-color var(--focus-duration) var(--focus-easing),
               border-color var(--focus-duration) var(--focus-easing);
   will-change: transform;
+  /* Prevent parent from clipping scaled children */
+  overflow: visible;
 }
 
 .tv-focusable.tv-focus-scale.is-focused {
   transform: scale(var(--focus-scale));
-  z-index: 10;
+  z-index: 20;
   box-shadow: var(--focus-shadow);
+  /* Ensure focused item renders above siblings */
+  isolation: isolate;
 }
 
 .tv-focusable.is-disabled {
@@ -21,3 +25,4 @@
   pointer-events: none;
   cursor: default;
 }
+

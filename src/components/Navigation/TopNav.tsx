@@ -57,7 +57,7 @@ export const TopNav: React.FC<TopNavProps> = ({
   }, []);
 
   const displayName = activeProfile?.name || activeProfileName;
-  const avatarColor = activeProfile?.avatarColor || 'linear-gradient(135deg, #1a73e8, #4285f4)';
+  const avatarColor = activeProfile?.avatarColor || 'linear-gradient(135deg, #e50914, #ff453a)';
   const avatarIcon = activeProfile?.avatarIcon || 'user';
   const hasPin = Boolean(activeProfile?.pin);
 

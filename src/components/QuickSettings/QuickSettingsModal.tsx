@@ -80,7 +80,7 @@ export const QuickSettingsModal: React.FC<QuickSettingsModalProps> = ({ onClose 
         {/* Header */}
         <div className="tv-qs-header">
           <div className="tv-qs-title-row">
-            <Sliders size={22} color="#8ab4f8" />
+            <Sliders size={22} color="#ff453a" />
             <h2 className="tv-qs-title">Quick Settings</h2>
           </div>
 
@@ -106,7 +106,7 @@ export const QuickSettingsModal: React.FC<QuickSettingsModalProps> = ({ onClose 
           <div className="tv-qs-card">
             <div className="tv-qs-card-header">
               <div className="tv-qs-card-icon">
-                {isMuted || volume === 0 ? <VolumeX size={20} color="#f28b82" /> : <Volume2 size={20} color="#8ab4f8" />}
+                {isMuted || volume === 0 ? <VolumeX size={20} color="#ff453a" /> : <Volume2 size={20} color="#ff453a" />}
               </div>
               <div className="tv-qs-card-info">
                 <span className="tv-qs-card-title">Audio Volume</span>
@@ -230,7 +230,7 @@ export const QuickSettingsModal: React.FC<QuickSettingsModalProps> = ({ onClose 
 
             <div className="tv-qs-card-header" style={{ marginTop: '12px', borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: '12px' }}>
               <div className="tv-qs-card-icon">
-                <Wifi size={20} color="#8ab4f8" />
+                <Wifi size={20} color="#ff453a" />
               </div>
               <div className="tv-qs-card-info">
                 <span className="tv-qs-card-title">Network Connection</span>

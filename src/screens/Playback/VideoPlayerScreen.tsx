@@ -287,15 +287,17 @@ export const VideoPlayerScreen: React.FC<VideoPlayerScreenProps> = ({
         return;
       }
 
-      // Left / Right Arrow: If HUD is hidden, seek 10s. If HUD is visible or menu open, let SpatialNav move focus!
-      if (e.key === 'ArrowLeft' && !isHudVisible && !isMenuOpen) {
+      // Left / Right Arrow: Always seek ±10s unless settings menu is open
+      if (e.key === 'ArrowLeft' && !isMenuOpen) {
         e.preventDefault();
         seekBy(-10);
+        triggerFeedback('⏪ -10s');
         return;
       }
-      if (e.key === 'ArrowRight' && !isHudVisible && !isMenuOpen) {
+      if (e.key === 'ArrowRight' && !isMenuOpen) {
         e.preventDefault();
         seekBy(10);
+        triggerFeedback('⏩ +10s');
         return;
       }
 
@@ -643,7 +645,6 @@ export const VideoPlayerScreen: React.FC<VideoPlayerScreenProps> = ({
               indexInGroup={0}
               className="tv-hud-scrubber-focusable"
               scaleEffect={false}
-              onSelect={handleTogglePlayPause}
             >
               {(isFocused) => (
                 <div
@@ -1232,7 +1233,7 @@ export const VideoPlayerScreen: React.FC<VideoPlayerScreenProps> = ({
             boxShadow: '0 8px 32px rgba(0,0,0,0.7)',
           }}
         >
-          <div style={{ color: '#8ab4f8', fontWeight: 'bold', marginBottom: '8px', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
+          <div style={{ color: '#ff453a', fontWeight: 'bold', marginBottom: '8px', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
             🛠️ PLAYER ENGINE RUNTIME DIAGNOSTICS (D to toggle)
           </div>
           <div><strong>Active Driver:</strong> {engineState.driverType.toUpperCase()}</div>

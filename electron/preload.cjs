@@ -19,4 +19,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   setUblockAntiPopup: (enabled) => ipcRenderer.invoke('ublock-toggle-popup', enabled),
   resetUblockStats: () => ipcRenderer.invoke('ublock-reset-stats'),
   controlMedia: (action, value) => ipcRenderer.invoke('media-control', { action, value }),
+  getSelfDebridStatus: () => ipcRenderer.invoke('get-self-debrid-status'),
+  startSelfDebrid: () => ipcRenderer.invoke('start-self-debrid'),
+  stopSelfDebrid: () => ipcRenderer.invoke('stop-self-debrid'),
 });

@@ -19,10 +19,67 @@ app.commandLine.appendSwitch('ozone-platform-hint', 'auto');
 
 let mainWindow = null;
 let ambientProcess = null;
+let selfDebridProcess = null;
 
 const AMBIENT_DIR = process.platform === 'win32'
   ? 'D:\\Personal Projects\\Ambient Bedroom lIghts'
   : '/opt/tvos/ambient';
+
+const SELF_DEBRID_DIR = process.platform === 'win32'
+  ? 'D:\\Personal Projects\\Self-debrid\\self-debrid'
+  : '/opt/tvos/self-debrid';
+
+function startSelfDebrid() {
+  if (selfDebridProcess) return;
+
+  const pythonExec = process.platform === 'win32'
+    ? (fs.existsSync(path.join(SELF_DEBRID_DIR, '.venv', 'Scripts', 'python.exe'))
+        ? path.join(SELF_DEBRID_DIR, '.venv', 'Scripts', 'python.exe')
+        : 'python')
+    : (fs.existsSync(path.join(SELF_DEBRID_DIR, '.venv', 'bin', 'python3'))
+        ? path.join(SELF_DEBRID_DIR, '.venv', 'bin', 'python3')
+        : 'python3');
+
+  const mainPy = path.join(SELF_DEBRID_DIR, 'main.py');
+  if (!fs.existsSync(mainPy)) {
+    console.log('[Electron Main] Self-debrid main.py not found at:', mainPy);
+    return;
+  }
+
+  try {
+    console.log(`[Electron Main] 🚀 Auto-starting Self-Debrid backend using: ${pythonExec}`);
+    selfDebridProcess = spawn(pythonExec, ['main.py'], {
+      cwd: SELF_DEBRID_DIR,
+      detached: false,
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+
+    selfDebridProcess.stdout.on('data', (data) => {
+      console.log(`[Self-Debrid] ${data.toString().trim()}`);
+    });
+
+    selfDebridProcess.stderr.on('data', (data) => {
+      console.warn(`[Self-Debrid stderr] ${data.toString().trim()}`);
+    });
+
+    selfDebridProcess.on('exit', (code, signal) => {
+      console.log(`[Self-Debrid] Process exited with code ${code}, signal: ${signal}`);
+      selfDebridProcess = null;
+    });
+  } catch (err) {
+    console.warn('[Electron Main] Failed to auto-start Self-Debrid:', err.message);
+  }
+}
+
+function stopSelfDebrid() {
+  if (selfDebridProcess) {
+    try {
+      console.log('[Electron Main] 🛑 Stopping Self-Debrid backend process');
+      selfDebridProcess.kill();
+    } catch (e) {}
+    selfDebridProcess = null;
+  }
+}
 
 // ==============================================================================
 // 2. uBlock Origin Network Filtering & Popup Blocking Engine
@@ -646,16 +703,40 @@ ipcMain.handle('media-control', async (event, { action, value }) => {
   }
 });
 
+// Self-Debrid IPC Handlers
+ipcMain.handle('get-self-debrid-status', async () => {
+  return {
+    running: selfDebridProcess !== null,
+    pid: selfDebridProcess ? selfDebridProcess.pid : null,
+  };
+});
+
+ipcMain.handle('start-self-debrid', async () => {
+  startSelfDebrid();
+  return { success: true, running: selfDebridProcess !== null };
+});
+
+ipcMain.handle('stop-self-debrid', async () => {
+  stopSelfDebrid();
+  return { success: true, running: false };
+});
+
 // App Lifecycle
 app.whenReady().then(() => {
   createMainWindow();
+  startSelfDebrid();
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createMainWindow();
   });
 });
 
+app.on('before-quit', () => {
+  stopSelfDebrid();
+});
+
 app.on('window-all-closed', () => {
+  stopSelfDebrid();
   if (ambientProcess) {
     try {
       ambientProcess.kill();

@@ -39,6 +39,7 @@ export interface AddonStream {
   quality?: '4K' | '1080p' | '720p' | 'HDR' | 'SD';
   resolution?: string; // e.g. "2160p", "1080p"
   fileSize?: string; // e.g. "14.5 GB"
+  sizeBytes?: number;
   audio?: string; // e.g. "Dolby Atmos", "5.1 Surround"
   providerName?: string;
   isDebrid?: boolean;

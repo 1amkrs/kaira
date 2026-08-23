@@ -19,7 +19,7 @@ export const DEFAULT_PROFILES: UserProfile[] = [
   {
     id: 'prof-primary',
     name: 'Primary (Living Room)',
-    avatarColor: 'linear-gradient(135deg, #1a73e8, #4285f4)',
+    avatarColor: 'linear-gradient(135deg, #e50914, #ff453a)',
     avatarIcon: 'user',
     type: 'adult',
     badge: 'Full Access',
@@ -28,7 +28,7 @@ export const DEFAULT_PROFILES: UserProfile[] = [
   {
     id: 'prof-kids',
     name: 'Kids Profile',
-    avatarColor: 'linear-gradient(135deg, #f28b82, #fbbc04)',
+    avatarColor: 'linear-gradient(135deg, #ff453a, #fbbc04)',
     avatarIcon: 'baby',
     type: 'kids',
     badge: 'Family Friendly',
@@ -47,7 +47,7 @@ export const DEFAULT_PROFILES: UserProfile[] = [
 ];
 
 export const AVATAR_COLOR_PALETTES = [
-  'linear-gradient(135deg, #1a73e8, #4285f4)', // Google Blue
+  'linear-gradient(135deg, #e50914, #ff453a)', // Cinema Red
   'linear-gradient(135deg, #ea4335, #f28b82)', // Red
   'linear-gradient(135deg, #34a853, #81c995)', // Green
   'linear-gradient(135deg, #fbbc04, #fdd663)', // Yellow / Gold

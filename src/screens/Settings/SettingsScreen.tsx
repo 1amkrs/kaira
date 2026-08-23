@@ -242,7 +242,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onClose }) => {
           >
             {(isFocused) => (
               <div className={`tv-cat-row ${isFocused ? 'focused' : ''}`}>
-                <Users size={22} className="cat-icon" color="#8ab4f8" />
+                <Users size={22} className="cat-icon" color="#ff453a" />
                 <div className="cat-text">
                   <span className="cat-title">Profiles & Accounts</span>
                   <span className="cat-desc">User accounts, avatars, and 4-digit PIN locks</span>
@@ -946,7 +946,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onClose }) => {
                         className={`tv-settings-input ${isFocused ? 'focused' : ''}`}
                         style={{
                           background: isFocused ? 'rgba(255,255,255,0.14)' : 'rgba(255,255,255,0.08)',
-                          border: isFocused ? '1px solid #8ab4f8' : '1px solid rgba(255,255,255,0.2)',
+                          border: isFocused ? '1px solid #ff453a' : '1px solid rgba(255,255,255,0.2)',
                           borderRadius: '8px',
                           color: '#fff',
                           padding: '8px 12px',

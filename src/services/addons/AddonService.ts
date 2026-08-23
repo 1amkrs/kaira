@@ -240,8 +240,8 @@ class AddonService {
     if (isImdb) {
       const vidLinkUrl =
         type === 'movie'
-          ? `https://vidlink.pro/movie/${cleanImdbId}?primaryColor=8ab4f8&secondaryColor=ffffff&iconColor=ffffff`
-          : `https://vidlink.pro/tv/${cleanImdbId}/${seasonNumber || 1}/${episodeNumber || 1}?primaryColor=8ab4f8&secondaryColor=ffffff&iconColor=ffffff`;
+          ? `https://vidlink.pro/movie/${cleanImdbId}?primaryColor=ff453a&secondaryColor=ffffff&iconColor=ffffff`
+          : `https://vidlink.pro/tv/${cleanImdbId}/${seasonNumber || 1}/${episodeNumber || 1}?primaryColor=ff453a&secondaryColor=ffffff&iconColor=ffffff`;
 
       streams.push({
         name: 'VidLink Server 1 • High-Speed [Full Movie]',
@@ -427,6 +427,7 @@ class AddonService {
       quality: parsed.quality,
       resolution: parsed.resolution,
       fileSize: parsed.fileSize,
+      sizeBytes: parsed.sizeBytes,
       audio: parsed.audio,
       providerName: isSelfDebrid ? 'Self-Debrid Local' : providerName,
       isDebrid: isSelfDebrid || raw.name?.includes('RD') || raw.name?.includes('Debrid') || Boolean(raw.url),
@@ -438,6 +439,7 @@ class AddonService {
     quality: '4K' | '1080p' | '720p' | 'HDR' | 'SD';
     resolution: string;
     fileSize?: string;
+    sizeBytes?: number;
     audio?: string;
     qualityDesc: string;
   } {
@@ -457,8 +459,19 @@ class AddonService {
     }
 
     // Match file size (e.g. "14.2 GB", "95.63 GB", "850 MB")
-    const sizeMatch = title.match(/(\d+(\.\d+)?\s*(GB|MB|GiB|MiB))/i);
+    const sizeMatch = title.match(/(\d+(?:\.\d+)?)\s*(GB|MB|GiB|MiB)/i);
     const fileSize = sizeMatch ? sizeMatch[0] : undefined;
+    let sizeBytes: number | undefined;
+
+    if (sizeMatch) {
+      const val = parseFloat(sizeMatch[1]);
+      const unit = sizeMatch[2].toUpperCase();
+      if (unit.startsWith('G')) {
+        sizeBytes = val * 1024 * 1024 * 1024;
+      } else if (unit.startsWith('M')) {
+        sizeBytes = val * 1024 * 1024;
+      }
+    }
 
     // Match audio
     let audio: string | undefined;
@@ -471,6 +484,7 @@ class AddonService {
       quality,
       resolution,
       fileSize,
+      sizeBytes,
       audio,
       qualityDesc: `${resolution}${fileSize ? ` • ${fileSize}` : ''}${audio ? ` • ${audio}` : ''}`,
     };
@@ -478,10 +492,10 @@ class AddonService {
 
   /**
    * Evaluates and automatically selects the highest-quality and fastest available stream:
-   * 1. Cached Debrid / Direct HTTPS Cloud CDN (instant startup, zero buffering)
-   * 2. Quality hierarchy (4K HDR10+/DV > 1080p FHD Remux > 720p HD)
-   * 3. Audio fidelity (Dolby Atmos / 5.1 Surround > Stereo)
-   * 4. Direct stream reliability (direct MP4/MKV/HLS > fast Web-DL > Studio Master)
+   * 1. Resolution & Quality hierarchy (4K > 1080p > 720p)
+   * 2. Lowest file size within high-quality bracket for instant buffering & zero stutter
+   * 3. Debrid / Self-Debrid local accelerator priority
+   * 4. Modern efficient codecs (HEVC / x265 / AV1 / Web-DL)
    */
   public selectBestStream(streams: AddonStream[]): AddonStream | null {
     if (!streams || streams.length === 0) return null;
@@ -489,46 +503,63 @@ class AddonService {
     const calculateScore = (s: AddonStream): number => {
       let score = 0;
 
-      // 1. Debrid Accelerator Bonus (for direct cached streams)
+      // 1. Debrid & Self-Debrid Priority Bonus
       if (s.isDebrid && s.streamType === 'direct') {
-        score += 800;
+        score += 1200;
       }
 
       // 2. Stream Type Priority
       if (s.streamType === 'direct') {
-        score += 1800; // Native hardware decoded video (e.g. Debrid direct)
+        score += 2000; // Direct video (Native Hardware decode)
       } else if (s.streamType === 'embed') {
-        score += 1500; // Full feature cloud web stream (VidLink / VidSrc)
+        score += 1500; // Cloud Web stream
       } else if (s.streamType === 'youtube') {
-        score -= 500; // Promo trailer only (never default over full movie/show)
+        score -= 1000; // Promo trailer only
       }
 
-      // 3. Resolution & Quality
+      // 3. Resolution & High Quality Bracket (Primary Weight)
       if (s.quality === '4K') {
-        score += 400;
+        score += 1000;
       } else if (s.quality === '1080p') {
-        score += 250;
+        score += 650;
       } else if (s.quality === '720p') {
-        score += 120;
+        score += 300;
       }
 
-      // 4. Audio Quality
-      if (s.audio?.includes('Atmos') || s.audio?.includes('TrueHD')) {
-        score += 60;
-      } else if (s.audio?.includes('5.1')) {
-        score += 35;
+      // 4. Lowest File Size Bonus for Fast Playback (Secondary Optimization)
+      // Within the quality bracket, favor lower file size for faster download & zero buffering
+      if (s.sizeBytes && s.sizeBytes > 0) {
+        const sizeGB = s.sizeBytes / (1024 * 1024 * 1024);
+        if (sizeGB <= 3.5) {
+          // Sweet spot for fast streaming with great compression
+          score += 350;
+        } else if (sizeGB <= 8.0) {
+          score += 250;
+        } else if (sizeGB <= 18.0) {
+          score += 120;
+        } else if (sizeGB > 40.0) {
+          // Heavy files that take very long to buffer
+          score -= 300;
+        }
       }
 
-      // 5. Codec & Source Format
+      // 5. Codec Efficiency (HEVC / x265 / 10bit offer high quality at low size)
       const upper = (s.title || '').toUpperCase();
-      if (upper.includes('REMUX') || upper.includes('BLURAY')) {
-        score += 50;
+      if (upper.includes('HEVC') || upper.includes('X265') || upper.includes('H.265') || upper.includes('10BIT')) {
+        score += 180;
+      }
+      if (upper.includes('WEB-DL') || upper.includes('WEBRIP')) {
+        score += 90;
       }
       if (upper.includes('HDR') || upper.includes('DV') || upper.includes('DOLBY VISION')) {
-        score += 40;
-      }
-      if (upper.includes('FAST') || upper.includes('RD+') || upper.includes('CACHED')) {
         score += 80;
+      }
+
+      // 6. Audio Fidelity
+      if (s.audio?.includes('Atmos') || s.audio?.includes('TrueHD')) {
+        score += 50;
+      } else if (s.audio?.includes('5.1')) {
+        score += 30;
       }
 
       return score;
