@@ -282,15 +282,28 @@ export class NativeDriver implements IPlaybackDriver {
 
   public setVolume(volume: number): void {
     if (!this.videoElement || this.isDestroyed) return;
-    const vol = Math.max(0, Math.min(1, volume));
-    this.videoElement.volume = vol;
+    const vol = Math.max(0, Math.min(1, typeof volume === 'number' && isFinite(volume) ? volume : 1));
+    try {
+      this.videoElement.volume = vol;
+      if (vol > 0 && this.videoElement.muted) {
+        this.videoElement.muted = false;
+        this.state.isMuted = false;
+      } else if (vol === 0) {
+        this.videoElement.muted = true;
+        this.state.isMuted = true;
+      }
+    } catch (e) {
+      console.warn('[NativeDriver] volume assignment exception:', e);
+    }
     this.state.volume = vol;
   }
 
   public setMuted(muted: boolean): void {
     if (!this.videoElement || this.isDestroyed) return;
-    this.videoElement.muted = muted;
-    this.state.isMuted = muted;
+    try {
+      this.videoElement.muted = Boolean(muted);
+    } catch (e) {}
+    this.state.isMuted = Boolean(muted);
   }
 
   public setSpeed(speed: number): void {

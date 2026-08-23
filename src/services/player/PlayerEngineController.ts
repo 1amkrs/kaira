@@ -183,7 +183,7 @@ export class PlayerEngineController {
   }
 
   public setVolume(volume: number): void {
-    const vol = Math.max(0, Math.min(1, volume));
+    const vol = Math.max(0, Math.min(1, typeof volume === 'number' && isFinite(volume) ? volume : 1));
     this.state.volume = vol;
     this.state.isMuted = vol === 0;
     if (this.currentDriver) {
@@ -194,16 +194,19 @@ export class PlayerEngineController {
   }
 
   public adjustVolume(delta: number): number {
-    const current = this.state.isMuted ? 0 : this.state.volume;
-    const next = Math.max(0, Math.min(1, Math.round((current + delta) * 100) / 100));
+    const cur = this.state.isMuted ? 0 : (typeof this.state.volume === 'number' && isFinite(this.state.volume) ? this.state.volume : 1);
+    const next = Math.max(0, Math.min(1, Math.round((cur + delta) * 100) / 100));
     this.setVolume(next);
     return next;
   }
 
   public setMuted(muted: boolean): void {
-    this.state.isMuted = muted;
+    this.state.isMuted = Boolean(muted);
     if (this.currentDriver) {
-      this.currentDriver.setMuted(muted);
+      this.currentDriver.setMuted(Boolean(muted));
+      if (!muted && this.state.volume === 0) {
+        this.setVolume(0.5);
+      }
     }
     this.notify();
   }

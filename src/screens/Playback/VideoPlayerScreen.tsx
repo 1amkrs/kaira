@@ -311,8 +311,8 @@ export const VideoPlayerScreen: React.FC<VideoPlayerScreenProps> = ({
         return;
       }
 
-      // Volume Keys: + / - / VolumeUp / VolumeDown / M
-      if (e.key === '+' || e.key === '=' || e.key === 'VolumeUp' || (e.key === 'ArrowUp' && !isHudVisible && !isMenuOpen)) {
+      // Volume Keys: + / - / VolumeUp / VolumeDown / M / ArrowUp / ArrowDown (when not in modal)
+      if (e.key === '+' || e.key === '=' || e.key === 'VolumeUp' || (e.key === 'ArrowUp' && !isMenuOpen)) {
         e.preventDefault();
         const next = engineRef.current ? engineRef.current.adjustVolume(0.05) : 1;
         setVolumeToast({ level: Math.round(next * 100), muted: next === 0 });
@@ -321,7 +321,7 @@ export const VideoPlayerScreen: React.FC<VideoPlayerScreenProps> = ({
         triggerFeedback(`Volume: ${Math.round(next * 100)}%`);
         return;
       }
-      if (e.key === '-' || e.key === '_' || e.key === 'VolumeDown' || (e.key === 'ArrowDown' && !isHudVisible && !isMenuOpen)) {
+      if (e.key === '-' || e.key === '_' || e.key === 'VolumeDown' || (e.key === 'ArrowDown' && !isMenuOpen)) {
         e.preventDefault();
         const next = engineRef.current ? engineRef.current.adjustVolume(-0.05) : 0;
         setVolumeToast({ level: Math.round(next * 100), muted: next === 0 });
@@ -757,6 +757,7 @@ export const VideoPlayerScreen: React.FC<VideoPlayerScreenProps> = ({
             </Focusable>
 
             {/* Volume Control Button & Slider */}
+            {/* Volume Control Button & Slider */}
             <div className="tv-hud-volume-cluster">
               <Focusable
                 id="player-volume-btn"
@@ -771,9 +772,29 @@ export const VideoPlayerScreen: React.FC<VideoPlayerScreenProps> = ({
                   volumeToastTimerRef.current = setTimeout(() => setVolumeToast(null), 1800);
                   triggerFeedback(muted ? 'Muted 🔇' : `Volume: ${Math.round(curVol * 100)}%`);
                 }}
+                onClick={() => {
+                  const muted = engineRef.current ? engineRef.current.toggleMute() : false;
+                  const curVol = engineRef.current ? engineRef.current.getState().volume : 1;
+                  setVolumeToast({ level: muted ? 0 : Math.round(curVol * 100), muted });
+                  if (volumeToastTimerRef.current) clearTimeout(volumeToastTimerRef.current);
+                  volumeToastTimerRef.current = setTimeout(() => setVolumeToast(null), 1800);
+                  triggerFeedback(muted ? 'Muted 🔇' : `Volume: ${Math.round(curVol * 100)}%`);
+                }}
               >
                 {(isFocused) => (
-                  <div className={`tv-hud-ctrl-btn ${isFocused ? 'focused' : ''}`} title="Volume / Mute (M)">
+                  <div
+                    className={`tv-hud-ctrl-btn ${isFocused ? 'focused' : ''}`}
+                    title="Volume / Mute (M)"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      const muted = engineRef.current ? engineRef.current.toggleMute() : false;
+                      const curVol = engineRef.current ? engineRef.current.getState().volume : 1;
+                      setVolumeToast({ level: muted ? 0 : Math.round(curVol * 100), muted });
+                      if (volumeToastTimerRef.current) clearTimeout(volumeToastTimerRef.current);
+                      volumeToastTimerRef.current = setTimeout(() => setVolumeToast(null), 1800);
+                      triggerFeedback(muted ? 'Muted 🔇' : `Volume: ${Math.round(curVol * 100)}%`);
+                    }}
+                  >
                     {engineState.isMuted || engineState.volume === 0 ? (
                       <VolumeX size={22} />
                     ) : engineState.volume < 0.5 ? (
@@ -787,7 +808,7 @@ export const VideoPlayerScreen: React.FC<VideoPlayerScreenProps> = ({
 
               <div
                 className="tv-hud-volume-slider-track"
-                title="Adjust Volume (Up/Down Arrow)"
+                title="Adjust Volume (Click or drag)"
                 onPointerDown={(e) => {
                   const rect = e.currentTarget.getBoundingClientRect();
                   const pos = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
@@ -795,6 +816,7 @@ export const VideoPlayerScreen: React.FC<VideoPlayerScreenProps> = ({
                   setVolumeToast({ level: Math.round(pos * 100), muted: pos === 0 });
                   if (volumeToastTimerRef.current) clearTimeout(volumeToastTimerRef.current);
                   volumeToastTimerRef.current = setTimeout(() => setVolumeToast(null), 1800);
+                  triggerFeedback(`Volume: ${Math.round(pos * 100)}%`);
                 }}
               >
                 <div
