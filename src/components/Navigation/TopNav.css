@@ -1,0 +1,239 @@
+/* ==========================================================================
+   Google TV Header Navigation Bar — Material Design 3 (M3)
+   ========================================================================== */
+
+.tv-topnav-container {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: var(--top-nav-height);
+  padding: 0 var(--screen-padding-x);
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 100;
+  background: transparent;
+  pointer-events: none;
+}
+
+/* --------------------------------------------------------------------------
+   Left Cluster: Profile + Nav Capsule + Actions Capsule
+   -------------------------------------------------------------------------- */
+.tv-gtv-left-cluster {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  pointer-events: auto;
+}
+
+/* 1. Profile Avatar (M3 Surface) */
+.tv-gtv-profile-focusable {
+  border-radius: 50%;
+  outline: none;
+}
+
+.tv-gtv-avatar-btn {
+  position: relative;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  padding: 2.5px;
+  background-color: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 180ms cubic-bezier(0.2, 0, 0, 1);
+}
+
+.tv-gtv-avatar-img {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.tv-gtv-avatar-fallback {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.tv-gtv-avatar-lock {
+  position: absolute;
+  bottom: -1px;
+  right: -1px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background-color: #ea4335;
+  border: 1.5px solid #0f0f14;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.tv-gtv-avatar-btn.focused {
+  background-color: rgba(255, 255, 255, 0.25);
+  border-color: #ffffff;
+  outline: 2px solid var(--google-blue);
+  outline-offset: 2px;
+  transform: scale(1.04);
+}
+
+/* 2. Main Navigation Capsule (M3 Surface Container) */
+.tv-gtv-nav-capsule {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 8px;
+  border-radius: 9999px;
+  background-color: rgba(255, 255, 255, 0.12);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+}
+
+/* Search inside Capsule */
+.tv-gtv-search-focusable {
+  border-radius: 50%;
+  outline: none;
+}
+
+.tv-gtv-search-btn {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(255, 255, 255, 0.85);
+  transition: all 180ms cubic-bezier(0.2, 0, 0, 1);
+  cursor: pointer;
+}
+
+.tv-gtv-search-btn.focused {
+  background-color: rgba(255, 255, 255, 0.22);
+  color: #ffffff;
+  transform: scale(1.04);
+}
+
+/* Navigation Tabs (M3 Segmented Pill Navigation) */
+.tv-gtv-tab-focusable {
+  border-radius: 9999px;
+  outline: none;
+}
+
+.tv-gtv-tab-pill {
+  padding: 9px 20px;
+  border-radius: 9999px;
+  font-size: 15px;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.8);
+  letter-spacing: 0.2px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 180ms cubic-bezier(0.2, 0, 0, 1);
+  cursor: pointer;
+  user-select: none;
+}
+
+/* Active Tab: M3 Primary Container Pill */
+.tv-gtv-tab-pill.active {
+  background-color: #ffffff;
+  color: #001d35;
+  font-weight: 700;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+}
+
+/* Focus States */
+.tv-gtv-tab-pill.focused:not(.active) {
+  background-color: rgba(255, 255, 255, 0.2);
+  color: #ffffff;
+  transform: scale(1.025);
+}
+
+.tv-gtv-tab-pill.active.focused {
+  background-color: #ffffff;
+  color: #001d35;
+  outline: 2px solid var(--google-blue);
+  outline-offset: 2px;
+  transform: scale(1.025);
+}
+
+/* 3. Secondary Actions Capsule (M3 Surface Container) */
+.tv-gtv-actions-capsule {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 8px;
+  border-radius: 9999px;
+  background-color: rgba(255, 255, 255, 0.12);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+}
+
+.tv-gtv-action-focusable {
+  border-radius: 50%;
+  outline: none;
+}
+
+.tv-gtv-action-btn {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(255, 255, 255, 0.85);
+  position: relative;
+  transition: all 180ms cubic-bezier(0.2, 0, 0, 1);
+  cursor: pointer;
+}
+
+.tv-gtv-action-btn.active-sleep {
+  color: var(--google-blue);
+}
+
+.tv-gtv-sleep-badge {
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  font-size: 9px;
+  font-weight: 700;
+  background-color: var(--google-blue);
+  color: #001d35;
+  padding: 0 4px;
+  border-radius: 4px;
+}
+
+.tv-gtv-action-btn.focused {
+  background-color: rgba(255, 255, 255, 0.22);
+  color: #ffffff;
+  transform: scale(1.04);
+}
+
+/* --------------------------------------------------------------------------
+   Right Cluster: Time only (Clean & Minimal)
+   -------------------------------------------------------------------------- */
+.tv-gtv-right-cluster {
+  display: flex;
+  align-items: center;
+  pointer-events: auto;
+}
+
+.tv-gtv-time {
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 15px;
+  font-weight: 500;
+  letter-spacing: 0.3px;
+}

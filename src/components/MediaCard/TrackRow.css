@@ -1,0 +1,77 @@
+.tv-track-row-focusable {
+  width: 100%;
+  border-radius: var(--radius-sm);
+}
+
+.tv-track-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+  padding: 12px 18px;
+  background-color: var(--bg-surface-2);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  transition: background-color var(--duration-base) var(--easing-standard), border-color var(--duration-base) var(--easing-standard);
+}
+
+.tv-track-row.focused {
+  background-color: rgba(255, 255, 255, 0.18);
+  border-color: var(--border-focus);
+}
+
+.tv-track-row.current {
+  border-left: 3px solid var(--google-blue);
+}
+
+.tv-track-number-col {
+  width: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-tertiary);
+  font-size: var(--font-body);
+  font-weight: 600;
+}
+
+.tv-track-row.focused .tv-track-number-col {
+  color: var(--google-blue);
+}
+
+.tv-track-playing-icon {
+  color: var(--google-blue);
+  animation: tvPulse 1.5s ease-in-out infinite;
+}
+
+@keyframes tvPulse {
+  0%, 100% { opacity: 0.6; transform: scale(0.9); }
+  50% { opacity: 1; transform: scale(1.1); }
+}
+
+.tv-track-info-col {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  overflow: hidden;
+}
+
+.tv-track-name {
+  font-size: var(--font-body);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.tv-track-artist {
+  font-size: var(--font-caption);
+  color: var(--text-secondary);
+  margin-top: 2px;
+}
+
+.tv-track-duration-col {
+  font-size: var(--font-caption);
+  font-weight: 500;
+  color: var(--text-tertiary);
+}
+
+.tv-track-row.focused .tv-track-duration-col {
+  color: var(--text-primary);
+}

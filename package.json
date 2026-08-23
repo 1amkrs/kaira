@@ -1,0 +1,41 @@
+{
+  "name": "tvos-launcher",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "main": "electron/main.cjs",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview",
+    "test": "node --test tests/player.test.js",
+    "electron:dev": "concurrently -k \"cross-env NODE_ENV=development vite\" \"wait-on tcp:5173 && cross-env NODE_ENV=development electron .\"",
+    "electron:build": "npm run build && cross-env NODE_ENV=production electron .",
+    "start": "cross-env NODE_ENV=production electron .",
+    "build:x86_64": "python ./os/build/build-iso.py",
+    "build:arm64": "bash ./os/build/build-arm64-pi.sh",
+    "build:iso": "python ./os/build/build-iso.py",
+    "build:pi": "bash ./os/build/build-arm64-pi.sh",
+    "run:vm": "bash ./os/build/build-vm.sh"
+  },
+  "dependencies": {
+    "clsx": "^2.1.1",
+    "hls.js": "^1.7.1",
+    "lottie-web": "^5.13.0",
+    "lucide-react": "^1.16.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.4",
+    "@types/react": "^19.0.10",
+    "@types/react-dom": "^19.0.4",
+    "@vitejs/plugin-react": "^4.3.4",
+    "concurrently": "^9.1.2",
+    "cross-env": "^7.0.3",
+    "electron": "^34.2.0",
+    "typescript": "~5.7.2",
+    "vite": "^6.1.0",
+    "wait-on": "^8.0.2"
+  }
+}

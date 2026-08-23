@@ -1,0 +1,74 @@
+.tv-virtual-keyboard {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 100%;
+}
+
+.tv-keyboard-row {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+}
+
+.tv-keyboard-key-focusable {
+  flex: 1;
+  border-radius: var(--radius-md);
+}
+
+.tv-keyboard-key {
+  height: 64px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background-color: rgba(255, 255, 255, 0.07);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  color: var(--text-primary);
+  font-size: clamp(1.3rem, 1.6vw, 1.75rem);
+  font-weight: 700;
+  transition:
+    transform var(--duration-micro) var(--easing-enter),
+    background-color var(--duration-base) var(--easing-standard),
+    border-color var(--duration-base) var(--easing-standard),
+    box-shadow var(--duration-base) var(--easing-standard);
+  cursor: pointer;
+  user-select: none;
+}
+
+.tv-keyboard-key.action-key {
+  font-size: var(--font-body);
+  font-weight: 600;
+  gap: 10px;
+}
+
+.tv-keyboard-key.focused {
+  background-color: var(--google-blue);
+  border-color: var(--border-focus);
+  color: #ffffff;
+  font-weight: 800;
+  transform: scale(var(--focus-scale));
+  box-shadow: var(--focus-shadow);
+  z-index: 2;
+}
+
+.tv-keyboard-actions-row {
+  margin-top: 6px;
+}
+
+.tv-keyboard-key-focusable.space-key {
+  flex: 2.8;
+}
+
+.tv-keyboard-key-focusable.submit-key .tv-keyboard-key {
+  background-color: rgba(138, 180, 248, 0.18);
+  border-color: rgba(138, 180, 248, 0.35);
+  color: var(--google-blue);
+}
+
+.tv-keyboard-key-focusable.submit-key .tv-keyboard-key.focused {
+  background-color: var(--google-blue);
+  border-color: var(--border-focus);
+  color: #ffffff;
+}

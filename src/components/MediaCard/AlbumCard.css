@@ -1,0 +1,69 @@
+.tv-album-card-wrapper {
+  flex: 0 0 auto;
+  width: clamp(160px, 14vw, 220px);
+  border-radius: var(--radius-md);
+  text-align: left;
+}
+
+.tv-album-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+}
+
+.tv-album-artwork-box {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  background-color: var(--bg-surface-2);
+  border: 1px solid var(--border-subtle);
+  transition: border-color 180ms ease-out, filter 180ms ease-out;
+}
+
+.tv-album-card.focused .tv-album-artwork-box {
+  border-color: var(--border-focus);
+  filter: brightness(1.03);
+}
+
+.tv-album-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  filter: brightness(1.04) contrast(1.02);
+}
+
+.tv-album-scrim {
+  display: none;
+}
+
+.tv-album-meta {
+  padding: 2px 2px 0 2px;
+}
+
+.tv-album-title {
+  font-size: var(--font-title-sm);
+  font-weight: 500;
+  color: var(--text-primary);
+  line-height: 1.25;
+}
+
+.tv-album-subrow {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: var(--font-caption);
+  color: var(--text-secondary);
+  margin-top: 2px;
+}
+
+.tv-album-artist {
+  color: var(--text-secondary);
+}
+
+.tv-album-dot {
+  color: var(--text-tertiary);
+}

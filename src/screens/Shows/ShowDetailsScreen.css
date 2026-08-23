@@ -1,0 +1,410 @@
+.tv-show-details-screen {
+  position: relative;
+  width: 100vw;
+  height: 100vh;
+  padding-bottom: 80px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  background-color: var(--bg-app);
+}
+
+/* 1. Static Backdrop Image */
+.tv-show-backdrop {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 75vh;
+  background-size: cover;
+  background-position: center top;
+  z-index: 1;
+}
+
+/* 2. Automated Background Trailer Video */
+.tv-details-trailer-bg {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 75vh;
+  overflow: hidden;
+  opacity: 0;
+  transition: opacity 1s var(--easing-enter);
+  z-index: 2;
+  pointer-events: none;
+  background-color: #000000;
+}
+
+.tv-details-trailer-bg.visible {
+  opacity: 1;
+}
+
+.tv-trailer-iframe {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%) scale(1.38);
+  width: 100vw;
+  height: 100vh;
+  border: none;
+  pointer-events: none;
+  filter: brightness(1.05) contrast(1.02);
+}
+
+/* 3. Cinematic Vignette & Scrim Gradient */
+.tv-show-scrim {
+  position: absolute;
+  inset: 0;
+  height: 80vh;
+  background: linear-gradient(
+    90deg,
+    rgba(15, 15, 15, 0.92) 0%,
+    rgba(15, 15, 15, 0.72) 32%,
+    rgba(15, 15, 15, 0.2) 60%,
+    rgba(15, 15, 15, 0) 80%
+  ),
+  linear-gradient(
+    180deg,
+    rgba(15, 15, 15, 0.25) 0%,
+    rgba(15, 15, 15, 0) 35%,
+    rgba(15, 15, 15, 0.85) 80%,
+    var(--bg-app) 100%
+  );
+  z-index: 3;
+  pointer-events: none;
+}
+
+/* 4. Top Navigation Bar */
+.tv-show-top-bar {
+  display: flex;
+  align-items: center;
+  position: relative;
+  z-index: 10;
+  padding: 36px var(--screen-padding-x) 0 var(--screen-padding-x);
+}
+
+.tv-show-top-bar .tv-details-back-focusable {
+  display: inline-flex;
+  width: fit-content;
+  max-width: fit-content;
+  border-radius: var(--radius-pill);
+}
+
+/* 5. Main Hero Content */
+.tv-show-hero-content {
+  position: relative;
+  z-index: 10;
+  max-width: 860px;
+  padding: 20px var(--screen-padding-x) 0 var(--screen-padding-x);
+}
+
+.tv-show-genres-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.tv-genre-pill {
+  font-size: var(--font-caption);
+  color: var(--google-blue);
+  background-color: rgba(138, 180, 248, 0.12);
+  border: 1px solid rgba(138, 180, 248, 0.25);
+  padding: 3px 10px;
+  border-radius: var(--radius-pill);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.tv-details-logo-container {
+  display: flex;
+  align-items: center;
+  margin-bottom: 18px;
+  max-width: 500px;
+}
+
+.tv-details-title-logo {
+  max-height: clamp(75px, 12vh, 125px);
+  max-width: 100%;
+  object-fit: contain;
+  object-position: left center;
+  filter: drop-shadow(0 4px 20px rgba(0, 0, 0, 0.95)) drop-shadow(0 1px 3px rgba(0, 0, 0, 0.9));
+  animation: logoFadeIn 450ms var(--easing-enter) forwards;
+}
+
+@keyframes logoFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.tv-show-details-title {
+  font-size: var(--font-display);
+  font-weight: 700;
+  color: var(--text-primary);
+  line-height: 1.1;
+  margin-bottom: 16px;
+  text-shadow: 0 4px 24px rgba(0, 0, 0, 0.9);
+}
+
+.tv-show-meta-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-md);
+  margin-bottom: 20px;
+}
+
+.tv-meta-badge {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--font-body);
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+.tv-meta-badge.rating {
+  color: #fbbc04;
+  font-weight: 700;
+  background-color: rgba(0, 0, 0, 0.6);
+  padding: 3px 8px;
+  border-radius: var(--radius-sm);
+}
+
+.tv-meta-badge.trailer-live {
+  color: #81c995;
+  background-color: rgba(129, 201, 149, 0.15);
+  border: 1px solid rgba(129, 201, 149, 0.3);
+  padding: 3px 10px;
+  border-radius: var(--radius-pill);
+  font-size: var(--font-caption);
+  font-weight: 600;
+  letter-spacing: 0.3px;
+  animation: tvPulse 2s ease-in-out infinite;
+}
+
+.tv-show-description {
+  font-size: var(--font-body-lg);
+  line-height: 1.65;
+  color: var(--text-secondary);
+  margin-bottom: 22px;
+  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.8);
+}
+
+/* Credits & Cast Chips */
+.tv-details-credits {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  font-size: var(--font-body);
+  margin-bottom: 32px;
+}
+
+.tv-credit-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.tv-credit-item.cast-row {
+  align-items: center;
+}
+
+.tv-credit-item .label {
+  color: var(--text-tertiary);
+  font-weight: 600;
+  font-size: var(--font-caption);
+  min-width: 65px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.tv-credit-item .value-highlight {
+  color: var(--text-primary);
+  font-weight: 600;
+  font-size: var(--font-body);
+}
+
+.tv-cast-chips-wrap {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.tv-cast-chip {
+  padding: 4px 12px;
+  border-radius: var(--radius-pill);
+  background-color: rgba(255, 255, 255, 0.08);
+  border: 1px solid var(--border-subtle);
+  font-size: var(--font-caption);
+  color: var(--text-primary);
+  font-weight: 500;
+  backdrop-filter: blur(10px);
+}
+
+/* Action Buttons */
+.tv-show-actions-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-md);
+  margin-bottom: 48px;
+}
+
+.tv-details-play-btn {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 28px;
+  background-color: #ffffff;
+  color: #0f0f0f;
+  border-radius: var(--radius-pill);
+  font-size: var(--font-body-lg);
+  font-weight: 700;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  transition:
+    transform var(--duration-micro) var(--easing-enter),
+    background-color var(--duration-base) var(--easing-standard),
+    box-shadow var(--duration-base) var(--easing-standard);
+}
+
+.tv-details-play-btn.focused {
+  background-color: var(--google-blue);
+  color: #ffffff;
+  transform: scale(var(--focus-scale));
+  box-shadow: var(--focus-shadow);
+}
+
+.tv-details-audio-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 14px 22px;
+  background-color: rgba(255, 255, 255, 0.12);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  color: var(--text-primary);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-pill);
+  font-size: var(--font-body);
+  font-weight: 600;
+  transition: all var(--duration-base) var(--easing-standard);
+}
+
+.tv-details-audio-btn.focused {
+  background-color: rgba(255, 255, 255, 0.28);
+  border-color: var(--border-focus);
+  transform: scale(var(--focus-scale));
+  box-shadow: var(--focus-shadow);
+}
+
+.tv-details-fav-btn {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 24px;
+  background-color: rgba(255, 255, 255, 0.12);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  color: var(--text-primary);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-pill);
+  font-size: var(--font-body);
+  font-weight: 600;
+  transition: all var(--duration-base) var(--easing-standard);
+}
+
+.tv-details-fav-btn.focused {
+  background-color: rgba(255, 255, 255, 0.25);
+  border-color: var(--border-focus);
+  transform: scale(var(--focus-scale));
+  box-shadow: var(--focus-shadow);
+}
+
+/* 6. Season Selector Tabs & Episodes Rail */
+.tv-show-seasons-section {
+  position: relative;
+  z-index: 10;
+  padding: 0;
+  margin-bottom: 24px;
+}
+
+.tv-seasons-title {
+  font-size: var(--font-title-md);
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 14px;
+  padding: 0 var(--screen-padding-x);
+}
+
+.tv-seasons-tabs-row {
+  display: flex;
+  gap: var(--space-sm);
+  margin-bottom: 20px;
+  padding: 0 var(--screen-padding-x);
+}
+
+.tv-season-tab-focusable {
+  border-radius: var(--radius-pill);
+}
+
+.tv-season-tab-pill {
+  padding: 8px 18px;
+  border-radius: var(--radius-pill);
+  background-color: var(--bg-surface-2);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-secondary);
+  font-size: var(--font-body);
+  font-weight: 500;
+  transition: all var(--duration-base) var(--easing-standard);
+}
+
+.tv-season-tab-pill.active {
+  background-color: rgba(255, 255, 255, 0.15);
+  color: var(--text-primary);
+  border-color: rgba(255, 255, 255, 0.3);
+}
+
+.tv-season-tab-pill.focused {
+  background-color: var(--google-blue);
+  color: #ffffff;
+  border-color: var(--border-focus);
+  transform: scale(var(--focus-scale));
+  box-shadow: var(--focus-shadow);
+}
+
+.tv-episodes-horizontal-rail {
+  display: flex;
+  gap: var(--space-md);
+  padding: var(--space-sm) var(--screen-padding-x) var(--space-xl) var(--screen-padding-x);
+  align-items: flex-start;
+}
+
+.tv-episode-skel-card {
+  flex: 0 0 auto;
+  width: clamp(280px, 24vw, 380px);
+  aspect-ratio: 16 / 9;
+  border-radius: var(--radius-md);
+  background-color: var(--bg-surface-2);
+}
+
+.tv-empty-episodes {
+  color: var(--text-tertiary);
+  font-size: var(--font-body);
+  padding: 24px var(--screen-padding-x);
+}
+
+/* 7. Supporting Rail */
+.tv-details-supporting-rail {
+  position: relative;
+  z-index: 10;
+  margin-top: 16px;
+}
+

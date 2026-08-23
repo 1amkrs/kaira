@@ -1,0 +1,23 @@
+.tv-focusable {
+  position: relative;
+  outline: none;
+  cursor: pointer;
+  transform-origin: center center;
+  transition: transform var(--focus-duration) var(--focus-easing),
+              box-shadow var(--focus-duration) var(--focus-easing),
+              background-color var(--focus-duration) var(--focus-easing),
+              border-color var(--focus-duration) var(--focus-easing);
+  will-change: transform;
+}
+
+.tv-focusable.tv-focus-scale.is-focused {
+  transform: scale(var(--focus-scale));
+  z-index: 10;
+  box-shadow: var(--focus-shadow);
+}
+
+.tv-focusable.is-disabled {
+  opacity: 0.4;
+  pointer-events: none;
+  cursor: default;
+}

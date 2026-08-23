@@ -1,0 +1,36 @@
+#!/bin/sh
+# ==============================================================================
+# TV OS — Shell Binary Entrypoint Wrapper (POSIX /bin/sh)
+# Launches the TV OS React UI in native appliance kiosk mode
+# ==============================================================================
+
+set -e
+
+APP_DIR="/opt/tvos"
+cd "$APP_DIR"
+
+export DISPLAY=${DISPLAY:-:0}
+export XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR:-/tmp/run-0}
+export LIBGL_DRIVERS_PATH=/usr/lib/xorg/modules/dri:/usr/lib/dri
+export LIBVA_DRIVERS_PATH=/usr/lib/dri:/usr/lib/xorg/modules/dri
+
+if [ ! -f /etc/machine-id ]; then
+  mkdir -p /etc
+  echo "00000000000000000000000000000001" > /etc/machine-id
+fi
+
+FLAGS="--kiosk --no-first-run --no-default-browser-check --disable-translate --disable-features=Translate,PreloadMediaEngagementData --autoplay-policy=no-user-gesture-required --no-sandbox --disable-gpu --disable-gpu-compositing --disable-dev-shm-usage --disable-gpu-sandbox --app=file:///opt/tvos/dist/index.html"
+
+if command -v chromium >/dev/null 2>&1; then
+  echo "[tvos] 🚀 Launching TV OS Shell with native Chromium runtime..."
+  exec chromium $FLAGS "$@"
+elif command -v chromium-browser >/dev/null 2>&1; then
+  echo "[tvos] 🚀 Launching TV OS Shell with native Chromium Browser..."
+  exec chromium-browser $FLAGS "$@"
+elif [ -f "$APP_DIR/bin/electron" ]; then
+  echo "[tvos] 🚀 Launching TV OS Shell with Electron..."
+  exec "$APP_DIR/bin/electron" --no-sandbox --disable-gpu --disable-gpu-compositing --disable-dev-shm-usage "$APP_DIR" "$@"
+else
+  echo "[tvos] Error: No runtime found"
+  exit 1
+fi

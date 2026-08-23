@@ -1,0 +1,260 @@
+/* ==========================================================================
+   MINIMALIST CINEMATIC PROFILE / USER SELECT SCREEN
+   ========================================================================== */
+
+.tv-profile-screen-backdrop {
+  position: fixed;
+  inset: 0;
+  background: radial-gradient(circle at 50% 45%, rgba(26, 26, 36, 0.88) 0%, rgba(8, 8, 12, 0.98) 100%);
+  backdrop-filter: blur(36px);
+  -webkit-backdrop-filter: blur(36px);
+  z-index: 1800;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: tvProfileScreenFadeIn 300ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes tvProfileScreenFadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.tv-profile-minimal-stage {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  max-width: 1200px;
+  padding: 0 48px;
+  gap: 52px;
+  animation: tvProfileStageZoom 320ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes tvProfileStageZoom {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* Header */
+.tv-profile-minimal-header {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  text-align: center;
+}
+
+.tv-profile-minimal-title {
+  font-size: 38px;
+  font-weight: 700;
+  color: #ffffff;
+  margin: 0;
+  letter-spacing: -0.5px;
+  text-shadow: 0 4px 20px rgba(0, 0, 0, 0.6);
+}
+
+.tv-profile-minimal-hint {
+  font-size: 16px;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.55);
+  margin: 0;
+  letter-spacing: 0.1px;
+}
+
+/* Horizontal Floating Avatars Row */
+.tv-profile-minimal-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 36px;
+  flex-wrap: wrap;
+  max-width: 100%;
+}
+
+.tv-profile-avatar-focusable {
+  border-radius: 50%;
+  outline: none;
+}
+
+.tv-profile-avatar-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 18px;
+  cursor: pointer;
+  opacity: 0.65;
+  transition: all 260ms cubic-bezier(0.16, 1, 0.3, 1);
+  outline: none;
+}
+
+.tv-profile-avatar-card.focused {
+  opacity: 1;
+  transform: scale(1.16) translateY(-6px);
+}
+
+.tv-profile-avatar-card.active-user:not(.focused) {
+  opacity: 0.85;
+}
+
+/* Avatar Disc */
+.tv-profile-avatar-disc {
+  position: relative;
+  width: 116px;
+  height: 116px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.65);
+  border: 3px solid rgba(255, 255, 255, 0.15);
+  transition: all 260ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.tv-profile-avatar-card.focused .tv-profile-avatar-disc {
+  border-color: #ffffff;
+  box-shadow: 0 20px 48px rgba(0, 0, 0, 0.85), 0 0 28px rgba(255, 255, 255, 0.3);
+}
+
+.tv-profile-avatar-disc.add-disc {
+  background: rgba(255, 255, 255, 0.05);
+  border: 2.5px dashed rgba(255, 255, 255, 0.3);
+  backdrop-filter: blur(16px);
+}
+
+.tv-profile-avatar-card.focused .tv-profile-avatar-disc.add-disc {
+  background: rgba(255, 255, 255, 0.14);
+  border-style: solid;
+  border-color: #ffffff;
+}
+
+/* Active Indicator Dot */
+.tv-profile-avatar-active-dot {
+  position: absolute;
+  bottom: 2px;
+  right: 6px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #34a853;
+  border: 2.5px solid #0f0f14;
+  box-shadow: 0 0 10px rgba(52, 168, 83, 0.6);
+}
+
+/* Lock Tag */
+.tv-profile-avatar-lock-tag {
+  position: absolute;
+  top: 2px;
+  right: 6px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: rgba(18, 18, 24, 0.9);
+  border: 1.5px solid rgba(255, 255, 255, 0.3);
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.6);
+}
+
+.tv-profile-avatar-lock-tag.locked {
+  color: #f28b82;
+  border-color: rgba(234, 67, 53, 0.5);
+}
+
+.tv-profile-avatar-lock-tag.unlocked {
+  color: #81c995;
+  border-color: rgba(52, 168, 83, 0.5);
+}
+
+/* Edit Mode Overlay */
+.tv-profile-avatar-edit-overlay {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px dashed #ffffff;
+}
+
+/* User Name Label */
+.tv-profile-avatar-label {
+  font-size: 17px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.7);
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  letter-spacing: 0.2px;
+  transition: color 200ms ease;
+}
+
+.tv-profile-avatar-card.focused .tv-profile-avatar-label {
+  color: #ffffff;
+  font-weight: 700;
+  text-shadow: 0 2px 10px rgba(0, 0, 0, 0.8);
+}
+
+/* Minimal Footer Buttons */
+.tv-profile-minimal-footer {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-top: 12px;
+}
+
+.tv-profile-footer-btn-focusable {
+  border-radius: 9999px;
+  outline: none;
+}
+
+.tv-profile-pill-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 22px;
+  border-radius: 9999px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 180ms ease;
+}
+
+.tv-profile-pill-btn.secondary {
+  background: transparent;
+  border-color: rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.tv-profile-pill-btn.active {
+  background: rgba(138, 180, 248, 0.18);
+  border-color: var(--google-blue, #8ab4f8);
+  color: #ffffff;
+}
+
+.tv-profile-pill-btn.focused {
+  background: var(--google-blue, #8ab4f8);
+  color: #0f0f0f;
+  border-color: #ffffff;
+  transform: scale(1.08);
+  box-shadow: 0 8px 24px rgba(138, 180, 248, 0.35);
+}

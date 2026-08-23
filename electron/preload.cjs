@@ -1,0 +1,22 @@
+const { contextBridge, ipcRenderer } = require('electron');
+
+contextBridge.exposeInMainWorld('electronAPI', {
+  launchApp: (app) => ipcRenderer.invoke('launch-app', app),
+  openExternal: (url) => ipcRenderer.invoke('open-external', url),
+  openPath: (path) => ipcRenderer.invoke('open-path', path),
+  getDisplayInfo: () => ipcRenderer.invoke('get-display-info'),
+  setFullscreen: (fullscreen) => ipcRenderer.invoke('set-fullscreen', fullscreen),
+  executeSystemPower: (action) => ipcRenderer.invoke('system-power', action),
+  getSystemDiagnostics: () => ipcRenderer.invoke('get-system-diagnostics'),
+  getAudioDevices: () => ipcRenderer.invoke('get-audio-devices'),
+  setAudioDevice: (deviceId) => ipcRenderer.invoke('set-audio-device', deviceId),
+  getPlatformInfo: () => ipcRenderer.invoke('get-platform-info'),
+  getAmbientStatus: () => ipcRenderer.invoke('ambient-status'),
+  setAmbientMode: (mode) => ipcRenderer.invoke('ambient-mode', mode),
+  setAmbientIntensity: (intensity) => ipcRenderer.invoke('ambient-intensity', intensity),
+  getUblockStatus: () => ipcRenderer.invoke('ublock-status'),
+  setUblockEnabled: (enabled) => ipcRenderer.invoke('ublock-toggle', enabled),
+  setUblockAntiPopup: (enabled) => ipcRenderer.invoke('ublock-toggle-popup', enabled),
+  resetUblockStats: () => ipcRenderer.invoke('ublock-reset-stats'),
+  controlMedia: (action, value) => ipcRenderer.invoke('media-control', { action, value }),
+});

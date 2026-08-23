@@ -1,0 +1,200 @@
+.tv-mini-player-bar {
+  position: fixed;
+  bottom: 40px; /* Above controller hints */
+  left: var(--screen-padding-x);
+  right: var(--screen-padding-x);
+  height: 64px;
+  background: rgba(24, 24, 24, 0.95);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.8);
+  display: flex;
+  flex-direction: column;
+  z-index: 900;
+  overflow: hidden;
+  animation: tvSlideUp 220ms cubic-bezier(0, 0, 0.2, 1);
+}
+
+@keyframes tvSlideUp {
+  from {
+    transform: translateY(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+.tv-mini-progress-track {
+  width: 100%;
+  height: 3px;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.tv-mini-progress-fill {
+  height: 100%;
+  background: var(--google-blue);
+  transition: width 250ms linear;
+}
+
+.tv-mini-player-content {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 16px;
+  height: 61px;
+  gap: 16px;
+}
+
+.tv-mini-track-info-focusable {
+  flex: 1;
+  min-width: 0;
+  border-radius: var(--radius-sm);
+}
+
+.tv-mini-track-info {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 6px 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid transparent;
+  cursor: pointer;
+  min-width: 0;
+  transition: all var(--duration-base) var(--easing-standard);
+}
+
+.tv-mini-track-info:hover {
+  background-color: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.15);
+}
+
+.tv-mini-track-info.focused {
+  background-color: rgba(138, 180, 248, 0.15);
+  border-color: var(--border-focus);
+  box-shadow: 0 0 14px rgba(138, 180, 248, 0.3);
+}
+
+.tv-mini-art-box {
+  width: 44px;
+  height: 44px;
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  background-color: var(--bg-surface-2);
+  flex-shrink: 0;
+}
+
+.tv-mini-art {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: var(--radius-sm);
+  transition: transform var(--duration-base) var(--easing-standard);
+}
+
+.tv-mini-art.spinning {
+  animation: tvSpinSlow 12s linear infinite;
+}
+
+@keyframes tvSpinSlow {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.tv-mini-text-col {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1;
+  gap: 2px;
+}
+
+.tv-mini-title {
+  font-size: var(--font-body);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.tv-mini-artist {
+  font-size: var(--font-caption);
+  color: var(--text-secondary);
+}
+
+.tv-mini-expand-icon {
+  color: var(--text-tertiary);
+  opacity: 0.4;
+  margin-left: 8px;
+  flex-shrink: 0;
+  transition: all var(--duration-base) var(--easing-standard);
+}
+
+.tv-mini-track-info:hover .tv-mini-expand-icon,
+.tv-mini-track-info.focused .tv-mini-expand-icon {
+  opacity: 1;
+  color: var(--google-blue);
+  transform: scale(1.1);
+}
+
+.tv-mini-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+.tv-mini-btn-focusable {
+  display: inline-flex;
+  border-radius: 50%;
+}
+
+.tv-mini-btn {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: rgba(255, 255, 255, 0.06);
+  color: var(--text-secondary);
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: all var(--duration-base) var(--easing-standard);
+}
+
+.tv-mini-btn:hover {
+  background-color: rgba(255, 255, 255, 0.16);
+  color: var(--text-primary);
+  transform: scale(1.08);
+}
+
+.tv-mini-btn.playpause {
+  background-color: rgba(255, 255, 255, 0.12);
+  color: var(--text-primary);
+}
+
+.tv-mini-btn.playpause:hover {
+  background-color: rgba(255, 255, 255, 0.22);
+}
+
+.tv-mini-btn.focused {
+  background-color: var(--google-blue);
+  color: #ffffff;
+  transform: scale(var(--focus-scale));
+  border-color: var(--border-focus);
+  box-shadow: 0 0 14px rgba(138, 180, 248, 0.6);
+}
+
+.tv-mini-btn.danger:hover {
+  background-color: rgba(234, 67, 53, 0.25);
+  color: var(--accent-red);
+}
+
+.tv-mini-btn.danger.focused {
+  background-color: var(--accent-red);
+  color: #ffffff;
+  border-color: var(--accent-red);
+  box-shadow: 0 0 14px rgba(234, 67, 53, 0.6);
+}

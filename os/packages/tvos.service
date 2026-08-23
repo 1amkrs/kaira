@@ -1,0 +1,29 @@
+[Unit]
+Description=TV OS Personal Appliance Shell
+After=network.target sound.target graphical.target systemd-user-sessions.service pipewire.service
+Wants=pipewire.service
+Conflicts=getty@tty1.service
+
+[Service]
+Type=simple
+User=tvos
+PAMName=login
+Environment=XDG_SESSION_TYPE=wayland
+Environment=XDG_RUNTIME_DIR=/run/user/1000
+Environment=WAYLAND_DISPLAY=wayland-0
+Environment=NODE_ENV=production
+Environment=ELECTRON_OZONE_PLATFORM_HINT=auto
+Environment=LIBVA_DRIVER_NAME=iHD
+WorkingDirectory=/opt/tvos
+ExecStart=/opt/tvos/os/packages/tvos-session.sh
+Restart=always
+RestartSec=2
+StandardInput=tty
+StandardOutput=journal
+StandardError=journal
+TTYPath=/dev/tty1
+TTYReset=yes
+TTYVHangup=yes
+
+[Install]
+WantedBy=graphical.target

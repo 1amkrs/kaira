@@ -1,0 +1,187 @@
+.tv-sleep-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.85);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  z-index: 10000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.tv-sleep-modal-card {
+  width: min(640px, 90vw);
+  background: var(--bg-surface-1);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  padding: 32px;
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.9);
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.tv-sleep-modal-header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  position: relative;
+}
+
+.tv-sleep-icon-box {
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  background: rgba(138, 180, 248, 0.15);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.tv-sleep-moon-icon {
+  color: var(--google-blue);
+}
+
+.tv-sleep-header-text {
+  flex: 1;
+}
+
+.tv-sleep-header-text h2 {
+  font-size: var(--font-title-lg);
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 4px;
+}
+
+.tv-sleep-header-text p {
+  font-size: var(--font-caption);
+  color: var(--text-secondary);
+}
+
+.tv-sleep-active-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 20px;
+  background: rgba(138, 180, 248, 0.12);
+  border: 1px solid rgba(138, 180, 248, 0.3);
+  border-radius: var(--radius-md);
+}
+
+.tv-sleep-countdown-box {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--google-blue);
+  font-size: var(--font-body);
+}
+
+.tv-sleep-clock-pulse {
+  animation: tvPulse 1.5s infinite;
+}
+
+.tv-sleep-cancel-pill {
+  padding: 6px 14px;
+  border-radius: var(--radius-sm);
+  background: rgba(234, 67, 53, 0.2);
+  color: var(--accent-red);
+  font-size: var(--font-caption);
+  font-weight: 600;
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: all var(--duration-base) var(--easing-standard);
+}
+
+.tv-sleep-cancel-pill.focused {
+  background: var(--accent-red);
+  color: #ffffff;
+  transform: scale(1.05);
+  box-shadow: 0 0 14px rgba(234, 67, 53, 0.6);
+}
+
+.tv-sleep-presets-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 14px;
+}
+
+.tv-sleep-preset-focusable {
+  border-radius: var(--radius-md);
+}
+
+.tv-sleep-preset-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 20px 14px;
+  background: var(--bg-surface-2);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  position: relative;
+  transition: all var(--duration-base) var(--easing-standard);
+}
+
+.tv-sleep-preset-card.focused {
+  background: rgba(255, 255, 255, 0.16);
+  border-color: var(--border-focus);
+  box-shadow: 0 0 16px rgba(138, 180, 248, 0.4);
+  transform: scale(1.05);
+}
+
+.tv-sleep-preset-card.active {
+  border-color: var(--google-blue);
+  background: rgba(138, 180, 248, 0.15);
+}
+
+.tv-sleep-preset-mins {
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--text-primary);
+  line-height: 1;
+  margin-bottom: 6px;
+}
+
+.tv-sleep-preset-label {
+  font-size: var(--font-caption);
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+.tv-sleep-active-check {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  color: var(--google-blue);
+}
+
+.tv-sleep-footer-actions {
+  display: flex;
+  justify-content: flex-end;
+  border-top: 1px solid var(--border-subtle);
+  padding-top: 16px;
+}
+
+.tv-sleep-instant-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 18px;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: var(--radius-md);
+  color: var(--text-primary);
+  font-size: var(--font-body);
+  font-weight: 500;
+  cursor: pointer;
+  transition: all var(--duration-base) var(--easing-standard);
+}
+
+.tv-sleep-instant-btn.focused {
+  background: var(--google-blue);
+  color: #ffffff;
+  transform: scale(1.05);
+  box-shadow: 0 0 16px rgba(138, 180, 248, 0.6);
+}
