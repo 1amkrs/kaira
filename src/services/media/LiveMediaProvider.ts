@@ -1024,14 +1024,23 @@ class LiveMediaProviderService implements MediaProvider {
       const cleanImdb = mov.id.startsWith('tt') ? mov.id : 'tt0816692';
       const subs = await addonService.fetchSubtitles('movie', cleanImdb);
 
-      let targetUrl = mov.streamUrl;
-      let targetStreamType: 'direct' | 'embed' | 'youtube' = 'embed';
+      let targetUrl: string;
+      let targetStreamType: 'direct' | 'embed' | 'youtube' = 'direct';
 
-      if (targetUrl && (targetUrl.endsWith('.mp4') || targetUrl.endsWith('.mkv') || targetUrl.endsWith('.m3u8'))) {
+      // Priority 1: explicit .mp4/.m3u8 on the movie object
+      if (mov.streamUrl && (mov.streamUrl.endsWith('.mp4') || mov.streamUrl.endsWith('.mkv') || mov.streamUrl.endsWith('.m3u8'))) {
+        targetUrl = mov.streamUrl;
         targetStreamType = 'direct';
-      } else {
-        targetUrl = `https://vidlink.pro/movie/${cleanImdb}?primaryColor=8ab4f8&secondaryColor=ffffff&iconColor=ffffff`;
-        targetStreamType = 'embed';
+      }
+      // Priority 2: curated direct cinema map
+      else if (DIRECT_CINEMA_STREAMS[cleanImdb]) {
+        targetUrl = DIRECT_CINEMA_STREAMS[cleanImdb];
+        targetStreamType = 'direct';
+      }
+      // Priority 3: deterministic CDN sample fallback — always native, always controllable
+      else {
+        targetUrl = getDirectFallbackStream(cleanImdb);
+        targetStreamType = 'direct';
       }
 
       const calculatedDuration = this.parseRuntimeToSeconds(mov.runtime, mov.runtimeMinutes, 7200);
@@ -1060,14 +1069,23 @@ class LiveMediaProviderService implements MediaProvider {
       const cleanImdb = cleanShowId.startsWith('tt') ? cleanShowId : 'tt0903747';
       const subs = await addonService.fetchSubtitles('series', cleanImdb);
 
-      let targetUrl = ep.streamUrl;
-      let targetStreamType: 'direct' | 'embed' | 'youtube' = 'embed';
+      let targetUrl: string;
+      let targetStreamType: 'direct' | 'embed' | 'youtube' = 'direct';
 
-      if (targetUrl && (targetUrl.endsWith('.mp4') || targetUrl.endsWith('.mkv') || targetUrl.endsWith('.m3u8'))) {
+      // Priority 1: explicit .mp4/.m3u8 on the episode object
+      if (ep.streamUrl && (ep.streamUrl.endsWith('.mp4') || ep.streamUrl.endsWith('.mkv') || ep.streamUrl.endsWith('.m3u8'))) {
+        targetUrl = ep.streamUrl;
         targetStreamType = 'direct';
-      } else {
-        targetUrl = `https://vidlink.pro/tv/${cleanImdb}/${ep.seasonNumber || 1}/${ep.number || 1}?primaryColor=8ab4f8&secondaryColor=ffffff&iconColor=ffffff`;
-        targetStreamType = 'embed';
+      }
+      // Priority 2: curated direct cinema map (by show IMDb)
+      else if (DIRECT_CINEMA_STREAMS[cleanImdb] || DIRECT_CINEMA_STREAMS[cleanShowId]) {
+        targetUrl = DIRECT_CINEMA_STREAMS[cleanImdb] || DIRECT_CINEMA_STREAMS[cleanShowId];
+        targetStreamType = 'direct';
+      }
+      // Priority 3: deterministic CDN sample fallback — always native, always controllable
+      else {
+        targetUrl = getDirectFallbackStream(`${cleanImdb}-s${ep.seasonNumber || 1}e${ep.number || 1}`);
+        targetStreamType = 'direct';
       }
 
       const calculatedEpDuration = this.parseRuntimeToSeconds(ep.runtime, ep.runtimeMinutes, 2700);

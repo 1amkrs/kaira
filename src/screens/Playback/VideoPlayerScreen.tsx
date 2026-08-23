@@ -124,20 +124,6 @@ export const VideoPlayerScreen: React.FC<VideoPlayerScreenProps> = ({
       setEngineState(s);
     });
 
-    // Initial media load
-    const initialExpectedDur = source.durationSeconds || (source.mediaType === 'episode' ? 2700 : 7200);
-    engine.loadMedia(
-      currentStreamUrl,
-      currentDriverType,
-      source.initialPosition || 0,
-      source.subtitles && source.subtitles.length > 0 ? source.subtitles[0].url : undefined,
-      initialExpectedDur
-    );
-
-    if (source.subtitles && source.subtitles.length > 0) {
-      setSelectedSubId(source.subtitles[0].id);
-    }
-
     spatialNav.pushScope('video-player-screen');
 
     return () => {
@@ -147,6 +133,32 @@ export const VideoPlayerScreen: React.FC<VideoPlayerScreenProps> = ({
       engineRef.current = null;
     };
   }, []);
+
+  // 1b. React to source stream URL changes (async resolution from App.tsx)
+  useEffect(() => {
+    if (!engineRef.current || !source.streamUrl) return;
+
+    const driverType: DriverType =
+      source.streamType === 'youtube' ? 'youtube'
+      : source.streamType === 'embed' ? 'embed'
+      : 'direct';
+
+    setCurrentStreamUrl(source.streamUrl);
+    setCurrentDriverType(driverType);
+
+    const initialExpectedDur = source.durationSeconds || (source.mediaType === 'episode' ? 2700 : 7200);
+    engineRef.current.loadMedia(
+      source.streamUrl,
+      driverType,
+      source.initialPosition || 0,
+      source.subtitles && source.subtitles.length > 0 ? source.subtitles[0].url : undefined,
+      initialExpectedDur,
+    );
+
+    if (source.subtitles && source.subtitles.length > 0) {
+      setSelectedSubId(source.subtitles[0].id);
+    }
+  }, [source.streamUrl, source.streamType]);
 
   // 2. Fetch Alternate Mirrors & Intro Timestamps in background
   useEffect(() => {
@@ -190,16 +202,17 @@ export const VideoPlayerScreen: React.FC<VideoPlayerScreenProps> = ({
     };
 
     fetchExtraData();
-  }, [source]);
+  }, [source.id]);
 
   // 3. Transport Handlers
   const handleTogglePlayPause = useCallback(() => {
     if (!engineRef.current) return;
-    const isPlaying = engineState.status === 'playing';
+    // Read LIVE driver state to avoid React stale closure desync
+    const liveStatus = engineRef.current.getState().status;
     engineRef.current.togglePlayPause();
-    triggerFeedback(isPlaying ? 'Paused' : 'Play');
+    triggerFeedback(liveStatus === 'playing' ? 'Paused ⏸' : 'Play ▶');
     pingHud();
-  }, [engineState.status, triggerFeedback, pingHud]);
+  }, [triggerFeedback, pingHud]);
 
   const seekBy = useCallback(
     (deltaSeconds: number) => {

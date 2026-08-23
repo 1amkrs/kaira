@@ -1,12 +1,19 @@
 import Hls from 'hls.js';
 import { IPlaybackDriver, DriverCallbacks, DriverState, DriverType } from '../types';
 
+/**
+ * NativeDriver — owns a real <video> element and controls it directly.
+ * This is the ONLY driver where HUD transport controls (play/pause, seek, volume)
+ * actually work, because we have a direct JS reference to the HTMLVideoElement.
+ */
 export class NativeDriver implements IPlaybackDriver {
   public readonly type: DriverType = 'direct';
 
   private videoElement: HTMLVideoElement | null = null;
   private hlsInstance: Hls | null = null;
   private callbacks: DriverCallbacks | null = null;
+  private isDestroyed = false;
+
   private state: DriverState = {
     status: 'idle',
     currentTime: 0,
@@ -16,32 +23,34 @@ export class NativeDriver implements IPlaybackDriver {
     playbackSpeed: 1,
     bufferedPercent: 0,
   };
-  private isDestroyed = false;
+
+  // ─── Lifecycle ────────────────────────────────────────────────────────────
 
   public initialize(container: HTMLElement, callbacks: DriverCallbacks): void {
+    if (this.isDestroyed) return;
     this.callbacks = callbacks;
-    this.isDestroyed = false;
 
-    // Check if video element already exists in container or create new
+    // Reuse existing video element if already mounted
     let video = container.querySelector<HTMLVideoElement>('video.tv-native-video-el');
     if (!video) {
       video = document.createElement('video');
       video.className = 'tv-native-video-el';
-      video.style.width = '100%';
-      video.style.height = '100%';
-      video.style.objectFit = 'contain';
-      video.style.backgroundColor = '#000000';
+      video.style.cssText = 'width:100%;height:100%;object-fit:contain;background:#000;display:block;';
       video.playsInline = true;
-      video.autoplay = true;
-      video.muted = false;
-      video.volume = 1.0;
+      video.autoplay = false; // we call play() ourselves after load
+      video.preload = 'auto';
+      video.controls = false;
       container.appendChild(video);
-    } else {
-      video.muted = false;
-      video.volume = 1.0;
     }
 
+    // Always unmute and set full volume on init
+    video.volume = 1;
+    video.muted = false;
+
     this.videoElement = video;
+    this.state.volume = 1;
+    this.state.isMuted = false;
+
     this.attachEventListeners(video);
   }
 
@@ -49,71 +58,75 @@ export class NativeDriver implements IPlaybackDriver {
     return this.videoElement;
   }
 
+  // ─── Event Listeners ──────────────────────────────────────────────────────
+
   private attachEventListeners(video: HTMLVideoElement): void {
-    video.addEventListener('timeupdate', this.handleTimeUpdate);
-    video.addEventListener('loadedmetadata', this.handleLoadedMetadata);
-    video.addEventListener('durationchange', this.handleDurationChange);
-    video.addEventListener('playing', this.handlePlaying);
-    video.addEventListener('pause', this.handlePause);
-    video.addEventListener('waiting', this.handleWaiting);
-    video.addEventListener('seeking', this.handleSeeking);
-    video.addEventListener('seeked', this.handleSeeked);
-    video.addEventListener('ended', this.handleEnded);
-    video.addEventListener('error', this.handleError);
-    video.addEventListener('progress', this.handleProgress);
+    video.addEventListener('timeupdate',     this.onTimeUpdate);
+    video.addEventListener('loadedmetadata', this.onLoadedMetadata);
+    video.addEventListener('durationchange', this.onDurationChange);
+    video.addEventListener('playing',        this.onPlaying);
+    video.addEventListener('pause',          this.onPause);
+    video.addEventListener('waiting',        this.onWaiting);
+    video.addEventListener('canplay',        this.onCanPlay);
+    video.addEventListener('seeking',        this.onSeeking);
+    video.addEventListener('seeked',         this.onSeeked);
+    video.addEventListener('ended',          this.onEnded);
+    video.addEventListener('error',          this.onError);
+    video.addEventListener('progress',       this.onProgress);
+    video.addEventListener('volumechange',   this.onVolumeChange);
   }
 
   private detachEventListeners(video: HTMLVideoElement): void {
-    video.removeEventListener('timeupdate', this.handleTimeUpdate);
-    video.removeEventListener('loadedmetadata', this.handleLoadedMetadata);
-    video.removeEventListener('durationchange', this.handleDurationChange);
-    video.removeEventListener('playing', this.handlePlaying);
-    video.removeEventListener('pause', this.handlePause);
-    video.removeEventListener('waiting', this.handleWaiting);
-    video.removeEventListener('seeking', this.handleSeeking);
-    video.removeEventListener('seeked', this.handleSeeked);
-    video.removeEventListener('ended', this.handleEnded);
-    video.removeEventListener('error', this.handleError);
-    video.removeEventListener('progress', this.handleProgress);
+    video.removeEventListener('timeupdate',     this.onTimeUpdate);
+    video.removeEventListener('loadedmetadata', this.onLoadedMetadata);
+    video.removeEventListener('durationchange', this.onDurationChange);
+    video.removeEventListener('playing',        this.onPlaying);
+    video.removeEventListener('pause',          this.onPause);
+    video.removeEventListener('waiting',        this.onWaiting);
+    video.removeEventListener('canplay',        this.onCanPlay);
+    video.removeEventListener('seeking',        this.onSeeking);
+    video.removeEventListener('seeked',         this.onSeeked);
+    video.removeEventListener('ended',          this.onEnded);
+    video.removeEventListener('error',          this.onError);
+    video.removeEventListener('progress',       this.onProgress);
+    video.removeEventListener('volumechange',   this.onVolumeChange);
   }
 
-  private handleTimeUpdate = (): void => {
+  // ─── Event Handlers ───────────────────────────────────────────────────────
+
+  private onTimeUpdate = (): void => {
     if (!this.videoElement || this.isDestroyed) return;
     const cur = this.videoElement.currentTime || 0;
-    const dur = this.videoElement.duration || this.state.duration || 0;
+    const dur = this.getValidDuration();
     this.state.currentTime = cur;
-    if (dur > 0 && isFinite(dur)) {
-      this.state.duration = dur;
-    }
-    this.callbacks?.onTimeUpdate(cur, this.state.duration);
+    this.callbacks?.onTimeUpdate(cur, dur);
   };
 
-  private handleLoadedMetadata = (): void => {
+  private onLoadedMetadata = (): void => {
     if (!this.videoElement || this.isDestroyed) return;
-    const dur = this.videoElement.duration || 0;
-    if (dur > 0 && isFinite(dur)) {
+    const dur = this.videoElement.duration;
+    if (isFinite(dur) && dur > 0) {
       this.state.duration = dur;
       this.callbacks?.onTimeUpdate(this.videoElement.currentTime, dur);
     }
   };
 
-  private handleDurationChange = (): void => {
+  private onDurationChange = (): void => {
     if (!this.videoElement || this.isDestroyed) return;
-    const dur = this.videoElement.duration || 0;
-    if (dur > 0 && isFinite(dur)) {
+    const dur = this.videoElement.duration;
+    if (isFinite(dur) && dur > 0) {
       this.state.duration = dur;
-      this.callbacks?.onTimeUpdate(this.videoElement.currentTime, dur);
     }
   };
 
-  private handlePlaying = (): void => {
+  private onPlaying = (): void => {
     if (this.isDestroyed) return;
     this.state.status = 'playing';
     this.callbacks?.onStatusChange('playing');
     this.callbacks?.onBuffering(false);
   };
 
-  private handlePause = (): void => {
+  private onPause = (): void => {
     if (this.isDestroyed) return;
     if (this.state.status !== 'ended' && this.state.status !== 'error') {
       this.state.status = 'paused';
@@ -121,168 +134,200 @@ export class NativeDriver implements IPlaybackDriver {
     }
   };
 
-  private handleWaiting = (): void => {
+  private onWaiting = (): void => {
     if (this.isDestroyed) return;
+    this.state.status = 'buffering';
     this.callbacks?.onBuffering(true);
   };
 
-  private handleSeeking = (): void => {
-    if (this.isDestroyed) return;
-    this.callbacks?.onBuffering(true);
-  };
-
-  private handleSeeked = (): void => {
+  private onCanPlay = (): void => {
     if (this.isDestroyed) return;
     this.callbacks?.onBuffering(false);
   };
 
-  private handleEnded = (): void => {
+  private onSeeking = (): void => {
+    if (this.isDestroyed) return;
+    this.callbacks?.onBuffering(true);
+  };
+
+  private onSeeked = (): void => {
+    if (this.isDestroyed) return;
+    this.callbacks?.onBuffering(false);
+    if (this.videoElement) {
+      this.callbacks?.onTimeUpdate(this.videoElement.currentTime, this.getValidDuration());
+    }
+  };
+
+  private onEnded = (): void => {
     if (this.isDestroyed) return;
     this.state.status = 'ended';
     this.callbacks?.onStatusChange('ended');
     this.callbacks?.onEnded();
   };
 
-  private handleError = (): void => {
+  private onError = (): void => {
     if (this.isDestroyed) return;
-    const err = this.videoElement?.error?.message || 'Video playback failed';
+    const msg = this.videoElement?.error?.message || 'Video playback error';
     this.state.status = 'error';
-    this.state.error = err;
-    this.callbacks?.onError(err);
+    this.state.error = msg;
+    this.callbacks?.onError(msg);
   };
 
-  private handleProgress = (): void => {
-    if (!this.videoElement || !this.videoElement.buffered || this.videoElement.buffered.length === 0) return;
+  private onProgress = (): void => {
+    if (!this.videoElement) return;
+    const buf = this.videoElement.buffered;
     const dur = this.videoElement.duration;
-    if (dur > 0) {
-      const bufferedEnd = this.videoElement.buffered.end(this.videoElement.buffered.length - 1);
-      this.state.bufferedPercent = Math.min(100, (bufferedEnd / dur) * 100);
+    if (buf.length > 0 && dur > 0) {
+      this.state.bufferedPercent = Math.min(100, (buf.end(buf.length - 1) / dur) * 100);
     }
   };
+
+  private onVolumeChange = (): void => {
+    if (!this.videoElement || this.isDestroyed) return;
+    this.state.volume = this.videoElement.volume;
+    this.state.isMuted = this.videoElement.muted;
+  };
+
+  // ─── Source Loading ───────────────────────────────────────────────────────
 
   public async loadSource(url: string, initialPosition = 0, expectedDuration?: number): Promise<void> {
     if (!this.videoElement || this.isDestroyed) return;
 
-    if (expectedDuration && expectedDuration > 0) {
+    if (expectedDuration && isFinite(expectedDuration) && expectedDuration > 0) {
       this.state.duration = expectedDuration;
     }
 
     this.state.status = 'buffering';
     this.callbacks?.onStatusChange('buffering');
     this.callbacks?.onBuffering(true);
-    this.callbacks?.onTimeUpdate(initialPosition, this.state.duration);
 
-    // Destroy existing HLS instance if any
+    // Tear down existing HLS instance
     if (this.hlsInstance) {
       this.hlsInstance.destroy();
       this.hlsInstance = null;
     }
 
-    const isHls = url.includes('.m3u8') || url.includes('application/x-mpegURL');
+    const isHls = url.includes('.m3u8') || url.includes('mpegURL');
 
     if (isHls && Hls.isSupported()) {
-      const hls = new Hls({
-        enableWorker: true,
-        lowLatencyMode: false,
-        backBufferLength: 90,
-      });
-
+      const hls = new Hls({ enableWorker: true, lowLatencyMode: false, backBufferLength: 90 });
       this.hlsInstance = hls;
-      hls.loadSource(url);
-      hls.attachMedia(this.videoElement);
 
       hls.on(Hls.Events.MANIFEST_PARSED, () => {
-        if (initialPosition > 0 && this.videoElement) {
-          this.videoElement.currentTime = initialPosition;
+        if (!this.videoElement || this.isDestroyed) return;
+        if (initialPosition > 0) {
+          try { this.videoElement.currentTime = initialPosition; } catch (_) {}
         }
-        this.play();
+        this.doPlay();
       });
 
-      hls.on(Hls.Events.ERROR, (_evt, data) => {
-        if (data.fatal) {
-          switch (data.type) {
-            case Hls.ErrorTypes.NETWORK_ERROR:
-              hls.startLoad();
-              break;
-            case Hls.ErrorTypes.MEDIA_ERROR:
-              hls.recoverMediaError();
-              break;
-            default:
-              this.handleError();
-              break;
-          }
-        }
+      hls.on(Hls.Events.ERROR, (_e, data) => {
+        if (!data.fatal) return;
+        if (data.type === Hls.ErrorTypes.NETWORK_ERROR) hls.startLoad();
+        else if (data.type === Hls.ErrorTypes.MEDIA_ERROR) hls.recoverMediaError();
+        else this.onError();
       });
+
+      hls.loadSource(url);
+      hls.attachMedia(this.videoElement);
     } else {
+      // Direct MP4 / native HLS (Safari)
       this.videoElement.src = url;
       this.videoElement.load();
+
       if (initialPosition > 0) {
-        this.videoElement.currentTime = initialPosition;
+        // Wait for metadata then seek
+        const seekOnce = () => {
+          if (this.videoElement && isFinite(this.videoElement.duration) && this.videoElement.duration > 0) {
+            try { this.videoElement.currentTime = initialPosition; } catch (_) {}
+          }
+          this.videoElement?.removeEventListener('loadedmetadata', seekOnce);
+        };
+        this.videoElement.addEventListener('loadedmetadata', seekOnce);
       }
-      this.play();
+
+      await this.doPlay();
     }
   }
 
-  public async play(): Promise<void> {
+  // ─── Transport Controls ───────────────────────────────────────────────────
+
+  private async doPlay(): Promise<void> {
     if (!this.videoElement || this.isDestroyed) return;
+
+    // Ensure not muted (from a previous autoplay workaround)
+    if (this.videoElement.muted && !this.state.isMuted) {
+      this.videoElement.muted = false;
+    }
+    this.videoElement.volume = this.state.volume;
+
     try {
       await this.videoElement.play();
-      this.state.status = 'playing';
-      this.callbacks?.onStatusChange('playing');
-      this.callbacks?.onBuffering(false);
-    } catch (e) {
-      console.warn('[NativeDriver] play() exception, attempting muted retry:', e);
+      // onPlaying event will set status = 'playing'
+    } catch (err) {
+      console.warn('[NativeDriver] play() blocked by browser, retrying muted:', err);
+      // Autoplay policy blocked — try muted
       try {
         this.videoElement.muted = true;
         this.state.isMuted = true;
         await this.videoElement.play();
-        this.state.status = 'playing';
-        this.callbacks?.onStatusChange('playing');
-        this.callbacks?.onBuffering(false);
-      } catch (e2) {
+        // Unmute 500ms later (after user gesture or buffer stabilizes)
+        setTimeout(() => {
+          if (this.videoElement && !this.isDestroyed) {
+            this.videoElement.muted = false;
+            this.videoElement.volume = this.state.volume;
+            this.state.isMuted = false;
+          }
+        }, 500);
+      } catch (err2) {
+        console.error('[NativeDriver] play() failed completely:', err2);
         this.state.status = 'paused';
         this.callbacks?.onStatusChange('paused');
       }
     }
   }
 
+  public async play(): Promise<void> {
+    if (!this.videoElement || this.isDestroyed) return;
+    if (!this.videoElement.paused && !this.videoElement.ended) return; // already playing
+    await this.doPlay();
+  }
+
   public pause(): void {
     if (!this.videoElement || this.isDestroyed) return;
     try {
       this.videoElement.pause();
-    } catch (e) {}
+    } catch (_) {}
     this.state.status = 'paused';
     this.callbacks?.onStatusChange('paused');
   }
 
   public seekTo(seconds: number): void {
     if (!this.videoElement || this.isDestroyed) return;
-    const rawDur = this.videoElement.duration;
-    const maxDur = typeof rawDur === 'number' && isFinite(rawDur) && rawDur > 0
-      ? rawDur
-      : (typeof this.state.duration === 'number' && isFinite(this.state.duration) && this.state.duration > 0 ? this.state.duration : 86400);
-    const validSecs = typeof seconds === 'number' && isFinite(seconds) ? seconds : 0;
-    const target = Math.max(0, Math.min(maxDur, validSecs));
+    if (!isFinite(seconds)) return;
+
+    const dur = this.getValidDuration();
+    const target = Math.max(0, Math.min(dur, seconds));
+
     try {
       this.videoElement.currentTime = target;
     } catch (e) {
-      console.warn('[NativeDriver] currentTime assignment exception:', e);
+      console.warn('[NativeDriver] currentTime assignment failed:', e);
     }
+
     this.state.currentTime = target;
-    this.callbacks?.onTimeUpdate(target, this.state.duration);
+    this.callbacks?.onTimeUpdate(target, dur);
   }
 
   public seekBy(deltaSeconds: number): void {
-    if (!this.videoElement || this.isDestroyed) return;
-    const rawCur = this.videoElement.currentTime;
-    const cur = typeof rawCur === 'number' && isFinite(rawCur) ? rawCur : (this.state.currentTime || 0);
-    const delta = typeof deltaSeconds === 'number' && isFinite(deltaSeconds) ? deltaSeconds : 0;
-    this.seekTo(cur + delta);
+    if (!this.videoElement || this.isDestroyed || !isFinite(deltaSeconds)) return;
+    const cur = isFinite(this.videoElement.currentTime) ? this.videoElement.currentTime : this.state.currentTime;
+    this.seekTo(cur + deltaSeconds);
   }
 
   public setVolume(volume: number): void {
     if (!this.videoElement || this.isDestroyed) return;
-    const vol = Math.max(0, Math.min(1, typeof volume === 'number' && isFinite(volume) ? volume : 1));
+    const vol = Math.max(0, Math.min(1, isFinite(volume) ? volume : 1));
     try {
       this.videoElement.volume = vol;
       if (vol > 0 && this.videoElement.muted) {
@@ -292,9 +337,7 @@ export class NativeDriver implements IPlaybackDriver {
         this.videoElement.muted = true;
         this.state.isMuted = true;
       }
-    } catch (e) {
-      console.warn('[NativeDriver] volume assignment exception:', e);
-    }
+    } catch (e) {}
     this.state.volume = vol;
   }
 
@@ -302,36 +345,57 @@ export class NativeDriver implements IPlaybackDriver {
     if (!this.videoElement || this.isDestroyed) return;
     try {
       this.videoElement.muted = Boolean(muted);
-    } catch (e) {}
+    } catch (_) {}
     this.state.isMuted = Boolean(muted);
   }
 
   public setSpeed(speed: number): void {
     if (!this.videoElement || this.isDestroyed) return;
-    this.videoElement.playbackRate = speed;
+    try {
+      this.videoElement.playbackRate = speed;
+    } catch (_) {}
     this.state.playbackSpeed = speed;
+  }
+
+  // ─── Helpers ──────────────────────────────────────────────────────────────
+
+  private getValidDuration(): number {
+    if (!this.videoElement) return this.state.duration || 0;
+    const d = this.videoElement.duration;
+    if (isFinite(d) && d > 0) {
+      this.state.duration = d;
+      return d;
+    }
+    return this.state.duration || 0;
   }
 
   public getState(): DriverState {
     return { ...this.state };
   }
 
+  // ─── Destroy ──────────────────────────────────────────────────────────────
+
   public destroy(): void {
     this.isDestroyed = true;
+
     if (this.hlsInstance) {
       this.hlsInstance.destroy();
       this.hlsInstance = null;
     }
+
     if (this.videoElement) {
       this.detachEventListeners(this.videoElement);
-      this.videoElement.pause();
-      this.videoElement.removeAttribute('src');
-      this.videoElement.load();
+      try {
+        this.videoElement.pause();
+        this.videoElement.removeAttribute('src');
+        this.videoElement.load();
+      } catch (_) {}
       if (this.videoElement.parentElement) {
         this.videoElement.parentElement.removeChild(this.videoElement);
       }
       this.videoElement = null;
     }
+
     this.callbacks = null;
   }
 }

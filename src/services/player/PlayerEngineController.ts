@@ -1,4 +1,4 @@
-import { IPlaybackDriver, DriverType, DriverStatus, DriverState, SubtitleCue } from './types';
+import { IPlaybackDriver, DriverType, DriverState, SubtitleCue } from './types';
 import { NativeDriver } from './drivers/NativeDriver';
 import { YouTubeDriver } from './drivers/YouTubeDriver';
 import { EmbedDriver } from './drivers/EmbedDriver';
@@ -11,6 +11,19 @@ export interface PlayerEngineState extends DriverState {
   vocalBoostEnabled: boolean;
 }
 
+const DEFAULT_STATE: PlayerEngineState = {
+  driverType: 'direct',
+  status: 'idle',
+  currentTime: 0,
+  duration: 0,
+  volume: 1,
+  isMuted: false,
+  playbackSpeed: 1,
+  bufferedPercent: 0,
+  currentSubtitleText: null,
+  vocalBoostEnabled: false,
+};
+
 export class PlayerEngineController {
   private container: HTMLElement | null = null;
   private currentDriver: IPlaybackDriver | null = null;
@@ -19,39 +32,28 @@ export class PlayerEngineController {
   private subtitleEngine: SubtitleEngine = new SubtitleEngine();
   private audioBoostEngine: AudioBoostEngine = new AudioBoostEngine();
 
-  private state: PlayerEngineState = {
-    driverType: 'direct',
-    status: 'idle',
-    currentTime: 0,
-    duration: 0,
-    volume: 1,
-    isMuted: false,
-    playbackSpeed: 1,
-    bufferedPercent: 0,
-    currentSubtitleText: null,
-    vocalBoostEnabled: false,
-  };
-
+  private state: PlayerEngineState = { ...DEFAULT_STATE };
   private listeners: Set<(state: PlayerEngineState) => void> = new Set();
   private isDestroyed = false;
+
+  // ─── Init ────────────────────────────────────────────────────────────────
 
   public initialize(container: HTMLElement): void {
     this.container = container;
     this.isDestroyed = false;
 
-    // Connect subtitles listener
     this.subtitleEngine.subscribe((text) => {
       this.state.currentSubtitleText = text;
       this.notify();
     });
   }
 
+  // ─── Subscriptions ────────────────────────────────────────────────────────
+
   public subscribe(listener: (state: PlayerEngineState) => void): () => void {
     this.listeners.add(listener);
     listener(this.getState());
-    return () => {
-      this.listeners.delete(listener);
-    };
+    return () => this.listeners.delete(listener);
   }
 
   public getState(): PlayerEngineState {
@@ -63,37 +65,39 @@ export class PlayerEngineController {
     this.listeners.forEach((fn) => fn(s));
   }
 
+  // ─── Driver Factory ───────────────────────────────────────────────────────
+
   private createDriver(type: DriverType): IPlaybackDriver {
     switch (type) {
-      case 'youtube':
-        return new YouTubeDriver();
-      case 'embed':
-        return new EmbedDriver();
+      case 'youtube': return new YouTubeDriver();
+      case 'embed':   return new EmbedDriver();
       case 'direct':
-      default:
-        return new NativeDriver();
+      default:        return new NativeDriver();
     }
   }
+
+  // ─── Media Loading ────────────────────────────────────────────────────────
 
   public async loadMedia(
     url: string,
     driverType: DriverType,
     initialPosition = 0,
     subtitleUrl?: string,
-    expectedDuration?: number
+    expectedDuration?: number,
   ): Promise<void> {
     if (!this.container || this.isDestroyed) return;
 
-    if (expectedDuration && expectedDuration > 0) {
+    if (expectedDuration && isFinite(expectedDuration) && expectedDuration > 0) {
       this.state.duration = expectedDuration;
     }
 
-    console.log(`[PlayerEngineController] Loading [${driverType}] source -> ${url} (pos: ${initialPosition}s, dur: ${expectedDuration}s)`);
+    console.log(`[PlayerEngine] loadMedia [${driverType}] → ${url}`);
 
-    // If switching driver type or driver not initialized
+    // Rebuild driver if type changed
     if (!this.currentDriver || this.currentDriverType !== driverType) {
       if (this.currentDriver) {
         this.currentDriver.destroy();
+        this.currentDriver = null;
       }
 
       this.currentDriverType = driverType;
@@ -102,8 +106,9 @@ export class PlayerEngineController {
 
       this.currentDriver.initialize(this.container, {
         onTimeUpdate: (cur, dur) => {
+          if (!isFinite(cur) || cur < 0) return;
           this.state.currentTime = cur;
-          if (dur > 0) this.state.duration = dur;
+          if (isFinite(dur) && dur > 0) this.state.duration = dur;
           this.subtitleEngine.updateTime(cur);
           this.notify();
         },
@@ -131,17 +136,17 @@ export class PlayerEngineController {
       });
     }
 
-    // Load subtitle track if provided
+    // Subtitles
     if (subtitleUrl) {
       this.subtitleEngine.loadSubtitles(subtitleUrl);
     } else {
       this.subtitleEngine.clear();
     }
 
-    // Load source into active driver
+    // Load source
     await this.currentDriver.loadSource(url, initialPosition, expectedDuration);
 
-    // Sync volume & speed settings
+    // Sync volume/speed from saved engine state
     this.currentDriver.setVolume(this.state.volume);
     this.currentDriver.setMuted(this.state.isMuted);
     this.currentDriver.setSpeed(this.state.playbackSpeed);
@@ -149,41 +154,40 @@ export class PlayerEngineController {
     this.notify();
   }
 
+  // ─── Transport Controls — these directly delegate to the driver ────────────
+
   public async play(): Promise<void> {
-    if (this.currentDriver) {
-      await this.currentDriver.play();
-    }
+    if (this.currentDriver) await this.currentDriver.play();
   }
 
   public pause(): void {
-    if (this.currentDriver) {
-      this.currentDriver.pause();
-    }
+    if (this.currentDriver) this.currentDriver.pause();
   }
 
   public togglePlayPause(): void {
-    if (this.state.status === 'playing') {
-      this.pause();
+    if (!this.currentDriver) return;
+    // Read live state from driver (not cached engine state) to avoid desync
+    const driverState = this.currentDriver.getState();
+    if (driverState.status === 'playing') {
+      this.currentDriver.pause();
     } else {
-      this.play();
+      this.currentDriver.play();
     }
   }
 
   public seekTo(seconds: number): void {
-    if (this.currentDriver) {
-      this.currentDriver.seekTo(seconds);
-      this.subtitleEngine.updateTime(seconds);
-    }
+    if (!this.currentDriver || !isFinite(seconds)) return;
+    this.currentDriver.seekTo(seconds);
+    this.subtitleEngine.updateTime(seconds);
   }
 
   public seekBy(deltaSeconds: number): void {
-    if (this.currentDriver) {
-      this.currentDriver.seekBy(deltaSeconds);
-    }
+    if (!this.currentDriver || !isFinite(deltaSeconds)) return;
+    this.currentDriver.seekBy(deltaSeconds);
   }
 
   public setVolume(volume: number): void {
-    const vol = Math.max(0, Math.min(1, typeof volume === 'number' && isFinite(volume) ? volume : 1));
+    const vol = Math.max(0, Math.min(1, isFinite(volume) ? volume : 1));
     this.state.volume = vol;
     this.state.isMuted = vol === 0;
     if (this.currentDriver) {
@@ -194,7 +198,7 @@ export class PlayerEngineController {
   }
 
   public adjustVolume(delta: number): number {
-    const cur = this.state.isMuted ? 0 : (typeof this.state.volume === 'number' && isFinite(this.state.volume) ? this.state.volume : 1);
+    const cur = this.state.isMuted ? 0 : (isFinite(this.state.volume) ? this.state.volume : 1);
     const next = Math.max(0, Math.min(1, Math.round((cur + delta) * 100) / 100));
     this.setVolume(next);
     return next;
@@ -219,9 +223,7 @@ export class PlayerEngineController {
 
   public setSpeed(speed: number): void {
     this.state.playbackSpeed = speed;
-    if (this.currentDriver) {
-      this.currentDriver.setSpeed(speed);
-    }
+    if (this.currentDriver) this.currentDriver.setSpeed(speed);
     this.notify();
   }
 
@@ -229,9 +231,7 @@ export class PlayerEngineController {
     this.state.vocalBoostEnabled = enabled;
     if (enabled && this.currentDriverType === 'direct' && this.currentDriver instanceof NativeDriver) {
       const videoEl = (this.currentDriver as NativeDriver).getVideoElement();
-      if (videoEl) {
-        this.audioBoostEngine.attachToVideo(videoEl);
-      }
+      if (videoEl) this.audioBoostEngine.attachToVideo(videoEl);
     }
     this.audioBoostEngine.setEnabled(enabled);
     this.notify();
@@ -244,6 +244,8 @@ export class PlayerEngineController {
   public clearSubtitles(): void {
     this.subtitleEngine.clear();
   }
+
+  // ─── Destroy ─────────────────────────────────────────────────────────────
 
   public destroy(): void {
     this.isDestroyed = true;
