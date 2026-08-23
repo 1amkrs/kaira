@@ -363,15 +363,12 @@ class AddonService {
     const url = (endpointUrl || this.debridConfig.endpointUrl || 'http://localhost:8081').replace(/\/+$/, '');
     try {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 3500);
-      const res = await fetch(`${url}/`, { method: 'HEAD', signal: controller.signal }).catch(() => null);
+      const timeoutId = setTimeout(() => controller.abort(), 4000);
+      await fetch(`${url}/`, { mode: 'no-cors', signal: controller.signal });
       clearTimeout(timeoutId);
-      if (res) {
-        return { success: true, message: `Connected to Self-Debrid on ${url}` };
-      }
-      return { success: false, message: `Could not reach Self-Debrid at ${url}. Make sure python main.py is running.` };
+      return { success: true, message: `Connected to Self-Debrid on ${url}!` };
     } catch (e: any) {
-      return { success: false, message: `Connection error: ${e.message}` };
+      return { success: false, message: `Could not reach Self-Debrid at ${url}. Error: ${e.message}` };
     }
   }
 
