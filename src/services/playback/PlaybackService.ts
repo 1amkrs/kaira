@@ -1,6 +1,6 @@
 import { PlaybackSource, PlaybackState } from '../../types/media';
 import { musicPluginService } from '../music/MusicPluginService';
-import { profileService } from '../profile/ProfileService';
+
 
 class PlaybackService {
   private audioElement: HTMLAudioElement | null = null;
@@ -17,8 +17,8 @@ class PlaybackService {
     isRepeat: false,
   };
   private listeners: Set<(state: PlaybackState) => void> = new Set();
-  private progressSaveInterval: NodeJS.Timeout | null = null;
   private lastEndedTime: number = 0;
+
 
   constructor() {
     this.initAudio();
@@ -134,7 +134,6 @@ class PlaybackService {
       this.setStatus('playing');
     }
 
-    this.startProgressSaveLoop();
     this.notify();
   }
 
@@ -143,7 +142,6 @@ class PlaybackService {
       this.audioElement.pause();
     }
     this.setStatus('paused');
-    this.saveProgressNow();
   }
 
   public resume(): void {
@@ -167,8 +165,8 @@ class PlaybackService {
       this.audioElement.currentTime = target;
     }
     this.updateTime(target, this.state.duration);
-    this.saveProgressNow();
   }
+
 
   public seekRelative(deltaSeconds: number): void {
     this.seek(this.state.currentTime + deltaSeconds);
@@ -220,7 +218,6 @@ class PlaybackService {
   }
 
   public stop(): void {
-    this.saveProgressNow();
     if (this.audioElement) {
       this.audioElement.pause();
       this.audioElement.currentTime = 0;
@@ -232,7 +229,6 @@ class PlaybackService {
       currentTime: 0,
       duration: 0,
     };
-    this.stopProgressSaveLoop();
     this.notify();
   }
 
@@ -270,7 +266,6 @@ class PlaybackService {
     }
     this.lastEndedTime = now;
 
-    this.saveProgressNow(true); // Complete
     if (this.state.queue.length > 1 && this.state.queueIndex < this.state.queue.length - 1) {
       this.next();
     } else {
@@ -278,53 +273,7 @@ class PlaybackService {
     }
   }
 
-  private startProgressSaveLoop() {
-    this.stopProgressSaveLoop();
-    this.progressSaveInterval = setInterval(() => {
-      this.saveProgressNow();
-    }, 3000);
-  }
-
-  private stopProgressSaveLoop() {
-    if (this.progressSaveInterval) {
-      clearInterval(this.progressSaveInterval);
-      this.progressSaveInterval = null;
-    }
-  }
-
-  private saveProgressNow(isComplete: boolean = false) {
-    const src = this.state.currentSource;
-    if (!src || src.type !== 'video') return;
-
-    try {
-      const activeProfileId = profileService.getActiveProfile().id;
-      const profileKey = `tv_playback_progress_${activeProfileId}_${src.mediaId}`;
-      const legacyKey = `tv_playback_progress_${src.mediaId}`;
-
-      if (isComplete || (this.state.duration > 0 && this.state.currentTime >= this.state.duration - 15)) {
-        // Watched to completion -> remove progress
-        localStorage.removeItem(profileKey);
-        localStorage.removeItem(legacyKey);
-        const payload = JSON.stringify({
-          position: Math.round(this.state.currentTime),
-          duration: Math.round(this.state.duration || src.durationSeconds || 7200),
-          title: src.title,
-          subtitle: src.subtitle,
-          artwork: src.artwork,
-          backdrop: src.backdrop,
-          mediaType: src.mediaType,
-          mediaId: src.mediaId,
-          showId: src.showId,
-          seasonNumber: src.seasonNumber,
-          episodeNumber: src.episodeNumber,
-          updatedAt: Date.now(),
-        });
-        localStorage.setItem(profileKey, payload);
-        localStorage.setItem(legacyKey, payload);
-      }
-    } catch (e) {}
-  }
-
 }
 
 export const playbackService = new PlaybackService();
+

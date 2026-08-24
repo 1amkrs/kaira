@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { MediaItem } from '../../types';
 import { mediaProvider } from '../../services/media/LiveMediaProvider';
-import { profileService } from '../../services/profile/ProfileService';
+import { continueWatchingService, ContinueWatchingEntry } from '../../services/playback/ContinueWatchingService';
+
 import { POPULAR_GAMES } from '../../data/games/mockGames';
 import { POPULAR_MOVIES } from '../../data/media/mockMedia';
 import { ContentRail } from '../../components/ContentRail/ContentRail';
@@ -18,24 +19,33 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({ onSelectMedia }) =
   const [continueItems, setContinueItems] = useState<MediaItem[]>([]);
   const [favorites, setFavorites] = useState<MediaItem[]>([]);
 
+  // Live-subscribe to continue watching entries so the rail reflects actual saved progress.
   useEffect(() => {
-    const loadLibrary = async () => {
-      const cw = await mediaProvider.getContinueWatching();
-      const cwMapped: MediaItem[] = cw.map((c) => {
-        const isEpisode = 'seasonNumber' in c.media;
-        const med = c.media as any;
-        return {
-          id: med.id,
-          title: med.title,
-          subtitle: isEpisode ? `S${med.seasonNumber}E${med.number}` : `${med.year || ''}`,
-          backdropUrl: isEpisode ? med.thumbnail : (med.backdrop || med.poster),
-          posterUrl: med.poster || med.thumbnail,
-          type: isEpisode ? 'show' : 'movie',
-          progress: c.progress,
-        };
-      });
-      setContinueItems(cwMapped);
+    const mapEntry = (entry: ContinueWatchingEntry): MediaItem => {
+      const isEpisode = entry.mediaType === 'episode';
+      return {
+        id: entry.mediaId,
+        title: entry.title,
+        subtitle: isEpisode
+          ? `S${entry.seasonNumber || 1}E${entry.episodeNumber || 1}`
+          : entry.subtitle || `Resume at ${Math.floor(entry.position / 60)}:${String(Math.round(entry.position % 60)).padStart(2, '0')}`,
+        backdropUrl: entry.backdrop || entry.poster || '',
+        posterUrl: entry.poster || entry.backdrop || '',
 
+        type: isEpisode ? 'show' : 'movie',
+        progress: Math.min(100, Math.round((entry.position / entry.duration) * 100)),
+      };
+    };
+
+    const unsub = continueWatchingService.subscribe((entries) => {
+      setContinueItems(entries.map(mapEntry));
+    });
+    return unsub;
+  }, []);
+
+  // Favorites load once (still async)
+  useEffect(() => {
+    const loadFavorites = async () => {
       const favs = await mediaProvider.getFavorites();
       const favsMapped: MediaItem[] = [
         ...favs.movies.map((m) => ({
@@ -57,9 +67,10 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({ onSelectMedia }) =
       ];
       setFavorites(favsMapped);
     };
-
-    loadLibrary();
+    loadFavorites();
   }, []);
+
+
 
   return (
     <div className="tv-scroll-container tv-library-screen" role="main" aria-label="Library Screen">

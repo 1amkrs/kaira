@@ -15,6 +15,8 @@ import { addonService } from '../addons/AddonService';
 import { musicPluginService } from '../music/MusicPluginService';
 import { profileService } from '../profile/ProfileService';
 import { introService } from '../playback/IntroService';
+import { continueWatchingService, ContinueWatchingEntry } from '../playback/ContinueWatchingService';
+
 import {
   MALAYALAM_MOVIES,
   HINDI_MOVIES,
@@ -861,113 +863,94 @@ class LiveMediaProviderService implements MediaProvider {
 
   // --- CONTINUE WATCHING & FAVORITES ---
   public async getContinueWatching(): Promise<ContinueWatchingItem[]> {
-    const items: ContinueWatchingItem[] = [];
+    // Migrate any legacy un-prefixed keys into the current profile's namespace on first call
+    continueWatchingService.migrateLegacyKeys();
+
+    const entries: ContinueWatchingEntry[] = continueWatchingService.getItems();
     const movies = await this.getMovies();
-    const profileId = this.getActiveProfileId();
-    const profilePrefix = `tv_playback_progress_${profileId}_`;
-    const legacyPrefix = 'tv_playback_progress_';
+    const items: ContinueWatchingItem[] = [];
 
-    try {
-      const allKeys = Object.keys(localStorage);
-      const keys = allKeys.filter((k) => {
-        if (k.startsWith(profilePrefix)) return true;
-        if (
-          (profileId === 'prof-primary' || profileId === 'primary') &&
-          k.startsWith(legacyPrefix) &&
-          !k.slice(legacyPrefix.length).startsWith('prof-')
-        ) {
-          return true;
-        }
-        return false;
-      });
+    for (const entry of entries) {
+      const progress = Math.min(100, Math.round((entry.position / entry.duration) * 100));
 
-      for (const k of keys) {
-        let id = k;
-        if (k.startsWith(profilePrefix)) {
-          id = k.replace(profilePrefix, '');
-        } else if (k.startsWith(legacyPrefix)) {
-          id = k.replace(legacyPrefix, '');
-        }
-        const data = JSON.parse(localStorage.getItem(k) || '{}');
-        if (data.position && data.duration && data.position > 5 && data.position < data.duration - 10) {
-          const progress = Math.min(100, Math.round((data.position / data.duration) * 100));
-          const movie = movies.find((m) => m.id === id);
-
-          if (data.mediaType === 'episode') {
-            items.push({
-              id: id,
-              type: 'episode',
-              title: data.title || 'Episode',
-              subtitle: data.subtitle || `Resume at ${this.formatSeconds(data.position)}`,
-              poster: data.artwork || data.backdrop || `https://images.metahub.space/background/medium/tt0903747/img`,
-              backdrop: data.backdrop || data.artwork || `https://images.metahub.space/background/medium/tt0903747/img`,
-              progress: progress,
-              duration: this.formatSeconds(data.duration),
-              lastPlayedPosition: data.position,
-              media: {
-                id: id,
-                showId: data.showId || 'show-unknown',
-                seasonId: `season-${data.seasonNumber || 1}`,
-                number: data.episodeNumber || 1,
-                seasonNumber: data.seasonNumber || 1,
-                title: data.title || 'Episode',
-                description: '',
-                thumbnail: data.artwork || data.backdrop || '',
-                runtime: `${Math.round(data.duration / 60)} min`,
-                runtimeMinutes: Math.round(data.duration / 60),
-              } as Episode,
-            });
-          } else if (movie) {
-            items.push({
-              id: movie.id,
-              type: 'movie',
-              title: movie.title,
-              subtitle: `Resume at ${this.formatSeconds(data.position)}`,
-              poster: movie.poster,
-              backdrop: movie.backdrop,
-              progress: progress,
-              duration: movie.runtime,
-              lastPlayedPosition: data.position,
-              media: movie,
-            });
-          } else if (data.title) {
-            // Fallback for custom or direct streamed movie
-            const cleanImdb = id.startsWith('tt') ? id : 'tt0816692';
-            items.push({
-              id: id,
-              type: 'movie',
-              title: data.title,
-              subtitle: data.subtitle || `Resume at ${this.formatSeconds(data.position)}`,
-              poster: data.artwork || `https://images.metahub.space/poster/medium/${cleanImdb}/img`,
-              backdrop: data.backdrop || `https://images.metahub.space/background/medium/${cleanImdb}/img`,
-              progress: progress,
-              duration: this.formatSeconds(data.duration),
-              lastPlayedPosition: data.position,
-              media: {
-                id: id,
-                imdbId: cleanImdb,
-                title: data.title,
-                description: '',
-                poster: data.artwork || `https://images.metahub.space/poster/medium/${cleanImdb}/img`,
-                backdrop: data.backdrop || `https://images.metahub.space/background/medium/${cleanImdb}/img`,
-                year: 2024,
-                runtime: `${Math.round(data.duration / 60)} min`,
-                runtimeMinutes: Math.round(data.duration / 60),
-                rating: '8.5',
-                genres: ['Drama'],
-              } as Movie,
-            });
-          }
+      if (entry.mediaType === 'episode') {
+        items.push({
+          id: entry.mediaId,
+          type: 'episode',
+          title: entry.title,
+          subtitle: entry.subtitle || `Resume at ${this.formatSeconds(entry.position)}`,
+          poster: entry.poster || entry.backdrop || `https://images.metahub.space/background/medium/tt0903747/img`,
+          backdrop: entry.backdrop || entry.poster || `https://images.metahub.space/background/medium/tt0903747/img`,
+          progress,
+          duration: this.formatSeconds(entry.duration),
+          lastPlayedPosition: entry.position,
+          media: {
+            id: entry.mediaId,
+            showId: entry.showId || 'show-unknown',
+            seasonId: `season-${entry.seasonNumber || 1}`,
+            number: entry.episodeNumber || 1,
+            seasonNumber: entry.seasonNumber || 1,
+            title: entry.title,
+            description: '',
+            thumbnail: entry.poster || entry.backdrop || '',
+            runtime: `${Math.round(entry.duration / 60)} min`,
+            runtimeMinutes: Math.round(entry.duration / 60),
+          } as Episode,
+        });
+      } else {
+        const movie = movies.find((m) => m.id === entry.mediaId);
+        if (movie) {
+          items.push({
+            id: movie.id,
+            type: 'movie',
+            title: movie.title,
+            subtitle: `Resume at ${this.formatSeconds(entry.position)}`,
+            poster: movie.poster,
+            backdrop: movie.backdrop,
+            progress,
+            duration: movie.runtime,
+            lastPlayedPosition: entry.position,
+            media: movie,
+          });
+        } else {
+          // Fallback for custom / direct-streamed movies not in the catalog
+          const cleanImdb = entry.mediaId.startsWith('tt') ? entry.mediaId : 'tt0816692';
+          items.push({
+            id: entry.mediaId,
+            type: 'movie',
+            title: entry.title,
+            subtitle: entry.subtitle || `Resume at ${this.formatSeconds(entry.position)}`,
+            poster: entry.poster || `https://images.metahub.space/poster/medium/${cleanImdb}/img`,
+            backdrop: entry.backdrop || `https://images.metahub.space/background/medium/${cleanImdb}/img`,
+            progress,
+            duration: this.formatSeconds(entry.duration),
+            lastPlayedPosition: entry.position,
+            media: {
+              id: entry.mediaId,
+              imdbId: cleanImdb,
+              title: entry.title,
+              description: '',
+              poster: entry.poster || `https://images.metahub.space/poster/medium/${cleanImdb}/img`,
+              backdrop: entry.backdrop || `https://images.metahub.space/background/medium/${cleanImdb}/img`,
+              year: 2024,
+              runtime: `${Math.round(entry.duration / 60)} min`,
+              runtimeMinutes: Math.round(entry.duration / 60),
+              rating: '8.5 ★',
+              genres: ['Drama'],
+            } as Movie,
+          });
         }
       }
-    } catch (e) {}
+    }
 
+    // Show showcase/demo items when no real progress exists yet
     if (items.length === 0) {
       return SHOWCASE_CONTINUE_ITEMS;
     }
 
     return items;
   }
+
 
   public async getRecentlyAdded(): Promise<{ movies: Movie[]; shows: Show[]; albums: Album[] }> {
     const movies = await this.getMovies();

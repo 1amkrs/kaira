@@ -338,11 +338,24 @@ class ProfileService {
     this.saveProfiles();
     this.saveDeviceUnlocked();
 
-    // Clean up profile specific storage memory
+    // Clean up profile-specific storage (memory, favorites, watch history, progress)
     try {
       localStorage.removeItem(`tv_profile_memory_${id}`);
       localStorage.removeItem(`tv_favorites_${id}`);
       localStorage.removeItem(`tv_watch_history_${id}`);
+
+      // Remove all playback progress keys scoped to this profile
+      const progressPrefix = `tv_playback_progress_${id}_`;
+      const keysToRemove: string[] = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key && key.startsWith(progressPrefix)) {
+          keysToRemove.push(key);
+        }
+      }
+      for (const key of keysToRemove) {
+        localStorage.removeItem(key);
+      }
     } catch (e) {}
 
     // If active profile was deleted, switch to the first remaining profile
@@ -354,6 +367,7 @@ class ProfileService {
 
     return true;
   }
+
 
   public setPromptOnLaunch(prompt: boolean): void {
     this.promptOnLaunch = prompt;

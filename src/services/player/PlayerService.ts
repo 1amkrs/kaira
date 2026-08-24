@@ -268,7 +268,8 @@ export class PlayerService {
             backdrop: this.state.activeSource.backdrop,
             position: Math.round(cur),
             duration: Math.round(this.state.duration || this.state.activeSource.durationSeconds || 7200),
-            mediaType: (this.state.activeSource.mediaType === 'episode' ? 'show' : this.state.activeSource.mediaType) || 'movie',
+            mediaType: (this.state.activeSource.mediaType === 'episode' ? 'episode' : this.state.activeSource.mediaType === 'track' ? 'track' : 'movie') as 'movie' | 'episode' | 'track',
+
             showId: this.state.activeSource.showId,
             seasonNumber: this.state.activeSource.seasonNumber,
             episodeNumber: this.state.activeSource.episodeNumber,

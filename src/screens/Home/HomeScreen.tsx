@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Play, Info, Sparkles } from 'lucide-react';
 import { Movie, Show, Album, MediaItem } from '../../types';
 import { mediaProvider, ContinueWatchingItem } from '../../services/media/LiveMediaProvider';
+import { continueWatchingService, ContinueWatchingEntry } from '../../services/playback/ContinueWatchingService';
 import { Focusable } from '../../components/Focusable/Focusable';
 import { ContentRail } from '../../components/ContentRail/ContentRail';
 import { MovieCard } from '../../components/MediaCard/MovieCard';
@@ -19,6 +20,7 @@ import {
 import { Footer } from '../../components/Footer/Footer';
 import './HomeScreen.css';
 
+
 interface HomeScreenProps {
   onSelectMovie: (movie: Movie) => void;
   onPlayMovie: (movie: Movie) => void;
@@ -34,7 +36,54 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
   onSelectAlbum,
   onSelectContinueItem,
 }) => {
+  // Continue Watching — live-subscribed to ContinueWatchingService so the rail
+  // updates automatically after returning from the video player.
   const [continueWatching, setContinueWatching] = useState<ContinueWatchingItem[]>([]);
+
+  useEffect(() => {
+    // Map ContinueWatchingEntry → ContinueWatchingItem for the rail
+    const mapEntry = (entry: ContinueWatchingEntry): ContinueWatchingItem => {
+      const progress = Math.min(100, Math.round((entry.position / entry.duration) * 100));
+      const isEpisode = entry.mediaType === 'episode';
+      const cleanImdb = entry.mediaId.startsWith('tt') ? entry.mediaId : 'tt0816692';
+      return {
+        id: entry.mediaId,
+        type: isEpisode ? 'episode' : 'movie',
+        title: entry.title,
+        subtitle: entry.subtitle || `Resume at ${Math.floor(entry.position / 60)}:${String(Math.round(entry.position % 60)).padStart(2, '0')}`,
+        poster: entry.poster || `https://images.metahub.space/poster/medium/${cleanImdb}/img`,
+        backdrop: entry.backdrop || `https://images.metahub.space/background/medium/${cleanImdb}/img`,
+        progress,
+        duration: `${Math.round(entry.duration / 60)} min`,
+        lastPlayedPosition: entry.position,
+        media: {
+          id: entry.mediaId,
+          title: entry.title,
+          description: '',
+          poster: entry.poster || `https://images.metahub.space/poster/medium/${cleanImdb}/img`,
+          backdrop: entry.backdrop || `https://images.metahub.space/background/medium/${cleanImdb}/img`,
+          year: 2024,
+          runtime: `${Math.round(entry.duration / 60)} min`,
+          runtimeMinutes: Math.round(entry.duration / 60),
+          rating: '8.5 ★',
+          genres: isEpisode ? ['Drama'] : ['Drama'],
+          ...(isEpisode && {
+            showId: entry.showId || 'show-unknown',
+            seasonId: `season-${entry.seasonNumber || 1}`,
+            seasonNumber: entry.seasonNumber || 1,
+            number: entry.episodeNumber || 1,
+            thumbnail: entry.poster || entry.backdrop || '',
+          }),
+        } as any,
+      };
+    };
+
+    const unsub = continueWatchingService.subscribe((entries) => {
+      setContinueWatching(entries.map(mapEntry));
+    });
+    return unsub;
+  }, []);
+
   const [featured, setFeatured] = useState<Movie | null>(null);
   const [top10Daily, setTop10Daily] = useState<Movie[]>([]);
   const [hollywoodMovies, setHollywoodMovies] = useState<Movie[]>([]);
@@ -46,8 +95,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
   const loadData = async () => {
     setIsLoading(true);
     try {
-      const [cw, feat, top10, hwMovs, regMovs, shows, albs] = await Promise.all([
-        mediaProvider.getContinueWatching(),
+      const [feat, top10, hwMovs, regMovs, shows, albs] = await Promise.all([
         mediaProvider.getFeaturedMovie(),
         (mediaProvider as any).getTop10Daily(),
         mediaProvider.getHollywoodMovies(),
@@ -55,7 +103,6 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
         mediaProvider.getShows(),
         mediaProvider.getAlbums(),
       ]);
-      setContinueWatching(cw);
       setFeatured(feat);
       setTop10Daily(top10 || []);
       setHollywoodMovies(hwMovs);
@@ -72,6 +119,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
   useEffect(() => {
     loadData();
   }, []);
+
 
   const handleSelectMediaItem = async (item: MediaItem) => {
     if (item.type === 'show') {

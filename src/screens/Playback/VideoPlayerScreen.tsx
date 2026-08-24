@@ -23,12 +23,14 @@ import { PlayerEngineController, PlayerEngineState } from '../../services/player
 import { DriverType } from '../../services/player/types';
 import { addonService } from '../../services/addons/AddonService';
 import { introService } from '../../services/playback/IntroService';
+import { continueWatchingService } from '../../services/playback/ContinueWatchingService';
 import { spatialNav } from '../../services/spatialNav/spatialNavEngine';
 import { gamepadManager } from '../../services/controller/gamepadManager';
 import { PlaybackSource } from '../../types/media';
 import { AddonStream, SubtitleTrack } from '../../types/addons';
 import { Focusable } from '../../components/Focusable/Focusable';
 import './VideoPlayerScreen.css';
+
 
 interface VideoPlayerScreenProps {
   source: PlaybackSource;
@@ -226,7 +228,51 @@ export const VideoPlayerScreen: React.FC<VideoPlayerScreenProps> = ({
     fetchExtraData();
   }, [source.id]);
 
+  // 2b. Progress Saver — persist watch position to ContinueWatchingService
+  // Runs every 5 seconds while playing; also flushes on unmount (exit/back) and on completion.
+  const engineStateRef = useRef(engineState);
+  engineStateRef.current = engineState;
+
+  useEffect(() => {
+    const saveNow = (isComplete: boolean = false) => {
+      const state = engineStateRef.current;
+      const dur = state.duration > 0 ? state.duration : (source.durationSeconds ?? 7200);
+      if (state.currentTime < 10 && !isComplete) return; // Don't save if barely started
+      continueWatchingService.upsertFromEngine(source, state.currentTime, dur, isComplete);
+    };
+
+    // Periodic save every 5 seconds
+    const interval = setInterval(() => {
+      const state = engineStateRef.current;
+      if (state.status === 'playing') {
+        saveNow(false);
+      }
+    }, 5000);
+
+    // Save on unmount (user exits the player)
+    return () => {
+      clearInterval(interval);
+      const state = engineStateRef.current;
+      const dur = state.duration > 0 ? state.duration : (source.durationSeconds ?? 7200);
+      // Don't save if playback never really started
+      if (state.currentTime >= 10) {
+        saveNow(false);
+      }
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [source.mediaId]);
+
+  // 2c. Mark completed when engine reports 'ended'
+  useEffect(() => {
+    if (engineState.status === 'ended') {
+      const dur = engineState.duration > 0 ? engineState.duration : (source.durationSeconds ?? 7200);
+      continueWatchingService.upsertFromEngine(source, engineState.currentTime, dur, true);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [engineState.status]);
+
   // 3. Transport Handlers
+
   const handleTogglePlayPause = useCallback(() => {
     if (!engineRef.current) return;
     engineRef.current.togglePlayPause();
