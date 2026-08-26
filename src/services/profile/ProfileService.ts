@@ -5,7 +5,9 @@ import {
   UpdateProfileDTO,
   PinMemoryPolicy,
   ProfileMemoryData,
-  WatchHistoryEntry 
+  WatchHistoryEntry,
+  GenreAffinity,
+  RecommendationContext
 } from '../../types/profile';
 
 const STORAGE_PROFILES_KEY = 'tv_user_profiles';
@@ -45,6 +47,142 @@ export const DEFAULT_PROFILES: UserProfile[] = [
     createdAt: Date.now() + 2,
   },
 ];
+
+const KNOWN_TITLE_GENRES: Record<string, string[]> = {
+  'interstellar': ['Sci-Fi', 'Adventure', 'Drama'],
+  'dune: part two': ['Sci-Fi', 'Adventure', 'Action'],
+  'dune': ['Sci-Fi', 'Adventure', 'Action'],
+  'severance': ['Sci-Fi', 'Thriller', 'Drama'],
+  'inception': ['Action', 'Sci-Fi', 'Thriller'],
+  'breaking bad': ['Crime', 'Drama', 'Thriller'],
+  'stranger things': ['Sci-Fi', 'Horror', 'Drama'],
+  'the dark knight': ['Action', 'Crime', 'Drama'],
+  'oppenheimer': ['Biography', 'Drama', 'History'],
+  'the matrix': ['Action', 'Sci-Fi'],
+  'blade runner 2049': ['Sci-Fi', 'Mystery', 'Drama'],
+  'gladiator': ['Action', 'Adventure', 'Drama'],
+  'fight club': ['Drama', 'Thriller'],
+  'pulp fiction': ['Crime', 'Drama'],
+  'moana 2': ['Animation', 'Family', 'Adventure'],
+  'inside out 2': ['Animation', 'Family', 'Comedy'],
+  'spider-man: across the spider-verse': ['Animation', 'Action', 'Adventure'],
+  'spider-man: into the spider-verse': ['Animation', 'Action', 'Adventure'],
+  'manjummel boys': ['Survival', 'Thriller', 'Drama'],
+  'aavesham': ['Action', 'Comedy'],
+  'bramayugam': ['Horror', 'Mystery', 'Thriller'],
+  '12th fail': ['Drama', 'Biography'],
+  'jawan': ['Action', 'Thriller'],
+  'leo': ['Action', 'Thriller'],
+  'salaar': ['Action', 'Drama', 'Crime'],
+  'kalki 2898 ad': ['Sci-Fi', 'Action', 'Fantasy'],
+  'animal': ['Action', 'Crime', 'Drama'],
+  'vikram': ['Action', 'Thriller', 'Crime'],
+  'kaithi': ['Action', 'Thriller'],
+  'jailer': ['Action', 'Comedy', 'Crime'],
+  'premalu': ['Romance', 'Comedy'],
+};
+
+const DEFAULT_PROFILE_HISTORIES: Record<string, WatchHistoryEntry[]> = {
+  'prof-primary': [
+    {
+      id: 'wh-seed-1',
+      mediaId: 'tt0816692',
+      title: 'Interstellar',
+      type: 'movie',
+      poster: 'https://images.metahub.space/poster/medium/tt0816692/img',
+      backdrop: 'https://images.metahub.space/background/medium/tt0816692/img',
+      progress: 68,
+      positionSeconds: 6900,
+      durationSeconds: 10140,
+      timestamp: Date.now() - 3600000 * 4,
+      genres: ['Sci-Fi', 'Adventure', 'Drama'],
+      rating: '8.7',
+      year: 2014,
+    },
+    {
+      id: 'wh-seed-2',
+      mediaId: 'tt15239678',
+      title: 'Dune: Part Two',
+      type: 'movie',
+      poster: 'https://images.metahub.space/poster/medium/tt15239678/img',
+      backdrop: 'https://images.metahub.space/background/medium/tt15239678/img',
+      progress: 85,
+      positionSeconds: 8400,
+      durationSeconds: 9960,
+      timestamp: Date.now() - 3600000 * 18,
+      genres: ['Sci-Fi', 'Adventure', 'Action'],
+      rating: '8.6',
+      year: 2024,
+    },
+    {
+      id: 'wh-seed-3',
+      mediaId: 'tt11280740',
+      title: 'Severance',
+      type: 'show',
+      poster: 'https://images.metahub.space/poster/medium/tt11280740/img',
+      backdrop: 'https://images.metahub.space/background/medium/tt11280740/img',
+      progress: 54,
+      positionSeconds: 1800,
+      durationSeconds: 3300,
+      timestamp: Date.now() - 3600000 * 36,
+      genres: ['Sci-Fi', 'Thriller', 'Drama'],
+      rating: '8.7',
+      year: '2025–',
+      episodeInfo: {
+        seasonNumber: 2,
+        episodeNumber: 1,
+        episodeTitle: 'Hello, Ms. Cobel',
+      },
+    },
+    {
+      id: 'wh-seed-4',
+      mediaId: 'tt1375666',
+      title: 'Inception',
+      type: 'movie',
+      poster: 'https://images.metahub.space/poster/medium/tt1375666/img',
+      backdrop: 'https://images.metahub.space/background/medium/tt1375666/img',
+      progress: 100,
+      positionSeconds: 8880,
+      durationSeconds: 8880,
+      timestamp: Date.now() - 3600000 * 72,
+      genres: ['Action', 'Sci-Fi', 'Thriller'],
+      rating: '8.8',
+      year: 2010,
+    },
+  ],
+  'prof-kids': [
+    {
+      id: 'wh-seed-k1',
+      mediaId: 'tt12412888',
+      title: 'Moana 2',
+      type: 'movie',
+      poster: 'https://images.metahub.space/poster/medium/tt12412888/img',
+      backdrop: 'https://images.metahub.space/background/medium/tt12412888/img',
+      progress: 72,
+      positionSeconds: 4320,
+      durationSeconds: 6000,
+      timestamp: Date.now() - 3600000 * 5,
+      genres: ['Animation', 'Family', 'Adventure'],
+      rating: '7.1',
+      year: 2024,
+    },
+    {
+      id: 'wh-seed-k2',
+      mediaId: 'tt22022452',
+      title: 'Inside Out 2',
+      type: 'movie',
+      poster: 'https://images.metahub.space/poster/medium/tt22022452/img',
+      backdrop: 'https://images.metahub.space/background/medium/tt22022452/img',
+      progress: 90,
+      positionSeconds: 5180,
+      durationSeconds: 5760,
+      timestamp: Date.now() - 3600000 * 24,
+      genres: ['Animation', 'Family', 'Comedy'],
+      rating: '7.6',
+      year: 2024,
+    },
+  ],
+};
 
 export const AVATAR_COLOR_PALETTES = [
   'linear-gradient(135deg, #e50914, #ff453a)', // Cinema Red
@@ -420,9 +558,18 @@ class ProfileService {
     try {
       const stored = localStorage.getItem(`tv_watch_history_${id}`);
       if (stored) {
-        return JSON.parse(stored);
+        const parsed = JSON.parse(stored);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return parsed;
+        }
       }
     } catch (e) {}
+
+    // Provide default seed history for standard demo profiles if not set yet
+    if (DEFAULT_PROFILE_HISTORIES[id]) {
+      return [...DEFAULT_PROFILE_HISTORIES[id]];
+    }
+
     return [];
   }
 
@@ -434,8 +581,19 @@ class ProfileService {
       const history = this.getWatchHistory(profileId);
       // Remove previous entry for same mediaId if exists so it moves to top
       const filtered = history.filter((h) => h.mediaId !== entry.mediaId);
+
+      // Auto infer genres if omitted
+      let entryGenres = entry.genres;
+      if (!entryGenres || entryGenres.length === 0) {
+        const titleLower = entry.title?.toLowerCase() || '';
+        if (KNOWN_TITLE_GENRES[titleLower]) {
+          entryGenres = KNOWN_TITLE_GENRES[titleLower];
+        }
+      }
+
       const newEntry: WatchHistoryEntry = {
         ...entry,
+        genres: entryGenres,
         id: `wh-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
         timestamp: Date.now(),
       };
@@ -443,6 +601,118 @@ class ProfileService {
       const updated = [newEntry, ...filtered].slice(0, 60);
       localStorage.setItem(`tv_watch_history_${profileId}`, JSON.stringify(updated));
     } catch (e) {}
+  }
+
+  /**
+   * Calculates the most viewed genres in the profile's watch history.
+   * Uses frequency weighting + recency decay + watch progress weighting.
+   */
+  public getMostViewedGenres(profileId?: string): GenreAffinity[] {
+    const id = profileId || this.activeProfileId;
+    const history = this.getWatchHistory(id);
+
+    if (!history || history.length === 0) {
+      const activeProf = this.profiles.find((p) => p.id === id);
+      if (activeProf?.isKid || activeProf?.type === 'kids') {
+        return [
+          { genre: 'Animation', count: 3, percentage: 50, weight: 15 },
+          { genre: 'Family', count: 2, percentage: 30, weight: 9 },
+          { genre: 'Adventure', count: 1, percentage: 20, weight: 6 },
+        ];
+      }
+      return [
+        { genre: 'Sci-Fi', count: 3, percentage: 40, weight: 12 },
+        { genre: 'Action', count: 2, percentage: 35, weight: 10 },
+        { genre: 'Drama', count: 2, percentage: 25, weight: 7 },
+      ];
+    }
+
+    const genreWeights: Map<string, { count: number; weight: number }> = new Map();
+    let totalWeight = 0;
+
+    history.forEach((entry, index) => {
+      let genres = entry.genres;
+      if (!genres || genres.length === 0) {
+        const titleLower = (entry.title || '').toLowerCase();
+        if (KNOWN_TITLE_GENRES[titleLower]) {
+          genres = KNOWN_TITLE_GENRES[titleLower];
+        }
+      }
+
+      if (!genres || genres.length === 0) return;
+
+      // Recency multiplier: top 5 items get highest priority
+      const recencyMultiplier = index < 3 ? 2.5 : index < 8 ? 1.8 : index < 15 ? 1.2 : 1.0;
+      
+      // Progress multiplier: watched >= 50% indicates genuine interest
+      const progress = entry.progress || 0;
+      const progressMultiplier = progress >= 80 ? 1.5 : progress >= 40 ? 1.2 : 1.0;
+
+      const itemWeight = recencyMultiplier * progressMultiplier;
+
+      genres.forEach((genre) => {
+        const clean = genre.trim();
+        if (!clean) return;
+        const current = genreWeights.get(clean) || { count: 0, weight: 0 };
+        current.count += 1;
+        current.weight += itemWeight;
+        genreWeights.set(clean, current);
+        totalWeight += itemWeight;
+      });
+    });
+
+    const affinities: GenreAffinity[] = [];
+    genreWeights.forEach((val, genre) => {
+      const percentage = totalWeight > 0 ? Math.round((val.weight / totalWeight) * 100) : 0;
+      affinities.push({
+        genre,
+        count: val.count,
+        weight: Math.round(val.weight * 10) / 10,
+        percentage,
+      });
+    });
+
+    // Sort descending by weight
+    affinities.sort((a, b) => b.weight - a.weight);
+
+    return affinities;
+  }
+
+  /**
+   * Retrieves top N most viewed genres for the profile (e.g. ['Sci-Fi', 'Action', 'Drama'])
+   */
+  public getTopGenres(profileId?: string, limit: number = 3): string[] {
+    const affinities = this.getMostViewedGenres(profileId);
+    return affinities.slice(0, limit).map((a) => a.genre);
+  }
+
+  /**
+   * Builds recommendation context summary for UI rails and hero badges
+   */
+  public getRecommendationContext(profileId?: string): RecommendationContext {
+    const id = profileId || this.activeProfileId;
+    const profile = this.profiles.find((p) => p.id === id) || this.getActiveProfile();
+    const history = this.getWatchHistory(id);
+    const affinities = this.getMostViewedGenres(id);
+    const topGenres = affinities.slice(0, 3).map((a) => a.genre);
+    const primaryGenre = topGenres[0] || null;
+
+    let reason = 'Trending Blockbusters & Top-Rated Picks';
+    if (profile.isKid || profile.type === 'kids') {
+      reason = `Top Family & Animation picks for ${profile.name}`;
+    } else if (topGenres.length >= 2) {
+      reason = `Because you watch ${topGenres.slice(0, 2).join(' & ')}`;
+    } else if (topGenres.length === 1) {
+      reason = `Because you like ${topGenres[0]}`;
+    }
+
+    return {
+      topGenres,
+      genreAffinities: affinities,
+      totalWatched: history.length,
+      primaryGenre,
+      reason,
+    };
   }
 
   public removeWatchHistoryItem(profileId: string, entryId: string): void {

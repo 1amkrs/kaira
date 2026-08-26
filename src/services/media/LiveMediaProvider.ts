@@ -16,6 +16,7 @@ import { musicPluginService } from '../music/MusicPluginService';
 import { profileService } from '../profile/ProfileService';
 import { introService } from '../playback/IntroService';
 import { continueWatchingService, ContinueWatchingEntry } from '../playback/ContinueWatchingService';
+import { recommendationEngine } from './RecommendationEngine';
 
 import {
   MALAYALAM_MOVIES,
@@ -986,6 +987,27 @@ class LiveMediaProviderService implements MediaProvider {
       this.saveFavorites();
       return true;
     }
+  }
+
+  // --- PERSONALIZED RECOMMENDATIONS (GENRE-BASED WATCH HISTORY) ---
+  public async getPersonalizedRecommendations(profileId?: string): Promise<{
+    movies: Movie[];
+    topGenres: string[];
+    reason: string;
+  }> {
+    const id = profileId || this.getActiveProfileId();
+    const result = await recommendationEngine.getPersonalizedRecommendations(id);
+    return {
+      movies: result.movies,
+      topGenres: result.topGenres,
+      reason: result.reason,
+    };
+  }
+
+  public async getRecommendedForYou(profileId?: string): Promise<Movie[]> {
+    const id = profileId || this.getActiveProfileId();
+    const result = await recommendationEngine.getPersonalizedRecommendations(id);
+    return result.movies;
   }
 
   private parseRuntimeToSeconds(runtime?: string, runtimeMinutes?: number, defaultFallback = 7200): number {

@@ -143,6 +143,9 @@ export const App: React.FC = () => {
       progress: 0,
       positionSeconds: 0,
       durationSeconds: (movie.runtimeMinutes || 120) * 60,
+      genres: movie.genres,
+      rating: movie.rating,
+      year: movie.year,
     });
 
     await playbackService.play(source);

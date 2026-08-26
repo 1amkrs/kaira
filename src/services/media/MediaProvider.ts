@@ -11,7 +11,7 @@ import {
 
 export interface ContinueWatchingItem {
   id: string;
-  type: 'movie' | 'episode';
+  type: 'movie' | 'episode' | 'track';
   title: string;
   subtitle?: string;
   poster: string;
@@ -19,7 +19,7 @@ export interface ContinueWatchingItem {
   progress: number;
   duration: string;
   lastPlayedPosition: number;
-  media: Movie | Episode;
+  media: Movie | Episode | Track;
 }
 
 export interface MediaProvider {
@@ -58,6 +58,12 @@ export interface MediaProvider {
   getRecentlyAdded(): Promise<{ movies: Movie[]; shows: Show[]; albums: Album[] }>;
   getFavorites(): Promise<{ movies: Movie[]; shows: Show[]; albums: Album[] }>;
   toggleFavorite(id: string, type: 'movie' | 'show' | 'album'): Promise<boolean>;
+  getRecommendedForYou(profileId?: string): Promise<Movie[]>;
+  getPersonalizedRecommendations(profileId?: string): Promise<{
+    movies: Movie[];
+    topGenres: string[];
+    reason: string;
+  }>;
 
   // Playback
   getPlaybackSource(item: Movie | Episode | Track): Promise<PlaybackSource>;

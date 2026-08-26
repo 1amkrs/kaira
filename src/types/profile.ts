@@ -35,11 +35,29 @@ export interface WatchHistoryEntry {
   positionSeconds: number;
   durationSeconds: number;
   timestamp: number;
+  genres?: string[];
+  rating?: string;
+  year?: number | string;
   episodeInfo?: {
     seasonNumber: number;
     episodeNumber: number;
     episodeTitle?: string;
   };
+}
+
+export interface GenreAffinity {
+  genre: string;
+  count: number;
+  percentage: number;
+  weight: number;
+}
+
+export interface RecommendationContext {
+  topGenres: string[];
+  genreAffinities: GenreAffinity[];
+  totalWatched: number;
+  primaryGenre: string | null;
+  reason: string;
 }
 
 export interface ProfileServiceState {

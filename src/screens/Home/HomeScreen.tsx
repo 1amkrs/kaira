@@ -85,6 +85,11 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
   }, []);
 
   const [featured, setFeatured] = useState<Movie | null>(null);
+  const [recommended, setRecommended] = useState<{ movies: Movie[]; topGenres: string[]; reason: string }>({
+    movies: [],
+    topGenres: [],
+    reason: '',
+  });
   const [top10Daily, setTop10Daily] = useState<Movie[]>([]);
   const [hollywoodMovies, setHollywoodMovies] = useState<Movie[]>([]);
   const [regionalMovies, setRegionalMovies] = useState<Movie[]>([]);
@@ -95,7 +100,8 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
   const loadData = async () => {
     setIsLoading(true);
     try {
-      const [feat, top10, hwMovs, regMovs, shows, albs] = await Promise.all([
+      const [recs, feat, top10, hwMovs, regMovs, shows, albs] = await Promise.all([
+        mediaProvider.getPersonalizedRecommendations(),
         mediaProvider.getFeaturedMovie(),
         (mediaProvider as any).getTop10Daily(),
         mediaProvider.getHollywoodMovies(),
@@ -103,6 +109,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
         mediaProvider.getShows(),
         mediaProvider.getAlbums(),
       ]);
+      setRecommended(recs || { movies: [], topGenres: [], reason: '' });
       setFeatured(feat);
       setTop10Daily(top10 || []);
       setHollywoodMovies(hwMovs);
@@ -118,6 +125,18 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
 
   useEffect(() => {
     loadData();
+
+    const handleRefresh = () => {
+      loadData();
+    };
+
+    window.addEventListener('tv:profile-changed', handleRefresh);
+    window.addEventListener('tv:watch-memory-updated', handleRefresh);
+
+    return () => {
+      window.removeEventListener('tv:profile-changed', handleRefresh);
+      window.removeEventListener('tv:watch-memory-updated', handleRefresh);
+    };
   }, []);
 
 
@@ -280,7 +299,33 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
         </div>
       )}
 
-      {/* 3. Top 10 Today — Daily Trending from Cinemeta */}
+      {/* 3. Recommended for You (Personalized based on Profile Watch History Most Viewed Genres) */}
+      {recommended.movies.length > 0 && (
+        <ContentRail
+          id="rail-recommended-for-you"
+          title="Recommended for You"
+          subtitle={
+            recommended.reason ||
+            (recommended.topGenres.length > 0
+              ? `Personalized based on your interest in ${recommended.topGenres.slice(0, 2).join(' & ')}`
+              : 'Handpicked titles matching your taste')
+          }
+          isLoading={isLoading}
+          aspectRatio="poster"
+        >
+          {recommended.movies.map((mov, idx) => (
+            <MovieCard
+              key={`rec-${mov.id}`}
+              movie={mov}
+              groupId="rail-recommended-for-you"
+              indexInGroup={idx}
+              onSelect={onSelectMovie}
+            />
+          ))}
+        </ContentRail>
+      )}
+
+      {/* 4. Top 10 Today — Daily Trending from Cinemeta */}
       <ContentRail
         id="rail-trending-movies"
         title="Top 10 Today"
