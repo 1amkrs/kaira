@@ -24,6 +24,13 @@ export interface DriverCallbacks {
   onError: (error: string) => void;
 }
 
+export interface AudioTrackInfo {
+  id: string;
+  label: string;
+  language: string;
+  enabled: boolean;
+}
+
 export interface IPlaybackDriver {
   readonly type: DriverType;
   initialize(container: HTMLElement, callbacks: DriverCallbacks): Promise<void> | void;
@@ -36,6 +43,8 @@ export interface IPlaybackDriver {
   setVolume(volume: number): void;
   setMuted(muted: boolean): void;
   setSpeed(speed: number): void;
+  getAudioTracks?(): AudioTrackInfo[];
+  selectAudioTrack?(index: number): void;
   destroy(): void;
   getState(): DriverState;
 }

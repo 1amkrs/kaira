@@ -89,6 +89,10 @@ export const VideoPlayerScreen: React.FC<VideoPlayerScreenProps> = ({
   const [isScrubbing, setIsScrubbing] = useState<boolean>(false);
   const [hoverPosition, setHoverPosition] = useState<number | null>(null);
 
+  // Audio Tracks State
+  const [audioTracks, setAudioTracks] = useState<Array<{ id: string; label: string; language: string; enabled: boolean }>>([]);
+  const [selectedAudioTrackIdx, setSelectedAudioTrackIdx] = useState<number>(0);
+
   // Volume OSD state
   const [volumeToast, setVolumeToast] = useState<{ level: number; muted: boolean } | null>(null);
   const volumeToastTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -270,6 +274,18 @@ export const VideoPlayerScreen: React.FC<VideoPlayerScreenProps> = ({
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [engineState.status]);
+
+  // 2d. Auto-detect available audio tracks
+  useEffect(() => {
+    if (engineRef.current) {
+      const tracks = engineRef.current.getAudioTracks();
+      if (tracks && tracks.length > 0) {
+        setAudioTracks(tracks);
+        const activeIdx = tracks.findIndex((t) => t.enabled);
+        if (activeIdx >= 0) setSelectedAudioTrackIdx(activeIdx);
+      }
+    }
+  }, [engineState.status, currentStreamUrl]);
 
   // 3. Transport Handlers
 
@@ -1192,36 +1208,181 @@ export const VideoPlayerScreen: React.FC<VideoPlayerScreenProps> = ({
                 </div>
               )}
 
-              {/* Tab 3: Vocal Boost EQ */}
+              {/* Tab 3: Audio Settings & No Sound Fix */}
               {menuTab === 'audio' && (
-                <div className="tv-menu-items-grid">
-                  <Focusable
-                    id="audio-boost-toggle"
-                    groupId="menu-audio-list"
-                    indexInGroup={0}
-                    className="tv-menu-option-btn-focusable"
-                    onSelect={() => {
-                      const next = !engineState.vocalBoostEnabled;
-                      engineRef.current?.setVocalBoost(next);
-                      triggerFeedback(next ? 'Vocal Boost: On' : 'Standard Audio');
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                  {/* Dialogue Clarity Boost */}
+                  <div className="tv-menu-items-grid">
+                    <Focusable
+                      id="audio-boost-toggle"
+                      groupId="menu-audio-list"
+                      indexInGroup={0}
+                      className="tv-menu-option-btn-focusable"
+                      onSelect={() => {
+                        const next = !engineState.vocalBoostEnabled;
+                        engineRef.current?.setVocalBoost(next);
+                        triggerFeedback(next ? 'Vocal Boost: On' : 'Standard Audio');
+                      }}
+                    >
+                      {(isFocused) => (
+                        <div
+                          className={`tv-menu-option-card ${engineState.vocalBoostEnabled ? 'active' : ''} ${
+                            isFocused ? 'focused' : ''
+                          }`}
+                        >
+                          <div>
+                            <div style={{ fontWeight: 700 }}>Dialogue Clarity Boost</div>
+                            <div style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>
+                              Enhances quiet speech and whispered dialogue for easier listening
+                            </div>
+                          </div>
+                          {engineState.vocalBoostEnabled && <Check size={18} />}
+                        </div>
+                      )}
+                    </Focusable>
+                  </div>
+
+                  {/* Multi Audio Tracks Selection (if available) */}
+                  {audioTracks.length > 1 && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                      <div style={{ fontSize: '13px', fontWeight: 700, color: 'var(--google-blue)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                        Audio Tracks ({audioTracks.length} Detected)
+                      </div>
+                      <div className="tv-menu-items-grid">
+                        {audioTracks.map((tr, idx) => (
+                          <Focusable
+                            key={tr.id || idx}
+                            id={`audio-track-${idx}`}
+                            groupId="menu-audio-list"
+                            indexInGroup={idx + 1}
+                            className="tv-menu-option-btn-focusable"
+                            onSelect={() => {
+                              setSelectedAudioTrackIdx(idx);
+                              engineRef.current?.selectAudioTrack(idx);
+                              triggerFeedback(`Audio: ${tr.label}`);
+                            }}
+                          >
+                            {(isFocused) => (
+                              <div
+                                className={`tv-menu-option-card ${selectedAudioTrackIdx === idx ? 'active' : ''} ${
+                                  isFocused ? 'focused' : ''
+                                }`}
+                              >
+                                <div>
+                                  <div style={{ fontWeight: 600 }}>{tr.label}</div>
+                                  <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
+                                    {tr.language ? `Language: ${tr.language}` : 'Multi-channel / Stereo'}
+                                  </div>
+                                </div>
+                                {selectedAudioTrackIdx === idx && <Check size={18} />}
+                              </div>
+                            )}
+                          </Focusable>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* No Sound Fix & Troubleshooting Tools */}
+                  <div
+                    style={{
+                      padding: '14px 16px',
+                      borderRadius: '12px',
+                      background: 'rgba(255, 255, 255, 0.04)',
+                      border: '1px solid rgba(255, 255, 255, 0.08)',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '10px',
                     }}
                   >
-                    {(isFocused) => (
-                      <div
-                        className={`tv-menu-option-card ${engineState.vocalBoostEnabled ? 'active' : ''} ${
-                          isFocused ? 'focused' : ''
-                        }`}
+                    <div style={{ fontSize: '13px', fontWeight: 700, color: '#fff', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <Volume2 size={15} color="var(--google-blue)" /> No Sound? Quick Fix & Codec Tools
+                    </div>
+                    <div style={{ fontSize: '12px', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+                      Torrent streams frequently use AC3, EAC3 5.1, or DTS audio tracks which browsers cannot decode directly. Click below to transcode to AAC Stereo or switch to a web mirror.
+                    </div>
+
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                      <Focusable
+                        id="audio-fix-aac-btn"
+                        groupId="menu-audio-list"
+                        indexInGroup={audioTracks.length + 1}
+                        className="tv-addon-btn-focusable"
+                        onSelect={() => {
+                          if (!currentStreamUrl) return;
+                          let fixedUrl = currentStreamUrl;
+                          if (!fixedUrl.includes('audio=aac')) {
+                            fixedUrl += (fixedUrl.includes('?') ? '&' : '?') + 'audio=aac&transcode=1&downmix=stereo';
+                          }
+                          setCurrentStreamUrl(fixedUrl);
+                          engineRef.current?.loadMedia(
+                            fixedUrl,
+                            'direct',
+                            engineState.currentTime,
+                            undefined,
+                            engineState.duration || source.durationSeconds || 7200
+                          );
+                          triggerFeedback('Forced Stereo AAC Transcode');
+                        }}
                       >
-                        <div>
-                          <div style={{ fontWeight: 700 }}>Dialogue Clarity Boost</div>
-                          <div style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>
-                            Enhances quiet speech and whispered dialogue for easier listening
+                        {(isFocused) => (
+                          <div className={`tv-addon-action-pill ${isFocused ? 'focused' : ''}`}>
+                            <Zap size={14} />
+                            <span>Force AAC Stereo Transcode</span>
                           </div>
-                        </div>
-                        {engineState.vocalBoostEnabled && <Check size={18} />}
-                      </div>
-                    )}
-                  </Focusable>
+                        )}
+                      </Focusable>
+
+                      {availableStreams.some((s) => s.streamType === 'embed') && (
+                        <Focusable
+                          id="audio-fix-web-btn"
+                          groupId="menu-audio-list"
+                          indexInGroup={audioTracks.length + 2}
+                          className="tv-addon-btn-focusable"
+                          onSelect={() => {
+                            const webStream = availableStreams.find((s) => s.streamType === 'embed');
+                            if (webStream) {
+                              setCurrentStreamUrl(webStream.url);
+                              setCurrentDriverType('embed');
+                              engineRef.current?.loadMedia(
+                                webStream.url,
+                                'embed',
+                                engineState.currentTime,
+                                undefined,
+                                engineState.duration || source.durationSeconds || 7200
+                              );
+                              triggerFeedback(`Switched to: ${webStream.name}`);
+                            }
+                          }}
+                        >
+                          {(isFocused) => (
+                            <div className={`tv-addon-action-pill ${isFocused ? 'focused' : ''}`}>
+                              <Layers size={14} />
+                              <span>Switch to Web Mirror (Stereo)</span>
+                            </div>
+                          )}
+                        </Focusable>
+                      )}
+
+                      <Focusable
+                        id="audio-test-chime-btn"
+                        groupId="menu-audio-list"
+                        indexInGroup={audioTracks.length + 3}
+                        className="tv-addon-btn-focusable"
+                        onSelect={() => {
+                          engineRef.current?.playTestChime();
+                          triggerFeedback('Playing Test Tone');
+                        }}
+                      >
+                        {(isFocused) => (
+                          <div className={`tv-addon-action-pill ${isFocused ? 'focused' : ''}`}>
+                            <Volume2 size={14} />
+                            <span>Test Speaker Tone</span>
+                          </div>
+                        )}
+                      </Focusable>
+                    </div>
+                  </div>
                 </div>
               )}
 

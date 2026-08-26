@@ -63,5 +63,6 @@ export interface DebridConfig {
   provider: 'realdebrid' | 'alldebrid' | 'selfdebrid' | 'torbox' | 'premiumize' | 'none';
   apiKey: string;
   endpointUrl?: string; // e.g. "http://localhost:8081" or "http://127.0.0.1:8081"
+  audioMode?: 'auto' | 'direct' | 'aac_transcode' | 'stereo_downmix';
   enabled: boolean;
 }

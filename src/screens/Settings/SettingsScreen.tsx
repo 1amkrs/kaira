@@ -169,6 +169,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onClose }) => {
 
   const [debridEndpoint, setDebridEndpoint] = useState<string>(() => debridConfig.endpointUrl || 'http://localhost:8081');
   const [debridApiKey, setDebridApiKey] = useState<string>(() => debridConfig.apiKey || '');
+  const [debridAudioMode, setDebridAudioMode] = useState<DebridConfig['audioMode']>(() => debridConfig.audioMode || 'auto');
   const [debridTestResult, setDebridTestResult] = useState<{ success: boolean; message: string } | null>(null);
   const [isTestingDebrid, setIsTestingDebrid] = useState<boolean>(false);
 
@@ -178,17 +179,19 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onClose }) => {
       provider,
       endpointUrl: debridEndpoint.trim(),
       apiKey: debridApiKey.trim(),
+      audioMode: debridAudioMode,
       enabled: provider !== 'none',
     };
     addonService.setDebridConfig(updated);
     setDebridConfig(updated);
   };
 
-  const handleSaveDebridSettings = (prov?: DebridConfig['provider']) => {
+  const handleSaveDebridSettings = (prov?: DebridConfig['provider'], audioMode?: DebridConfig['audioMode']) => {
     const updated: DebridConfig = {
       provider: prov || debridConfig.provider,
       apiKey: debridApiKey.trim(),
       endpointUrl: debridEndpoint.trim(),
+      audioMode: audioMode !== undefined ? audioMode : debridAudioMode,
       enabled: (prov || debridConfig.provider) !== 'none',
     };
     addonService.setDebridConfig(updated);
@@ -750,6 +753,44 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onClose }) => {
                       {debridTestResult.message}
                     </div>
                   )}
+
+                  {/* Audio Mode Compatibility Selector */}
+                  <div style={{ marginTop: '8px', paddingTop: '12px', borderTop: '1px solid rgba(255,255,255,0.08)' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                      <span style={{ fontSize: '13px', fontWeight: 600, color: '#fff', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <Volume2 size={14} color="var(--google-blue)" /> Audio Output & Transcoding Mode (No Sound Fix)
+                      </span>
+                    </div>
+                    <div className="tv-pill-options" style={{ marginBottom: '8px' }}>
+                      {[
+                        { id: 'auto', label: 'Auto (Recommended)' },
+                        { id: 'aac_transcode', label: 'Stereo AAC Transcode (Fix Silence)' },
+                        { id: 'stereo_downmix', label: 'Stereo Downmix' },
+                        { id: 'direct', label: 'Direct Bitstream Passthrough' },
+                      ].map((item, optIdx) => (
+                        <Focusable
+                          key={item.id}
+                          id={`opt-debrid-audio-${item.id}`}
+                          groupId="settings-self-debrid-audio"
+                          indexInGroup={optIdx}
+                          className="tv-option-chip"
+                          onSelect={() => {
+                            setDebridAudioMode(item.id as any);
+                            handleSaveDebridSettings(undefined, item.id as any);
+                          }}
+                        >
+                          {(isFocused) => (
+                            <div className={`tv-chip-inner ${debridAudioMode === item.id ? 'active' : ''} ${isFocused ? 'focused' : ''}`}>
+                              {item.label}
+                            </div>
+                          )}
+                        </Focusable>
+                      ))}
+                    </div>
+                    <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
+                      If torrent movies play video with no sound (due to AC3/EAC3/DTS codecs in web browsers), select <strong>Stereo AAC Transcode</strong>.
+                    </span>
+                  </div>
 
                   <div style={{ fontSize: '12px', color: 'var(--text-secondary)', lineHeight: 1.6, background: 'rgba(0,0,0,0.3)', padding: '12px', borderRadius: '8px' }}>
                     <strong>Quick Start with an0mal1a/self-debrid:</strong><br />

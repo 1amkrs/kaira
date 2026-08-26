@@ -242,6 +242,23 @@ export class PlayerEngineController {
     this.notify();
   }
 
+  public getAudioTracks(): Array<{ id: string; label: string; language: string; enabled: boolean }> {
+    if (this.currentDriver && typeof this.currentDriver.getAudioTracks === 'function') {
+      return this.currentDriver.getAudioTracks();
+    }
+    return [];
+  }
+
+  public selectAudioTrack(index: number): void {
+    if (this.currentDriver && typeof this.currentDriver.selectAudioTrack === 'function') {
+      this.currentDriver.selectAudioTrack(index);
+    }
+  }
+
+  public playTestChime(): void {
+    this.audioBoostEngine.playTestChime();
+  }
+
   public loadSubtitleTrack(url: string): Promise<number> {
     return this.subtitleEngine.loadSubtitles(url);
   }

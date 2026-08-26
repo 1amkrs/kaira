@@ -7,9 +7,10 @@ export class AudioBoostEngine {
   private gainNode: GainNode | null = null;
   private isEnabled: boolean = false;
   private currentVideo: HTMLVideoElement | null = null;
+  private isAttached = false;
 
   public attachToVideo(video: HTMLVideoElement): void {
-    if (this.currentVideo === video && this.sourceNode) return;
+    if (this.currentVideo === video && this.isAttached) return;
     this.currentVideo = video;
 
     try {
@@ -22,10 +23,13 @@ export class AudioBoostEngine {
 
       // Resume context on user interaction
       if (this.audioCtx.state === 'suspended') {
-        this.audioCtx.resume();
+        this.audioCtx.resume().catch(() => {});
       }
 
-      this.sourceNode = this.audioCtx.createMediaElementSource(video);
+      // If already connected to this video, do not re-create MediaElementSource (browsers throw error)
+      if (!this.sourceNode) {
+        this.sourceNode = this.audioCtx.createMediaElementSource(video);
+      }
 
       // 1. Vocal Presence Peaking Filter (1.8 kHz, +6 dB boost for speech clarity)
       this.vocalFilter = this.audioCtx.createBiquadFilter();
@@ -51,7 +55,7 @@ export class AudioBoostEngine {
       this.gainNode = this.audioCtx.createGain();
       this.gainNode.gain.value = 1.0;
 
-      // Connect DSP chain
+      // Connect DSP chain: Source -> BassCut -> VocalBoost -> Compressor -> Gain -> Output
       this.sourceNode
         .connect(this.bassFilter)
         .connect(this.vocalFilter)
@@ -59,9 +63,11 @@ export class AudioBoostEngine {
         .connect(this.gainNode)
         .connect(this.audioCtx.destination);
 
+      this.isAttached = true;
       console.log('[AudioBoostEngine] Attached Web Audio DSP chain to video element');
     } catch (e) {
-      console.warn('[AudioBoostEngine] Web Audio attachment notice:', e);
+      console.warn('[AudioBoostEngine] Web Audio attachment notice (safe fallback to native audio):', e);
+      this.isAttached = false;
     }
   }
 
@@ -88,6 +94,36 @@ export class AudioBoostEngine {
     return this.isEnabled;
   }
 
+  /**
+   * Play a brief test chime via Web Audio to confirm system speaker functionality
+   */
+  public playTestChime(): void {
+    try {
+      const AudioCtxClass = window.AudioContext || (window as any).webkitAudioContext;
+      if (!AudioCtxClass) return;
+      const ctx = new AudioCtxClass();
+      if (ctx.state === 'suspended') {
+        ctx.resume();
+      }
+
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(587.33, ctx.currentTime); // D5
+      osc.frequency.setValueAtTime(880.00, ctx.currentTime + 0.12); // A5
+
+      gain.gain.setValueAtTime(0.3, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.5);
+
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+
+      osc.start();
+      osc.stop(ctx.currentTime + 0.5);
+    } catch (_) {}
+  }
+
   public destroy(): void {
     if (this.audioCtx && this.audioCtx.state !== 'closed') {
       try {
@@ -101,5 +137,6 @@ export class AudioBoostEngine {
     this.compressor = null;
     this.gainNode = null;
     this.currentVideo = null;
+    this.isAttached = false;
   }
 }

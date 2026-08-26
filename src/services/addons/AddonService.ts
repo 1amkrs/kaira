@@ -394,8 +394,13 @@ class AddonService {
       if (isSelfDebrid) {
         const selfUrl = (this.debridConfig.endpointUrl || 'http://localhost:8081').replace(/\/+$/, '');
         // an0mal1a/self-debrid route is /stream/<torrent_hash>
-        const fileParam = raw.fileIdx !== undefined ? `?file=${raw.fileIdx}` : '';
-        streamUrl = `${selfUrl}/stream/${raw.infoHash}${fileParam}`;
+        const fileParam = raw.fileIdx !== undefined ? `file=${raw.fileIdx}` : '';
+        const audioMode = this.debridConfig.audioMode || 'auto';
+        const audioParam = audioMode === 'aac_transcode' ? 'audio=aac&transcode=1' : audioMode === 'stereo_downmix' ? 'downmix=stereo' : '';
+        const queryParams = [fileParam, audioParam].filter(Boolean).join('&');
+        const queryStr = queryParams ? `?${queryParams}` : '';
+        
+        streamUrl = `${selfUrl}/stream/${raw.infoHash}${queryStr}`;
         streamType = 'direct';
 
         // Proactively register magnet link with local qBittorrent via Web UI if available
@@ -478,8 +483,11 @@ class AddonService {
     let audio: string | undefined;
     if (upper.includes('ATMOS')) audio = 'Dolby Atmos';
     else if (upper.includes('TRUEHD')) audio = 'TrueHD 7.1';
-    else if (upper.includes('DDP5.1') || upper.includes('5.1')) audio = '5.1 Surround';
-    else if (upper.includes('AAC')) audio = 'AAC 2.0';
+    else if (upper.includes('DTS-HD') || upper.includes('DTS')) audio = 'DTS-HD';
+    else if (upper.includes('EAC3') || upper.includes('DDP5.1') || upper.includes('DDP')) audio = 'Dolby Digital+ 5.1';
+    else if (upper.includes('AC3') || upper.includes('DD5.1') || upper.includes('5.1')) audio = 'Dolby Digital 5.1';
+    else if (upper.includes('AAC2.0') || upper.includes('AAC') || upper.includes('STEREO') || upper.includes('2.0')) audio = 'AAC Stereo 2.0';
+    else if (upper.includes('OPUS')) audio = 'Opus Stereo';
 
     return {
       quality,

@@ -458,6 +458,38 @@ export class NativeDriver implements IPlaybackDriver {
     this.state.playbackSpeed = speed;
   }
 
+  public getAudioTracks(): Array<{ id: string; label: string; language: string; enabled: boolean }> {
+    if (!this.videoElement) return [];
+    try {
+      const list = (this.videoElement as any).audioTracks;
+      if (!list || list.length === 0) return [];
+      const tracks: Array<{ id: string; label: string; language: string; enabled: boolean }> = [];
+      for (let i = 0; i < list.length; i++) {
+        const t = list[i];
+        tracks.push({
+          id: t.id || `track-${i}`,
+          label: t.label || `Audio Track ${i + 1} (${t.language || 'Stereo/5.1'})`,
+          language: t.language || '',
+          enabled: Boolean(t.enabled),
+        });
+      }
+      return tracks;
+    } catch (_) {
+      return [];
+    }
+  }
+
+  public selectAudioTrack(index: number): void {
+    if (!this.videoElement) return;
+    try {
+      const list = (this.videoElement as any).audioTracks;
+      if (!list || list.length === 0) return;
+      for (let i = 0; i < list.length; i++) {
+        list[i].enabled = i === index;
+      }
+    } catch (_) {}
+  }
+
   // ─── Helpers ──────────────────────────────────────────────────────────────
 
   private getValidDuration(): number {
