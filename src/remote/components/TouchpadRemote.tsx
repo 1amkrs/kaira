@@ -4,13 +4,15 @@ import {
   ChevronDown,
   ChevronLeft,
   ChevronRight,
-  ArrowLeft,
-  Home,
-  Search,
-  Sliders,
-  Volume2,
+  ChevronLeft as BackIcon,
+  Tv,
+  Play,
+  Pause,
+  SlidersHorizontal,
+  Plus,
+  Minus,
   VolumeX,
-  Volume1,
+  Volume2,
   Maximize2
 } from 'lucide-react';
 import { remoteClient } from '../remoteClient';
@@ -21,17 +23,18 @@ interface TouchpadRemoteProps {
 }
 
 export const TouchpadRemote: React.FC<TouchpadRemoteProps> = ({ tvState }) => {
-  const [controlMode, setControlMode] = useState<'dpad' | 'touchpad'>('dpad');
-  const [ripple, setRipple] = useState<{ x: number; y: number; id: number } | null>(null);
+  const [controlMode, setControlMode] = useState<'clickpad' | 'touchpad'>('clickpad');
+  const [ripples, setRipples] = useState<Array<{ x: number; y: number; id: number }>>([]);
 
-  // Touchpad Gesture Tracking
+  // Touch Surface Tracking
   const touchStartRef = useRef<{ x: number; y: number; time: number } | null>(null);
   const lastSwipeTimeRef = useRef<number>(0);
   const lastTapTimeRef = useRef<number>(0);
   const hasMovedRef = useRef<boolean>(false);
 
-  // D-Pad Actions
+  // D-Pad / Clickpad Actions
   const handleNav = (direction: 'up' | 'down' | 'left' | 'right') => {
+    remoteClient.triggerHaptic(12);
     const cmdMap = {
       up: 'NAV_UP' as const,
       down: 'NAV_DOWN' as const,
@@ -42,34 +45,41 @@ export const TouchpadRemote: React.FC<TouchpadRemoteProps> = ({ tvState }) => {
   };
 
   const handleSelect = () => {
+    remoteClient.triggerHaptic(20);
     remoteClient.sendCommand('SELECT');
   };
 
   const handleBack = () => {
+    remoteClient.triggerHaptic(15);
     remoteClient.sendCommand('BACK');
   };
 
   const handleHome = () => {
+    remoteClient.triggerHaptic(15);
     remoteClient.sendCommand('HOME');
   };
 
-  const handleSearch = () => {
-    remoteClient.sendCommand('SEARCH');
+  const handlePlayPause = () => {
+    remoteClient.triggerHaptic(15);
+    remoteClient.sendCommand('PLAY_PAUSE');
   };
 
   const handleQuickSettings = () => {
+    remoteClient.triggerHaptic(15);
     remoteClient.sendCommand('QUICK_SETTINGS');
   };
 
   const handleVolumeDelta = (delta: number) => {
+    remoteClient.triggerHaptic(10);
     remoteClient.sendCommand('VOLUME_DELTA', { delta });
   };
 
   const handleToggleMute = () => {
+    remoteClient.triggerHaptic(15);
     remoteClient.sendCommand('MUTE_TOGGLE');
   };
 
-  // Touchpad Touch Events
+  // Glass Touch Surface Events
   const handleTouchStart = (e: React.TouchEvent<HTMLDivElement>) => {
     if (e.touches.length !== 1) return;
     const t = e.touches[0];
@@ -79,7 +89,8 @@ export const TouchpadRemote: React.FC<TouchpadRemoteProps> = ({ tvState }) => {
 
     touchStartRef.current = { x: t.clientX, y: t.clientY, time: Date.now() };
     hasMovedRef.current = false;
-    setRipple({ x, y, id: Date.now() });
+    const rippleId = Date.now();
+    setRipples((prev) => [...prev.slice(-3), { x, y, id: rippleId }]);
   };
 
   const handleTouchMove = (e: React.TouchEvent<HTMLDivElement>) => {
@@ -89,25 +100,21 @@ export const TouchpadRemote: React.FC<TouchpadRemoteProps> = ({ tvState }) => {
     const dy = t.clientY - touchStartRef.current.y;
     const dist = Math.hypot(dx, dy);
 
-    // Swipe Threshold: 34px
-    const SWIPE_THRESHOLD = 34;
+    const SWIPE_THRESHOLD = 32;
     const now = Date.now();
 
-    if (dist >= SWIPE_THRESHOLD && now - lastSwipeTimeRef.current > 110) {
+    if (dist >= SWIPE_THRESHOLD && now - lastSwipeTimeRef.current > 100) {
       hasMovedRef.current = true;
       lastSwipeTimeRef.current = now;
 
       if (Math.abs(dx) > Math.abs(dy)) {
-        // Horizontal Swipe
         if (dx > 0) handleNav('right');
         else handleNav('left');
       } else {
-        // Vertical Swipe
         if (dy > 0) handleNav('down');
         else handleNav('up');
       }
 
-      // Reset touch start point for continuous swipes
       touchStartRef.current = { x: t.clientX, y: t.clientY, time: now };
     }
   };
@@ -117,10 +124,8 @@ export const TouchpadRemote: React.FC<TouchpadRemoteProps> = ({ tvState }) => {
     const now = Date.now();
     const duration = now - touchStartRef.current.time;
 
-    // Single Tap Detection (duration < 280ms without significant move)
     if (!hasMovedRef.current && duration < 280) {
-      // Check double tap for Back
-      if (now - lastTapTimeRef.current < 300) {
+      if (now - lastTapTimeRef.current < 280) {
         handleBack();
         lastTapTimeRef.current = 0;
       } else {
@@ -137,174 +142,194 @@ export const TouchpadRemote: React.FC<TouchpadRemoteProps> = ({ tvState }) => {
     hasMovedRef.current = false;
   };
 
-  const volumeLevel = Math.round((tvState?.volume ?? 1) * 100);
-  const isMuted = tvState?.isMuted || volumeLevel === 0;
+  const isMediaPlaying = tvState?.nowPlaying?.isPlaying;
+  const isMuted = tvState?.isMuted || tvState?.volume === 0;
 
   return (
     <div className="touchpad-view-container">
-      {/* Mode Switcher Pill */}
-      <div className="mode-toggle-pill" role="tablist">
+      {/* Apple Segmented Control */}
+      <div className="apple-segmented-control" role="tablist">
         <button
           type="button"
-          className={`mode-toggle-btn ${controlMode === 'dpad' ? 'active' : ''}`}
-          onClick={() => setControlMode('dpad')}
+          className={`apple-segment-btn ${controlMode === 'clickpad' ? 'active' : ''}`}
+          onClick={() => {
+            setControlMode('clickpad');
+            remoteClient.triggerHaptic(10);
+          }}
         >
-          D-Pad
+          Clickpad
         </button>
         <button
           type="button"
-          className={`mode-toggle-btn ${controlMode === 'touchpad' ? 'active' : ''}`}
-          onClick={() => setControlMode('touchpad')}
+          className={`apple-segment-btn ${controlMode === 'touchpad' ? 'active' : ''}`}
+          onClick={() => {
+            setControlMode('touchpad');
+            remoteClient.triggerHaptic(10);
+          }}
         >
-          Touchpad (Swipe)
+          Touch Surface
         </button>
       </div>
 
-      {/* Main Interactive Surface */}
-      {controlMode === 'dpad' ? (
-        <div className="dpad-container">
-          <div className="dpad-wheel">
+      {/* Main Interaction Area */}
+      {controlMode === 'clickpad' ? (
+        <div className="apple-clickpad-frame">
+          <div className="apple-clickpad-outer-ring">
+            {/* Top Quadrant */}
             <button
               type="button"
-              className="dpad-btn up"
+              className="clickpad-sector up"
               onClick={() => handleNav('up')}
-              aria-label="Up"
+              aria-label="Navigate Up"
             >
-              <ChevronUp size={34} strokeWidth={2.5} />
+              <ChevronUp size={24} strokeWidth={2.5} className="clickpad-arrow-glyph" />
             </button>
+
+            {/* Bottom Quadrant */}
             <button
               type="button"
-              className="dpad-btn down"
+              className="clickpad-sector down"
               onClick={() => handleNav('down')}
-              aria-label="Down"
+              aria-label="Navigate Down"
             >
-              <ChevronDown size={34} strokeWidth={2.5} />
+              <ChevronDown size={24} strokeWidth={2.5} className="clickpad-arrow-glyph" />
             </button>
+
+            {/* Left Quadrant */}
             <button
               type="button"
-              className="dpad-btn left"
+              className="clickpad-sector left"
               onClick={() => handleNav('left')}
-              aria-label="Left"
+              aria-label="Navigate Left"
             >
-              <ChevronLeft size={34} strokeWidth={2.5} />
+              <ChevronLeft size={24} strokeWidth={2.5} className="clickpad-arrow-glyph" />
             </button>
+
+            {/* Right Quadrant */}
             <button
               type="button"
-              className="dpad-btn right"
+              className="clickpad-sector right"
               onClick={() => handleNav('right')}
-              aria-label="Right"
+              aria-label="Navigate Right"
             >
-              <ChevronRight size={34} strokeWidth={2.5} />
+              <ChevronRight size={24} strokeWidth={2.5} className="clickpad-arrow-glyph" />
             </button>
+
+            {/* Center Concave Clickpad Button */}
             <button
               type="button"
-              className="dpad-center-ok"
+              className="apple-clickpad-center"
               onClick={handleSelect}
-              aria-label="Select"
+              aria-label="Select / OK"
             >
-              OK
+              <span>select</span>
             </button>
           </div>
         </div>
       ) : (
         <div
-          className="touchpad-surface"
+          className="apple-touch-surface"
           onTouchStart={handleTouchStart}
           onTouchMove={handleTouchMove}
           onTouchEnd={handleTouchEnd}
           role="region"
-          aria-label="Touch Navigation Trackpad"
+          aria-label="Apple Glass Touch Surface"
         >
-          {ripple && (
+          {ripples.map((r) => (
             <div
-              key={ripple.id}
-              className="touchpad-ripple"
-              style={{ left: ripple.x, top: ripple.y }}
+              key={r.id}
+              className="apple-touch-ripple"
+              style={{ left: r.x, top: r.y }}
             />
-          )}
-          <div className="touchpad-hint-content">
-            <Maximize2 size={24} opacity={0.6} />
-            <span className="touchpad-hint-text">Swipe to navigate • Tap to select</span>
+          ))}
+          <div className="apple-touch-crosshair">
+            <div className="apple-touch-dot" />
           </div>
+          <span className="apple-touch-caption">Swipe to Navigate • Tap to Select</span>
         </div>
       )}
 
-      {/* TV Actions Control Row */}
-      <div className="remote-actions-row">
+      {/* Apple Siri Remote Tactile Button Cluster & Volume Rocker */}
+      <div className="apple-remote-cluster">
+        {/* Row 1: Back, TV/Home, Play/Pause */}
         <button
           type="button"
-          className="remote-action-btn back-btn"
+          className="apple-key-btn"
           onClick={handleBack}
-          title="Back (B)"
+          title="Back"
+          aria-label="Back"
         >
-          <ArrowLeft size={20} />
-          <span>Back</span>
+          <BackIcon size={20} strokeWidth={2.5} />
+          <span className="apple-key-label">Back</span>
         </button>
 
         <button
           type="button"
-          className="remote-action-btn home-btn"
+          className="apple-key-btn"
           onClick={handleHome}
-          title="Home Tab"
+          title="TV / Home"
+          aria-label="Home"
         >
-          <Home size={20} />
-          <span>Home</span>
+          <Tv size={18} />
+          <span className="apple-key-label">TV</span>
         </button>
 
         <button
           type="button"
-          className="remote-action-btn"
-          onClick={handleSearch}
-          title="Search / Keyboard"
+          className="apple-key-btn"
+          onClick={handlePlayPause}
+          title="Play / Pause"
+          aria-label="Play / Pause"
         >
-          <Search size={20} />
-          <span>Search</span>
+          {isMediaPlaying ? <Pause size={18} /> : <Play size={18} fill="currentColor" />}
+          <span className="apple-key-label">{isMediaPlaying ? 'Pause' : 'Play'}</span>
         </button>
 
-        <button
-          type="button"
-          className="remote-action-btn"
-          onClick={handleQuickSettings}
-          title="Quick Settings"
-        >
-          <Sliders size={20} />
-          <span>Menu</span>
-        </button>
-      </div>
-
-      {/* Volume & Mute Strip */}
-      <div className="remote-volume-strip">
-        <div className="volume-cluster">
+        {/* Right Column: Siri Remote Physical Volume Rocker Pill */}
+        <div className="apple-volume-rocker" style={{ gridRow: 'span 2' }}>
           <button
             type="button"
-            className="volume-btn"
-            onClick={() => handleVolumeDelta(-0.05)}
-            title="Volume Down"
-          >
-            <Volume1 size={18} />
-          </button>
-          <button
-            type="button"
-            className="volume-btn"
+            className="apple-rocker-half"
             onClick={() => handleVolumeDelta(0.05)}
             title="Volume Up"
+            aria-label="Volume Up"
           >
-            <Volume2 size={18} />
+            <Plus size={20} strokeWidth={2.5} />
+          </button>
+          <div className="apple-rocker-divider" />
+          <button
+            type="button"
+            className="apple-rocker-half"
+            onClick={() => handleVolumeDelta(-0.05)}
+            title="Volume Down"
+            aria-label="Volume Down"
+          >
+            <Minus size={20} strokeWidth={2.5} />
           </button>
         </div>
 
-        <span className="volume-value-badge">
-          {isMuted ? 'Muted' : `${volumeLevel}%`}
-        </span>
+        {/* Row 2: Control Center / Quick Settings, Mute Toggle */}
+        <button
+          type="button"
+          className="apple-key-btn"
+          onClick={handleQuickSettings}
+          title="Control Center / Quick Settings"
+          aria-label="Control Center"
+        >
+          <SlidersHorizontal size={18} />
+          <span className="apple-key-label">Control</span>
+        </button>
 
         <button
           type="button"
-          className="volume-btn"
+          className="apple-key-btn"
           onClick={handleToggleMute}
-          title="Toggle Mute"
-          style={isMuted ? { color: '#f28b82' } : undefined}
+          title={isMuted ? 'Unmute' : 'Mute'}
+          aria-label="Toggle Mute"
+          style={isMuted ? { color: '#ff453a' } : undefined}
         >
           {isMuted ? <VolumeX size={18} /> : <Volume2 size={18} />}
+          <span className="apple-key-label">{isMuted ? 'Muted' : 'Mute'}</span>
         </button>
       </div>
     </div>

@@ -1,33 +1,51 @@
 /* ==========================================================================
-   Kaira Companion Remote Web App — Mobile-First Styling
-   Optimized for Smartphone Screens (iOS Safari, Android Chrome, PWA)
+   Kaira Companion Remote — Apple Siri Remote & iOS Design System
+   Crafted with Apple Human Interface Guidelines, Milled Aluminum & Glass
    ========================================================================== */
 
 :root {
-  --remote-bg: #0a0a0c;
-  --remote-card-bg: rgba(22, 24, 32, 0.78);
-  --remote-card-border: rgba(255, 255, 255, 0.08);
-  --remote-accent: #1a73e8;
-  --remote-accent-glow: rgba(26, 115, 232, 0.35);
-  --remote-text: #ffffff;
-  --remote-text-sec: rgba(255, 255, 255, 0.65);
-  --remote-text-dim: rgba(255, 255, 255, 0.38);
-  --remote-dpad-bg: #141720;
-  --remote-btn-press: #252a38;
-  --remote-green: #81c995;
-  --remote-yellow: #fdd663;
-  --remote-red: #ea4335;
+  /* Apple Palette & Material Tokens */
+  --apple-bg: #000000;
+  --apple-surface-primary: #121214;
+  --apple-surface-secondary: #1c1c1e;
+  --apple-surface-tertiary: #2c2c2e;
+  --apple-surface-elevated: #3a3a3c;
+  
+  --apple-ring-outer: radial-gradient(135% 135% at 50% 10%, #2a2c33 0%, #18191e 55%, #101114 100%);
+  --apple-ring-border: rgba(255, 255, 255, 0.12);
+  --apple-ring-inner-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.25), inset 0 -2px 4px rgba(0, 0, 0, 0.6);
+  
+  --apple-center-btn: radial-gradient(120% 120% at 50% 20%, #32353e 0%, #1e2026 60%, #15161a 100%);
+  --apple-btn-active: #282a32;
+  
+  --apple-text-primary: #ffffff;
+  --apple-text-secondary: rgba(235, 235, 245, 0.6);
+  --apple-text-tertiary: rgba(235, 235, 245, 0.35);
+  
+  --apple-accent: #0a84ff;
+  --apple-green: #30d158;
+  --apple-red: #ff453a;
+  --apple-orange: #ff9f0a;
+  
+  --apple-blur-glass: blur(40px) saturate(190%);
+  --apple-spring-curve: cubic-bezier(0.25, 1, 0.5, 1);
+  --apple-press-spring: cubic-bezier(0.175, 0.885, 0.32, 1.275);
 }
 
-/* Ensure mobile viewport occupies full screen without bouncing */
+/* Reset and Global Viewport Constraints */
+*, *::before, *::after {
+  box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
+}
+
 html, body {
   margin: 0;
   padding: 0;
   width: 100%;
   height: 100%;
-  background-color: var(--remote-bg);
-  color: var(--remote-text);
-  font-family: -apple-system, BlinkMacSystemFont, "Google Sans", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  background-color: var(--apple-bg);
+  color: var(--apple-text-primary);
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "SF Pro", "Helvetica Neue", Helvetica, Arial, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   user-select: none;
@@ -37,48 +55,64 @@ html, body {
   overflow: hidden;
 }
 
+/* App Viewport Container */
 .kaira-remote-container {
   display: flex;
   flex-direction: column;
   width: 100%;
   height: 100%;
-  max-width: 480px;
+  max-width: 440px;
   margin: 0 auto;
-  background-color: var(--remote-bg);
-  padding-top: max(12px, env(safe-area-inset-top));
-  padding-bottom: max(12px, env(safe-area-inset-bottom));
-  padding-left: max(16px, env(safe-area-inset-left));
-  padding-right: max(16px, env(safe-area-inset-right));
-  box-sizing: border-box;
+  background-color: var(--apple-bg);
   position: relative;
   overflow: hidden;
+  padding-top: max(8px, env(safe-area-inset-top));
+  padding-bottom: max(16px, env(safe-area-inset-bottom));
+  padding-left: max(18px, env(safe-area-inset-left));
+  padding-right: max(18px, env(safe-area-inset-right));
 }
 
-/* ─── Top Header Bar ───────────────────────────────────────────────────────── */
+/* Ambient Backdrop Glow */
+.kaira-remote-container::before {
+  content: '';
+  position: absolute;
+  top: -100px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 320px;
+  height: 320px;
+  background: radial-gradient(circle, rgba(10, 132, 255, 0.07) 0%, rgba(0, 0, 0, 0) 70%);
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* ─── Apple Navigation Bar Header ───────────────────────────────────────── */
 .remote-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 4px 0 12px 0;
-  border-bottom: 1px solid var(--remote-card-border);
+  padding: 6px 4px 10px 4px;
   flex-shrink: 0;
+  z-index: 10;
 }
 
 .remote-brand {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
 }
 
 .remote-logo-icon {
-  width: 28px;
-  height: 28px;
-  border-radius: 8px;
-  background: linear-gradient(135deg, #1a73e8, #8ab4f8);
+  width: 30px;
+  height: 30px;
+  border-radius: 9px;
+  background: linear-gradient(180deg, #2c2c2e 0%, #1c1c1e 100%);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5), inset 0 1px 1px rgba(255, 255, 255, 0.2);
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 2px 10px var(--remote-accent-glow);
+  color: #fff;
 }
 
 .remote-title-wrap {
@@ -87,11 +121,11 @@ html, body {
 }
 
 .remote-app-title {
-  font-size: 17px;
-  font-weight: 700;
-  letter-spacing: 0.3px;
-  color: #fff;
-  line-height: 1.1;
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.2px;
+  color: var(--apple-text-primary);
+  line-height: 1.2;
 }
 
 .remote-status-pill {
@@ -99,31 +133,32 @@ html, body {
   align-items: center;
   gap: 5px;
   font-size: 11px;
-  color: var(--remote-text-sec);
-  margin-top: 2px;
+  font-weight: 400;
+  color: var(--apple-text-secondary);
+  letter-spacing: -0.1px;
 }
 
 .status-dot {
-  width: 7px;
-  height: 7px;
+  width: 6px;
+  height: 6px;
   border-radius: 50%;
-  background-color: var(--remote-red);
+  background-color: var(--apple-red);
 }
 
 .status-dot.connected {
-  background-color: var(--remote-green);
-  box-shadow: 0 0 8px rgba(129, 201, 149, 0.6);
+  background-color: var(--apple-green);
+  box-shadow: 0 0 6px rgba(48, 209, 88, 0.6);
 }
 
 .status-dot.connecting,
 .status-dot.reconnecting {
-  background-color: var(--remote-yellow);
-  animation: pulse-dot 1.2s infinite ease-in-out;
+  background-color: var(--apple-orange);
+  animation: apple-pulse 1.4s infinite ease-in-out;
 }
 
-@keyframes pulse-dot {
+@keyframes apple-pulse {
   0%, 100% { opacity: 1; transform: scale(1); }
-  50% { opacity: 0.4; transform: scale(0.85); }
+  50% { opacity: 0.35; transform: scale(0.85); }
 }
 
 .remote-header-actions {
@@ -133,833 +168,697 @@ html, body {
 }
 
 .remote-header-btn {
-  background: var(--remote-card-bg);
-  border: 1px solid var(--remote-card-border);
-  color: var(--remote-text-sec);
-  width: 36px;
-  height: 36px;
+  background: rgba(44, 44, 46, 0.7);
+  backdrop-filter: var(--apple-blur-glass);
+  -webkit-backdrop-filter: var(--apple-blur-glass);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: var(--apple-text-secondary);
+  width: 34px;
+  height: 34px;
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  transition: all 0.15s ease;
-  touch-action: manipulation;
+  transition: transform 0.12s var(--apple-spring-curve), background 0.15s ease, color 0.15s ease;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
 }
 
 .remote-header-btn:active {
-  background: var(--remote-btn-press);
   transform: scale(0.92);
+  background: rgba(58, 58, 60, 0.9);
+  color: #fff;
 }
 
-.remote-header-btn.power-btn {
-  color: #f28b82;
-  border-color: rgba(234, 67, 53, 0.25);
+.remote-header-btn.power-btn:active {
+  background: rgba(255, 69, 58, 0.25);
+  color: var(--apple-red);
 }
 
-/* ─── Main Viewport Area ──────────────────────────────────────────────────── */
+/* ─── Main Viewport Body ─────────────────────────────────────────────────── */
 .remote-body {
   flex: 1;
   display: flex;
   flex-direction: column;
-  overflow-y: auto;
-  overflow-x: hidden;
-  padding: 14px 0 8px 0;
-  -webkit-overflow-scrolling: touch;
+  position: relative;
+  overflow: hidden;
+  z-index: 1;
 }
 
-/* ─── Bottom Navigation Bar ────────────────────────────────────────────────── */
-.remote-bottom-nav {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 6px;
-  background: rgba(18, 20, 27, 0.88);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
-  border: 1px solid var(--remote-card-border);
-  border-radius: 20px;
-  padding: 6px;
-  margin-top: auto;
-  flex-shrink: 0;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
-}
-
-.remote-nav-item {
+/* ─── Apple Segmented Control (Clickpad / Touch Surface) ─────────────────── */
+.apple-segmented-control {
   display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 4px;
-  padding: 8px 4px;
-  border-radius: 14px;
+  position: relative;
+  background: rgba(28, 28, 30, 0.8);
+  backdrop-filter: var(--apple-blur-glass);
+  -webkit-backdrop-filter: var(--apple-blur-glass);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  padding: 3px;
+  margin: 4px auto 14px auto;
+  width: 100%;
+  max-width: 320px;
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.4);
+}
+
+.apple-segment-btn {
+  flex: 1;
   background: transparent;
   border: none;
-  color: var(--remote-text-dim);
-  font-size: 11px;
+  color: var(--apple-text-secondary);
+  font-family: inherit;
+  font-size: 13px;
   font-weight: 500;
+  letter-spacing: -0.1px;
+  padding: 6px 12px;
+  border-radius: 9px;
   cursor: pointer;
-  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
-  touch-action: manipulation;
+  transition: all 0.2s var(--apple-spring-curve);
+  z-index: 2;
+  text-align: center;
 }
 
-.remote-nav-item.active {
-  background: rgba(26, 115, 232, 0.16);
-  color: #8ab4f8;
+.apple-segment-btn.active {
+  color: #ffffff;
   font-weight: 600;
+  background: rgba(58, 58, 60, 0.85);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4), inset 0 1px 1px rgba(255, 255, 255, 0.18);
 }
 
-.remote-nav-item:active {
-  transform: scale(0.94);
-}
-
-/* ─── D-Pad & Touchpad View ────────────────────────────────────────────────── */
+/* ─── Remote View Layout ─────────────────────────────────────────────────── */
 .touchpad-view-container {
   display: flex;
   flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
   height: 100%;
-  gap: 12px;
+  width: 100%;
+  padding-bottom: 6px;
 }
 
-.mode-toggle-pill {
-  display: flex;
-  align-self: center;
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid var(--remote-card-border);
-  border-radius: 24px;
-  padding: 3px;
-  gap: 4px;
-}
-
-.mode-toggle-btn {
-  padding: 6px 16px;
-  border-radius: 20px;
-  background: transparent;
-  border: none;
-  color: var(--remote-text-sec);
-  font-size: 12px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  touch-action: manipulation;
-}
-
-.mode-toggle-btn.active {
-  background: var(--remote-accent);
-  color: #fff;
-  font-weight: 600;
-  box-shadow: 0 2px 8px var(--remote-accent-glow);
-}
-
-/* D-Pad Controller Wheel */
-.dpad-container {
-  flex: 1;
+/* ─── Iconic Apple Siri Remote Clickpad (Physical Milled Ring + Center Pad) ─ */
+.apple-clickpad-frame {
   display: flex;
   align-items: center;
   justify-content: center;
   position: relative;
-  min-height: 220px;
+  width: 248px;
+  height: 248px;
+  margin: auto 0;
 }
 
-.dpad-wheel {
-  width: 230px;
-  height: 230px;
+/* Outer Aluminum Directional Ring */
+.apple-clickpad-outer-ring {
+  position: relative;
+  width: 248px;
+  height: 248px;
   border-radius: 50%;
-  background: var(--remote-dpad-bg);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  position: relative;
+  background: var(--apple-ring-outer);
+  border: 1px solid var(--apple-ring-border);
+  box-shadow:
+    0 16px 36px rgba(0, 0, 0, 0.7),
+    0 2px 6px rgba(0, 0, 0, 0.4),
+    var(--apple-ring-inner-shadow);
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6), inset 0 2px 4px rgba(255, 255, 255, 0.05);
-}
-
-.dpad-btn {
-  position: absolute;
-  background: transparent;
-  border: none;
-  color: var(--remote-text-sec);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  touch-action: manipulation;
-  transition: all 0.12s ease;
-}
-
-.dpad-btn:active {
-  color: #8ab4f8;
-  transform: scale(0.9);
-}
-
-.dpad-btn.up {
-  top: 8px;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 70px;
-  height: 60px;
-}
-.dpad-btn.up:active {
-  transform: translateX(-50%) translateY(-2px) scale(0.92);
-}
-
-.dpad-btn.down {
-  bottom: 8px;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 70px;
-  height: 60px;
-}
-.dpad-btn.down:active {
-  transform: translateX(-50%) translateY(2px) scale(0.92);
-}
-
-.dpad-btn.left {
-  left: 8px;
-  top: 50%;
-  transform: translateY(-50%);
-  width: 60px;
-  height: 70px;
-}
-.dpad-btn.left:active {
-  transform: translateY(-50%) translateX(-2px) scale(0.92);
-}
-
-.dpad-btn.right {
-  right: 8px;
-  top: 50%;
-  transform: translateY(-50%);
-  width: 60px;
-  height: 70px;
-}
-.dpad-btn.right:active {
-  transform: translateY(-50%) translateX(2px) scale(0.92);
-}
-
-.dpad-center-ok {
-  width: 82px;
-  height: 82px;
-  border-radius: 50%;
-  background: linear-gradient(145deg, #1f2330, #161922);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  color: #ffffff;
-  font-size: 15px;
-  font-weight: 700;
-  letter-spacing: 0.5px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.5);
-  transition: all 0.12s ease;
-  touch-action: manipulation;
-  z-index: 2;
-}
-
-.dpad-center-ok:active {
-  background: var(--remote-accent);
-  transform: scale(0.92);
-  box-shadow: 0 0 16px var(--remote-accent-glow);
-}
-
-/* Touchpad Swipe Surface */
-.touchpad-surface {
-  flex: 1;
-  min-height: 220px;
-  background: radial-gradient(circle at center, rgba(30, 36, 50, 0.5) 0%, rgba(16, 18, 24, 0.8) 100%);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 28px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  position: relative;
   touch-action: none;
-  cursor: pointer;
-  box-shadow: inset 0 2px 10px rgba(0, 0, 0, 0.4), 0 8px 24px rgba(0, 0, 0, 0.3);
-  overflow: hidden;
+  user-select: none;
 }
 
-.touchpad-hint-content {
+/* Directional Touch Sectors */
+.clickpad-sector {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(255, 255, 255, 0.55);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  z-index: 2;
+  transition: all 0.12s var(--apple-spring-curve);
+}
+
+.clickpad-sector.up {
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 72px;
+  padding-top: 14px;
+}
+
+.clickpad-sector.down {
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 72px;
+  padding-bottom: 14px;
+}
+
+.clickpad-sector.left {
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 72px;
+  padding-left: 14px;
+}
+
+.clickpad-sector.right {
+  top: 0;
+  bottom: 0;
+  right: 0;
+  width: 72px;
+  padding-right: 14px;
+}
+
+.clickpad-sector:active {
+  color: #ffffff;
+}
+
+.clickpad-sector.up:active {
+  background: radial-gradient(circle at 50% 25%, rgba(255, 255, 255, 0.14) 0%, transparent 60%);
+}
+.clickpad-sector.down:active {
+  background: radial-gradient(circle at 50% 75%, rgba(255, 255, 255, 0.14) 0%, transparent 60%);
+}
+.clickpad-sector.left:active {
+  background: radial-gradient(circle at 25% 50%, rgba(255, 255, 255, 0.14) 0%, transparent 60%);
+}
+.clickpad-sector.right:active {
+  background: radial-gradient(circle at 75% 50%, rgba(255, 255, 255, 0.14) 0%, transparent 60%);
+}
+
+.clickpad-arrow-glyph {
+  opacity: 0.7;
+  transition: opacity 0.12s ease, transform 0.12s ease;
+}
+
+.clickpad-sector:active .clickpad-arrow-glyph {
+  opacity: 1;
+  transform: scale(1.15);
+}
+
+/* Center Concave Click Button */
+.apple-clickpad-center {
+  position: relative;
+  width: 104px;
+  height: 104px;
+  border-radius: 50%;
+  background: var(--apple-center-btn);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow:
+    inset 0 2px 4px rgba(0, 0, 0, 0.6),
+    inset 0 1px 1px rgba(255, 255, 255, 0.15),
+    0 4px 12px rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  z-index: 3;
+  color: rgba(255, 255, 255, 0.8);
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: -0.2px;
+  transition: transform 0.12s var(--apple-press-spring), box-shadow 0.12s ease;
+}
+
+.apple-clickpad-center:active {
+  transform: scale(0.94);
+  background: #17181c;
+  box-shadow:
+    inset 0 3px 6px rgba(0, 0, 0, 0.8),
+    inset 0 1px 1px rgba(255, 255, 255, 0.08);
+  color: #fff;
+}
+
+/* ─── Apple Glass Touch Surface (Trackpad Mode) ──────────────────────────── */
+.apple-touch-surface {
+  position: relative;
+  width: 258px;
+  height: 258px;
+  margin: auto 0;
+  border-radius: 36px;
+  background: radial-gradient(130% 130% at 50% 15%, #22242a 0%, #141518 70%, #0d0e10 100%);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  box-shadow:
+    0 16px 40px rgba(0, 0, 0, 0.7),
+    inset 0 1px 1px rgba(255, 255, 255, 0.22),
+    inset 0 -2px 6px rgba(0, 0, 0, 0.5);
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 8px;
-  color: var(--remote-text-dim);
-  pointer-events: none;
+  justify-content: center;
+  touch-action: none;
+  user-select: none;
+  overflow: hidden;
+  cursor: grab;
 }
 
-.touchpad-hint-text {
-  font-size: 12px;
-  letter-spacing: 0.2px;
+.apple-touch-surface:active {
+  cursor: grabbing;
 }
 
-.touchpad-ripple {
-  position: absolute;
+.apple-touch-crosshair {
   width: 48px;
   height: 48px;
   border-radius: 50%;
-  background: rgba(138, 180, 248, 0.3);
-  border: 1px solid rgba(138, 180, 248, 0.6);
+  border: 1.5px dashed rgba(255, 255, 255, 0.15);
+  display: flex;
+  align-items: center;
+  justify-content: center;
   pointer-events: none;
-  transform: translate(-50%, -50%) scale(0.8);
-  animation: ripple-fade 0.35s ease-out forwards;
 }
 
-@keyframes ripple-fade {
-  to { transform: translate(-50%, -50%) scale(2.2); opacity: 0; }
+.apple-touch-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.35);
 }
 
-/* Quick TV Action Controls Row */
-.remote-actions-row {
+.apple-touch-caption {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--apple-text-tertiary);
+  letter-spacing: -0.1px;
+  margin-top: 14px;
+  pointer-events: none;
+}
+
+.apple-touch-ripple {
+  position: absolute;
+  width: 60px;
+  height: 60px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.25) 0%, transparent 70%);
+  transform: translate(-50%, -50%) scale(0);
+  animation: apple-ripple 0.45s ease-out forwards;
+  pointer-events: none;
+}
+
+@keyframes apple-ripple {
+  0% { transform: translate(-50%, -50%) scale(0.2); opacity: 0.9; }
+  100% { transform: translate(-50%, -50%) scale(1.6); opacity: 0; }
+}
+
+/* ─── Apple Siri Remote Control Cluster & Volume Rocker ──────────────────── */
+.apple-remote-cluster {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 8px;
-  margin-top: 4px;
+  grid-template-columns: repeat(3, 1fr) auto;
+  gap: 12px;
+  width: 100%;
+  max-width: 340px;
+  align-items: center;
+  margin-top: auto;
+  padding: 8px 4px;
 }
 
-.remote-action-btn {
+/* Siri Remote Circular Keypads */
+.apple-key-btn {
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   gap: 4px;
-  background: var(--remote-card-bg);
-  border: 1px solid var(--remote-card-border);
-  border-radius: 16px;
-  padding: 10px 4px;
-  color: var(--remote-text);
-  font-size: 11px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.15s ease;
-  touch-action: manipulation;
-}
-
-.remote-action-btn:active {
-  background: var(--remote-btn-press);
-  transform: scale(0.92);
-}
-
-.remote-action-btn.back-btn {
-  color: #f28b82;
-}
-
-.remote-action-btn.home-btn {
-  color: #8ab4f8;
-}
-
-/* Volume & Playback Quick Strip */
-.remote-volume-strip {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  background: rgba(22, 25, 34, 0.85);
-  border: 1px solid var(--remote-card-border);
-  border-radius: 18px;
-  padding: 6px 12px;
-  margin-top: 2px;
-}
-
-.volume-cluster {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.volume-btn {
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  color: var(--remote-text);
-  width: 38px;
-  height: 38px;
+  width: 58px;
+  height: 58px;
   border-radius: 50%;
+  background: linear-gradient(180deg, #24252a 0%, #18191d 100%);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5), inset 0 1px 1px rgba(255, 255, 255, 0.16);
+  color: var(--apple-text-primary);
+  cursor: pointer;
+  transition: transform 0.12s var(--apple-spring-curve), background 0.15s ease, box-shadow 0.12s ease;
+}
+
+.apple-key-btn:active {
+  transform: scale(0.92);
+  background: #141518;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.6), inset 0 1px 2px rgba(0, 0, 0, 0.6);
+}
+
+.apple-key-label {
+  font-size: 9px;
+  font-weight: 500;
+  color: var(--apple-text-secondary);
+  letter-spacing: -0.1px;
+}
+
+/* Dedicated Siri Remote Volume Rocker Pill */
+.apple-volume-rocker {
+  display: flex;
+  flex-direction: column;
+  width: 50px;
+  height: 124px;
+  border-radius: 25px;
+  background: linear-gradient(180deg, #24252a 0%, #18191d 100%);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.55), inset 0 1px 1px rgba(255, 255, 255, 0.18);
+  overflow: hidden;
+  position: relative;
+}
+
+.apple-rocker-half {
+  flex: 1;
+  background: transparent;
+  border: none;
+  color: var(--apple-text-primary);
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  transition: all 0.12s ease;
-  touch-action: manipulation;
+  transition: background 0.12s ease, transform 0.1s ease;
 }
 
-.volume-btn:active {
-  background: var(--remote-accent);
-  color: #fff;
-  transform: scale(0.92);
+.apple-rocker-half:active {
+  background: rgba(255, 255, 255, 0.1);
 }
 
-.volume-value-badge {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--remote-text-sec);
-  min-width: 36px;
-  text-align: center;
+.apple-rocker-divider {
+  width: 60%;
+  height: 1px;
+  background: rgba(255, 255, 255, 0.1);
+  margin: 0 auto;
 }
 
-/* ─── Now Playing Media View ──────────────────────────────────────────────── */
-.now-playing-container {
+/* ─── Apple iOS Now Playing View ─────────────────────────────────────────── */
+.now-playing-apple-container {
   display: flex;
   flex-direction: column;
+  justify-content: space-between;
+  height: 100%;
+  width: 100%;
+  padding: 6px 4px 10px 4px;
+}
+
+/* Idle State */
+.now-playing-idle-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
   height: 100%;
   gap: 14px;
+}
+
+.idle-artwork-placeholder {
+  width: 140px;
+  height: 140px;
+  border-radius: 28px;
+  background: linear-gradient(180deg, #1e1f24 0%, #121316 100%);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.6), inset 0 1px 1px rgba(255, 255, 255, 0.12);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--apple-text-tertiary);
+}
+
+/* Apple Album Artwork Card */
+.apple-artwork-container {
+  position: relative;
+  width: 100%;
+  max-width: 260px;
+  aspect-ratio: 1 / 1;
+  margin: 0 auto 12px auto;
+  display: flex;
+  align-items: center;
   justify-content: center;
 }
 
-.now-playing-card {
-  background: var(--remote-card-bg);
-  border: 1px solid var(--remote-card-border);
-  border-radius: 24px;
-  padding: 16px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  text-align: center;
-  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.5);
-  position: relative;
-  overflow: hidden;
+.apple-artwork-ambient-blur {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  right: 12px;
+  bottom: -6px;
+  border-radius: 26px;
+  background-size: cover;
+  background-position: center;
+  filter: blur(28px) opacity(0.55);
+  z-index: 0;
+  pointer-events: none;
 }
 
-.media-artwork-wrap {
-  width: 170px;
-  height: 170px;
-  border-radius: 20px;
-  overflow: hidden;
-  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.6);
-  margin-bottom: 14px;
-  background: #1a1d26;
+.apple-artwork-img {
   position: relative;
-}
-
-.media-artwork-img {
   width: 100%;
   height: 100%;
   object-fit: cover;
+  border-radius: 24px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.7), inset 0 1px 1px rgba(255, 255, 255, 0.2);
+  z-index: 1;
 }
 
-.media-artwork-placeholder {
+/* Media Metadata */
+.apple-media-meta {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
   width: 100%;
+  padding: 0 12px;
+  margin-bottom: 12px;
+}
+
+.apple-media-title {
+  font-size: 19px;
+  font-weight: 700;
+  letter-spacing: -0.3px;
+  color: #ffffff;
+  margin: 0 0 4px 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+.apple-media-artist {
+  font-size: 14px;
+  font-weight: 400;
+  color: var(--apple-text-secondary);
+  letter-spacing: -0.1px;
+  margin: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+/* Apple Liquid Progress Bar Scrubber */
+.apple-scrubber-wrap {
+  width: 100%;
+  padding: 4px 12px 14px 12px;
+}
+
+.apple-scrubber-track {
+  position: relative;
+  width: 100%;
+  height: 6px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.14);
+  cursor: pointer;
+  touch-action: none;
+  transition: height 0.15s ease;
+}
+
+.apple-scrubber-track:hover,
+.apple-scrubber-track.dragging {
+  height: 9px;
+  border-radius: 4.5px;
+}
+
+.apple-scrubber-fill {
+  position: absolute;
+  top: 0;
+  left: 0;
   height: 100%;
+  background: #ffffff;
+  border-radius: inherit;
+  pointer-events: none;
+}
+
+.apple-scrubber-knob {
+  position: absolute;
+  top: 50%;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #ffffff;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
+  transform: translate(-50%, -50%) scale(0);
+  transition: transform 0.15s var(--apple-spring-curve);
+  pointer-events: none;
+}
+
+.apple-scrubber-track:hover .apple-scrubber-knob,
+.apple-scrubber-track.dragging .apple-scrubber-knob {
+  transform: translate(-50%, -50%) scale(1);
+}
+
+.apple-scrubber-timestamps {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 6px;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--apple-text-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Apple Media Transport Controls */
+.apple-transport-row {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: linear-gradient(135deg, #1a233a, #13151c);
-  color: #8ab4f8;
-}
-
-.media-title-text {
-  font-size: 18px;
-  font-weight: 700;
-  color: #fff;
-  margin: 0 0 4px 0;
-  max-width: 100%;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.media-subtitle-text {
-  font-size: 13px;
-  color: var(--remote-text-sec);
-  margin: 0 0 12px 0;
-  max-width: 100%;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-/* Scrubber Bar */
-.media-scrubber-container {
+  gap: 20px;
   width: 100%;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  margin-bottom: 8px;
+  margin-bottom: 12px;
 }
 
-.scrubber-track-wrap {
-  width: 100%;
-  height: 12px;
+.apple-transport-btn {
+  background: transparent;
+  border: none;
+  color: var(--apple-text-primary);
   display: flex;
   align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: transform 0.12s var(--apple-spring-curve), opacity 0.15s ease;
+  padding: 8px;
+  border-radius: 50%;
+}
+
+.apple-transport-btn:active {
+  transform: scale(0.88);
+  opacity: 0.6;
+}
+
+.apple-play-pause-circle {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  background: #ffffff;
+  color: #000000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 6px 20px rgba(255, 255, 255, 0.25), 0 4px 12px rgba(0, 0, 0, 0.6);
+  border: none;
+  cursor: pointer;
+  transition: transform 0.12s var(--apple-spring-curve), box-shadow 0.15s ease;
+}
+
+.apple-play-pause-circle:active {
+  transform: scale(0.92);
+  box-shadow: 0 2px 8px rgba(255, 255, 255, 0.15);
+}
+
+/* Apple Glass Volume Slider */
+.apple-volume-slider-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 0 14px;
+  margin-bottom: 4px;
+}
+
+.apple-volume-slider-track {
+  position: relative;
+  flex: 1;
+  height: 8px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.14);
   cursor: pointer;
   touch-action: none;
 }
 
-.scrubber-track {
-  width: 100%;
-  height: 5px;
-  background: rgba(255, 255, 255, 0.12);
-  border-radius: 3px;
-  position: relative;
-}
-
-.scrubber-fill {
-  height: 100%;
-  background: var(--remote-accent);
-  border-radius: 3px;
-}
-
-.scrubber-thumb {
+.apple-volume-slider-fill {
   position: absolute;
-  top: 50%;
-  transform: translate(-50%, -50%);
-  width: 14px;
-  height: 14px;
-  border-radius: 50%;
-  background: #ffffff;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.6);
-}
-
-.scrubber-times {
-  display: flex;
-  justify-content: space-between;
-  font-size: 11px;
-  color: var(--remote-text-dim);
-  font-variant-numeric: tabular-nums;
-}
-
-/* Media Transport Controls */
-.media-transport-row {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 16px;
-  margin-top: 8px;
-}
-
-.transport-btn {
-  background: rgba(255, 255, 255, 0.07);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  color: var(--remote-text);
-  width: 46px;
-  height: 46px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  transition: all 0.12s ease;
-  touch-action: manipulation;
-}
-
-.transport-btn:active {
-  background: var(--remote-btn-press);
-  transform: scale(0.9);
-}
-
-.transport-btn.play-pause-btn {
-  width: 62px;
-  height: 62px;
-  background: var(--remote-accent);
-  border-color: #8ab4f8;
-  color: #ffffff;
-  box-shadow: 0 4px 18px var(--remote-accent-glow);
-}
-
-.transport-btn.play-pause-btn:active {
-  transform: scale(0.92);
-  background: #174ea6;
-}
-
-/* Idle State in Now Playing */
-.now-playing-idle {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
+  top: 0;
+  left: 0;
   height: 100%;
-  text-align: center;
+  background: rgba(255, 255, 255, 0.85);
+  border-radius: 4px;
+}
+
+/* ─── Floating Apple Glass Dock (Bottom Navigation) ───────────────────────── */
+.remote-bottom-nav {
+  display: flex;
+  align-items: center;
+  justify-content: center;
   gap: 12px;
-  color: var(--remote-text-sec);
+  padding: 6px;
+  background: rgba(28, 28, 30, 0.82);
+  backdrop-filter: var(--apple-blur-glass);
+  -webkit-backdrop-filter: var(--apple-blur-glass);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 32px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6), inset 0 1px 1px rgba(255, 255, 255, 0.15);
+  margin: 0 auto;
+  width: 100%;
+  max-width: 280px;
+  z-index: 10;
+  flex-shrink: 0;
 }
 
-.idle-icon-wrap {
-  width: 80px;
-  height: 80px;
-  border-radius: 50%;
-  background: rgba(255, 255, 255, 0.04);
+.remote-nav-item {
+  flex: 1;
   display: flex;
   align-items: center;
   justify-content: center;
-  color: var(--remote-text-dim);
-  margin-bottom: 4px;
-}
-
-/* ─── Keyboard & Voice Search View ────────────────────────────────────────── */
-.keyboard-voice-container {
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-  gap: 14px;
-}
-
-.input-card {
-  background: var(--remote-card-bg);
-  border: 1px solid var(--remote-card-border);
-  border-radius: 20px;
-  padding: 14px;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.remote-text-input-wrap {
-  display: flex;
-  align-items: center;
   gap: 8px;
-  background: rgba(0, 0, 0, 0.35);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 14px;
-  padding: 10px 12px;
-}
-
-.remote-text-input {
-  flex: 1;
   background: transparent;
   border: none;
-  color: #fff;
-  font-size: 15px;
-  outline: none;
-}
-
-.remote-text-input::placeholder {
-  color: var(--remote-text-dim);
-}
-
-.voice-search-cta {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 10px;
-  padding: 24px 0;
-}
-
-.voice-mic-btn {
-  width: 76px;
-  height: 76px;
-  border-radius: 50%;
-  background: linear-gradient(135deg, #1a73e8, #4285f4);
-  border: none;
-  color: #fff;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  box-shadow: 0 6px 24px var(--remote-accent-glow);
-  transition: all 0.2s ease;
-  touch-action: manipulation;
-}
-
-.voice-mic-btn.listening {
-  background: linear-gradient(135deg, #ea4335, #ff5252);
-  box-shadow: 0 0 24px rgba(234, 67, 53, 0.7);
-  animation: pulse-mic 1.2s infinite ease-in-out;
-}
-
-@keyframes pulse-mic {
-  0%, 100% { transform: scale(1); }
-  50% { transform: scale(1.08); }
-}
-
-.voice-mic-btn:active {
-  transform: scale(0.92);
-}
-
-.voice-status-label {
+  color: var(--apple-text-secondary);
+  padding: 10px 16px;
+  border-radius: 24px;
+  font-family: inherit;
   font-size: 13px;
-  color: var(--remote-text-sec);
   font-weight: 500;
-}
-
-.suggestions-title {
-  font-size: 12px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.8px;
-  color: var(--remote-text-dim);
-  margin-top: 4px;
-}
-
-.suggestions-chips-grid {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.suggestion-chip {
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 18px;
-  padding: 7px 12px;
-  font-size: 12px;
-  color: var(--remote-text-sec);
+  letter-spacing: -0.1px;
   cursor: pointer;
-  transition: all 0.12s ease;
-  touch-action: manipulation;
+  transition: all 0.2s var(--apple-spring-curve);
 }
 
-.suggestion-chip:active {
-  background: var(--remote-accent);
-  color: #fff;
+.remote-nav-item.active {
+  color: #ffffff;
+  font-weight: 600;
+  background: rgba(58, 58, 60, 0.85);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35), inset 0 1px 1px rgba(255, 255, 255, 0.18);
+}
+
+.remote-nav-item:active {
   transform: scale(0.95);
 }
 
-/* ─── Quick Launcher & TV Controls View ───────────────────────────────────── */
-.quick-launcher-container {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-  padding-bottom: 8px;
-}
-
-.launcher-section-title {
-  font-size: 12px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.8px;
-  color: var(--remote-text-dim);
-  margin-bottom: 6px;
-}
-
-/* Tabs Grid */
-.tabs-launcher-grid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 8px;
-}
-
-.tab-launch-card {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  background: var(--remote-card-bg);
-  border: 1px solid var(--remote-card-border);
-  border-radius: 16px;
-  padding: 12px 6px;
-  color: var(--remote-text);
-  font-size: 12px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.15s ease;
-  touch-action: manipulation;
-}
-
-.tab-launch-card.active-tab {
-  background: rgba(26, 115, 232, 0.2);
-  border-color: #8ab4f8;
-  color: #8ab4f8;
-  font-weight: 600;
-}
-
-.tab-launch-card:active {
-  transform: scale(0.93);
-}
-
-/* Ambient Lighting Section */
-.ambient-controls-card {
-  background: var(--remote-card-bg);
-  border: 1px solid var(--remote-card-border);
-  border-radius: 20px;
-  padding: 14px;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.ambient-modes-row {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 6px;
-}
-
-.ambient-mode-btn {
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid var(--remote-card-border);
-  border-radius: 12px;
-  padding: 8px 4px;
-  font-size: 11px;
-  font-weight: 500;
-  color: var(--remote-text-sec);
-  cursor: pointer;
-  transition: all 0.12s ease;
-  touch-action: manipulation;
-}
-
-.ambient-mode-btn.active {
-  background: var(--remote-accent);
-  color: #fff;
-  border-color: #8ab4f8;
-}
-
-.ambient-mode-btn:active {
-  transform: scale(0.93);
-}
-
-.ambient-slider-wrap {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.ambient-range-slider {
-  flex: 1;
-  accent-color: var(--remote-accent);
-  cursor: pointer;
-}
-
-/* System Power Controls Grid */
-.power-actions-grid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 8px;
-}
-
-.power-action-btn {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid var(--remote-card-border);
-  border-radius: 16px;
-  padding: 12px 6px;
-  color: var(--remote-text-sec);
-  font-size: 11px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.12s ease;
-  touch-action: manipulation;
-}
-
-.power-action-btn:active {
-  background: rgba(234, 67, 53, 0.15);
-  color: #f28b82;
-  transform: scale(0.93);
-}
-
-/* Toast Message */
+/* Toast HUD Pill */
 .remote-toast-pill {
   position: absolute;
-  top: max(56px, calc(env(safe-area-inset-top) + 48px));
+  top: 60px;
   left: 50%;
   transform: translateX(-50%);
-  background: rgba(26, 29, 38, 0.95);
-  border: 1px solid #8ab4f8;
+  background: rgba(44, 44, 46, 0.92);
+  backdrop-filter: var(--apple-blur-glass);
+  -webkit-backdrop-filter: var(--apple-blur-glass);
+  border: 1px solid rgba(255, 255, 255, 0.14);
   color: #ffffff;
-  font-size: 13px;
-  font-weight: 500;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: -0.1px;
   padding: 8px 16px;
   border-radius: 20px;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6);
   z-index: 100;
   pointer-events: none;
-  animation: toast-fade 0.25s ease-out;
+  animation: apple-toast-in 0.25s var(--apple-spring-curve);
 }
 
-@keyframes toast-fade {
-  from { opacity: 0; transform: translate(-50%, -8px); }
-  to { opacity: 1; transform: translate(-50%, 0); }
+@keyframes apple-toast-in {
+  from { opacity: 0; transform: translate(-50%, -8px) scale(0.92); }
+  to { opacity: 1; transform: translate(-50%, 0) scale(1); }
 }
