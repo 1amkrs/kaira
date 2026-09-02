@@ -9,8 +9,8 @@ export interface NetworkState {
 class NetworkService {
   private state: NetworkState = {
     connected: navigator.onLine,
-    type: 'ethernet',
-    ip: '192.168.29.120',
+    type: 'wifi',
+    ip: '127.0.0.1',
   };
   private listeners: Set<(state: NetworkState) => void> = new Set();
 
@@ -28,12 +28,37 @@ class NetworkService {
     } catch (e) {
       this.state = {
         connected: navigator.onLine,
-        type: 'ethernet',
+        type: 'wifi',
         ip: '127.0.0.1',
       };
     }
+
+    // Try fetching real IP from server if available
+    try {
+      const res = await fetch('/api/remote/info');
+      if (res.ok) {
+        const data = await res.json();
+        if (data && data.ip) {
+          this.state.ip = data.ip;
+          const ifaceName = (data.interfaces?.[0]?.name || '').toLowerCase();
+          if (ifaceName.includes('wi-fi') || ifaceName.includes('wifi')) {
+            this.state.type = 'wifi';
+          } else if (ifaceName.includes('ethernet')) {
+            this.state.type = 'ethernet';
+          }
+        }
+      }
+    } catch (e) {}
+
     this.notify();
     return this.state;
+  }
+
+  public setIp(ip: string): void {
+    if (this.state.ip !== ip) {
+      this.state.ip = ip;
+      this.notify();
+    }
   }
 
   public getState(): NetworkState {

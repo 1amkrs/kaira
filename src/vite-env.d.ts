@@ -54,6 +54,6 @@ interface Window {
     sendRemoteState?: (state: any) => void;
     onRemoteCommand?: (callback: (command: any) => void) => () => void;
     onRemoteClientCount?: (callback: (count: number) => void) => () => void;
-    getRemoteServerInfo?: () => Promise<{ ip: string; port: number; url: string }>;
+    getRemoteServerInfo?: () => Promise<{ ip: string; port: number; url: string; interfaces?: Array<{ name: string; ip: string; isPrimary: boolean }> }>;
   };
 }

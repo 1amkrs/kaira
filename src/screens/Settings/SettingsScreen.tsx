@@ -83,6 +83,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onClose }) => {
 
   useEffect(() => {
     spatialNav.pushScope('settings-screen');
+    remoteService.discoverServerInfo();
     return () => {
       spatialNav.popScope('settings-screen');
     };
@@ -1353,7 +1354,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onClose }) => {
                   >
                     <div
                       style={{ width: '160px', height: '160px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-                      dangerouslySetInnerHTML={{ __html: generateQRCodeSVG(remoteService.getRemoteUrl(), 160, '#0a0a0c', '#ffffff') }}
+                      dangerouslySetInnerHTML={{ __html: generateQRCodeSVG(remoteService.getRemoteUrl(), 160, '#000000', '#ffffff') }}
                     />
                   </div>
 

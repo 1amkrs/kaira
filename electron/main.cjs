@@ -863,10 +863,55 @@ function handleWsConnection(socket, req) {
   });
 }
 
+function getBestNetworkInterfaces() {
+  const interfaces = os.networkInterfaces();
+  const results = [];
+
+  for (const [name, addrs] of Object.entries(interfaces)) {
+    const lower = name.toLowerCase();
+    const isVirtual =
+      lower.includes('virtual') ||
+      lower.includes('vethernet') ||
+      lower.includes('wsl') ||
+      lower.includes('vmware') ||
+      lower.includes('host-only') ||
+      lower.includes('loopback') ||
+      lower.includes('pseudo');
+
+    for (const addr of addrs || []) {
+      if (!addr.internal && addr.family === 'IPv4') {
+        if (addr.address.startsWith('192.168.56.') || addr.address.startsWith('169.254.')) {
+          continue;
+        }
+
+        const isWifiOrEth =
+          lower.includes('wi-fi') ||
+          lower.includes('wifi') ||
+          lower.includes('wireless') ||
+          lower.includes('wlan') ||
+          lower.includes('ethernet');
+
+        results.push({
+          name,
+          ip: addr.address,
+          isPrimary: !isVirtual && isWifiOrEth,
+        });
+      }
+    }
+  }
+
+  results.sort((a, b) => (b.isPrimary ? 1 : 0) - (a.isPrimary ? 1 : 0));
+  if (results.length === 0) {
+    results.push({ name: 'Localhost', ip: '127.0.0.1', isPrimary: true });
+  }
+  return results;
+}
+
 function startRemoteServer() {
   if (remoteServer) return;
 
   const server = http.createServer((req, res) => {
+    // CORS headers
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
@@ -876,8 +921,24 @@ function startRemoteServer() {
       return res.end();
     }
 
-    const host = req.headers.host || 'localhost';
-    const parsedUrl = new URL(req.url, `http://${host}`);
+    const host = req.headers.host ? req.headers.host.split(':')[0] : 'localhost';
+    const parsedUrl = new URL(req.url, `http://${host}:${REMOTE_PORT}`);
+
+    if (parsedUrl.pathname === '/api/remote/info') {
+      const ifaces = getBestNetworkInterfaces();
+      const primary = ifaces[0] || { ip: '127.0.0.1', name: 'Localhost', isPrimary: true };
+      const port = isDev ? 3000 : REMOTE_PORT;
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      return res.end(
+        JSON.stringify({
+          ip: primary.ip,
+          interfaces: ifaces,
+          port,
+          url: `http://${primary.ip}:${port}/?mode=remote`,
+          timestamp: Date.now(),
+        })
+      );
+    }
 
     if (parsedUrl.pathname === '/api/remote/status') {
       res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -924,8 +985,44 @@ function startRemoteServer() {
       return;
     }
 
-    res.writeHead(200, { 'Content-Type': 'text/plain' });
-    res.end('Kaira Companion Remote Bridge Active');
+    // Static Web App Serving for /remote and /
+    if (isDev) {
+      // In dev mode, redirect browser requests to Vite dev server on port 3000
+      res.writeHead(302, { Location: `http://${host}:3000/?mode=remote` });
+      return res.end();
+    } else {
+      // Production: serve built files from dist
+      const distDir = path.join(__dirname, '../dist');
+      let reqPath = parsedUrl.pathname === '/' || parsedUrl.pathname === '/remote' ? '/index.html' : parsedUrl.pathname;
+      let filePath = path.join(distDir, reqPath);
+
+      if (!fs.existsSync(filePath)) {
+        filePath = path.join(distDir, 'index.html');
+      }
+
+      const ext = path.extname(filePath).toLowerCase();
+      const mimeTypes = {
+        '.html': 'text/html',
+        '.js': 'application/javascript',
+        '.css': 'text/css',
+        '.json': 'application/json',
+        '.png': 'image/png',
+        '.jpg': 'image/jpeg',
+        '.svg': 'image/svg+xml',
+        '.ico': 'image/x-icon',
+      };
+
+      const contentType = mimeTypes[ext] || 'application/octet-stream';
+      fs.readFile(filePath, (err, content) => {
+        if (err) {
+          res.writeHead(404, { 'Content-Type': 'text/plain' });
+          return res.end('Not Found');
+        }
+        res.writeHead(200, { 'Content-Type': contentType });
+        res.end(content);
+      });
+      return;
+    }
   });
 
   server.on('upgrade', (req, socket, head) => {
@@ -974,23 +1071,15 @@ ipcMain.on('remote-state-sync', (event, snapshot) => {
 });
 
 ipcMain.handle('get-remote-server-info', async () => {
-  let ipAddress = '127.0.0.1';
-  try {
-    const interfaces = os.networkInterfaces();
-    for (const name of Object.keys(interfaces)) {
-      for (const net of interfaces[name] || []) {
-        if (!net.internal && net.family === 'IPv4') {
-          ipAddress = net.address;
-          break;
-        }
-      }
-    }
-  } catch (e) {}
+  const ifaces = getBestNetworkInterfaces();
+  const primary = ifaces[0] || { ip: '127.0.0.1', name: 'Localhost', isPrimary: true };
+  const port = isDev ? 3000 : REMOTE_PORT;
 
   return {
-    ip: ipAddress,
-    port: REMOTE_PORT,
-    url: `http://${ipAddress}:${REMOTE_PORT}/remote`,
+    ip: primary.ip,
+    interfaces: ifaces,
+    port,
+    url: `http://${primary.ip}:${port}/?mode=remote`,
   };
 });
 

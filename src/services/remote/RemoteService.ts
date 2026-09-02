@@ -2,6 +2,7 @@ import { spatialNav } from '../spatialNav/spatialNavEngine';
 import { playbackService } from '../playback/PlaybackService';
 import { audioService } from '../audio/AudioService';
 import { ambientService } from '../ambient/ambientService';
+import { displayService } from '../display/displayService';
 import { appLauncher } from '../appLauncher/appLauncher';
 import { networkService } from '../network/NetworkService';
 import { systemService } from '../system/SystemService';
@@ -28,6 +29,12 @@ export interface RemoteCallbacks {
   onTriggerScreensaver?: () => void;
 }
 
+export interface NetworkInterfaceInfo {
+  name: string;
+  ip: string;
+  isPrimary: boolean;
+}
+
 class RemoteService {
   private connectedClients: number = 0;
   private callbacks: RemoteCallbacks = {};
@@ -39,6 +46,11 @@ class RemoteService {
   private clientCountListeners: Set<(count: number) => void> = new Set();
   private isInitialized: boolean = false;
 
+  private selectedIp: string = '';
+  private availableInterfaces: NetworkInterfaceInfo[] = [];
+  private serverPort: number = 3000;
+  private sseReceiver: EventSource | null = null;
+
   constructor() {
     this.initBroadcastChannel();
   }
@@ -47,8 +59,10 @@ class RemoteService {
     this.callbacks = callbacks;
     if (!this.isInitialized) {
       this.isInitialized = true;
+      this.discoverServerInfo();
       this.listenToSubsystems();
       this.listenToElectronIPC();
+      this.initBrowserReceiver();
       this.startSyncLoop();
     }
 
@@ -67,15 +81,74 @@ class RemoteService {
     this.broadcastState();
   }
 
+  public async discoverServerInfo(): Promise<void> {
+    // 1. Try Electron API
+    if (window.electronAPI?.getRemoteServerInfo) {
+      try {
+        const info = await window.electronAPI.getRemoteServerInfo();
+        if (info && info.ip) {
+          this.selectedIp = info.ip;
+          this.serverPort = info.port || 3000;
+          if (info.interfaces) {
+            this.availableInterfaces = info.interfaces;
+          }
+          networkService.setIp(this.selectedIp);
+          this.broadcastState();
+          return;
+        }
+      } catch (e) {}
+    }
+
+    // 2. Try HTTP endpoint /api/remote/info
+    try {
+      const res = await fetch('/api/remote/info');
+      if (res.ok) {
+        const info = await res.json();
+        if (info && info.ip) {
+          this.selectedIp = info.ip;
+          this.serverPort = info.port || (window.location.port ? parseInt(window.location.port, 10) : 3000);
+          if (info.interfaces) {
+            this.availableInterfaces = info.interfaces;
+          }
+          networkService.setIp(this.selectedIp);
+          this.broadcastState();
+        }
+      }
+    } catch (e) {
+      // Fallback to window.location
+      const host = window.location.hostname;
+      if (host && host !== 'localhost' && host !== '127.0.0.1') {
+        this.selectedIp = host;
+      }
+    }
+  }
+
+  public getAvailableInterfaces(): NetworkInterfaceInfo[] {
+    return this.availableInterfaces;
+  }
+
+  public setSelectedIp(ip: string): void {
+    this.selectedIp = ip;
+    networkService.setIp(ip);
+    this.broadcastState();
+  }
+
+  public getSelectedIp(): string {
+    if (this.selectedIp) return this.selectedIp;
+    const netState = networkService.getState();
+    if (netState.ip && netState.ip !== '127.0.0.1') return netState.ip;
+    return window.location.hostname || 'localhost';
+  }
+
   public getConnectedClients(): number {
     return this.connectedClients;
   }
 
   public getRemoteUrl(): string {
-    const netState = networkService.getState();
-    const hostIp = netState.ip && netState.ip !== '127.0.0.1' ? netState.ip : window.location.hostname || 'localhost';
-    const port = window.location.port ? `:${window.location.port}` : '';
-    return `${window.location.protocol}//${hostIp}${port}/remote`;
+    const hostIp = this.getSelectedIp();
+    const port = this.serverPort || (window.location.port ? parseInt(window.location.port, 10) : 3000);
+    const portStr = port === 80 || port === 443 ? '' : `:${port}`;
+    return `${window.location.protocol}//${hostIp}${portStr}/?mode=remote`;
   }
 
   public getTVState(): TVStateSnapshot {
@@ -103,8 +176,8 @@ class RemoteService {
       };
     }
 
-    const hostIp = net.ip && net.ip !== '127.0.0.1' ? net.ip : window.location.hostname || 'localhost';
-    const port = window.location.port ? parseInt(window.location.port, 10) : 3000;
+    const hostIp = this.getSelectedIp();
+    const port = this.serverPort || (window.location.port ? parseInt(window.location.port, 10) : 3000);
 
     return {
       activeTab: this.activeTab,
@@ -168,6 +241,7 @@ class RemoteService {
           spatialNav.navigate('right');
           break;
         case 'SELECT':
+          soundEffectsService.playSelectChime();
           spatialNav.triggerSelect();
           break;
         case 'BACK':
@@ -185,7 +259,15 @@ class RemoteService {
           break;
         case 'SEARCH':
           soundEffectsService.playSelectChime();
-          this.callbacks.onOpenSearch?.(command.payload?.query);
+          this.callbacks.onOpenSearch?.();
+          break;
+
+        // --- 2. Tab Navigation ---
+        case 'SET_TAB':
+          if (command.payload && typeof command.payload.tab === 'string') {
+            soundEffectsService.playSelectChime();
+            this.callbacks.onSetTab?.(command.payload.tab as NavigationTab);
+          }
           break;
         case 'TAB_PREV':
           soundEffectsService.playFocusTick();
@@ -195,44 +277,26 @@ class RemoteService {
           soundEffectsService.playFocusTick();
           this.navigateTab(1);
           break;
-        case 'SET_TAB':
-          if (command.payload?.tab) {
-            soundEffectsService.playSelectChime();
-            this.callbacks.onSetTab?.(command.payload.tab as NavigationTab);
+
+        // --- 3. Search & Text Input ---
+        case 'SEARCH_QUERY':
+          if (command.payload && typeof command.payload.query === 'string') {
+            this.callbacks.onOpenSearch?.(command.payload.query);
           }
           break;
-
-        // --- 2. Keyboard, Voice & Text Input ---
-        case 'SEARCH_QUERY':
         case 'VOICE_QUERY':
-          if (command.payload?.query !== undefined) {
+          if (command.payload && typeof command.payload.query === 'string') {
+            soundEffectsService.playSelectChime();
             this.callbacks.onOpenSearch?.(command.payload.query);
-            // Also attempt to directly set into search input if present
-            setTimeout(() => {
-              const searchInput = document.querySelector<HTMLInputElement>('.tv-search-input');
-              if (searchInput) {
-                searchInput.value = command.payload.query;
-                searchInput.dispatchEvent(new Event('input', { bubbles: true }));
-              }
-            }, 60);
           }
           break;
         case 'INPUT_TEXT':
-          if (command.payload?.text !== undefined) {
-            const activeInput = document.activeElement as HTMLInputElement | null;
-            if (activeInput && (activeInput.tagName === 'INPUT' || activeInput.tagName === 'TEXTAREA')) {
-              activeInput.value = command.payload.text;
-              activeInput.dispatchEvent(new Event('input', { bubbles: true }));
-            }
-          }
-          break;
-        case 'KEY_PRESS':
-          if (command.payload?.key) {
-            window.dispatchEvent(new KeyboardEvent('keydown', { key: command.payload.key, bubbles: true }));
+          if (command.payload && typeof command.payload.text === 'string') {
+            this.callbacks.onOpenSearch?.(command.payload.text);
           }
           break;
 
-        // --- 3. Media & Playback ---
+        // --- 4. Media Playback Controls ---
         case 'PLAY_PAUSE':
           playbackService.togglePlayPause();
           break;
@@ -243,13 +307,13 @@ class RemoteService {
           playbackService.pause();
           break;
         case 'SEEK':
-          if (typeof command.payload?.position === 'number') {
+          if (command.payload && typeof command.payload.position === 'number') {
             playbackService.seek(command.payload.position);
           }
           break;
         case 'SEEK_RELATIVE':
-          if (typeof command.payload?.delta === 'number') {
-            playbackService.seekRelative(command.payload.delta);
+          if (command.payload && typeof command.payload.offset === 'number') {
+            playbackService.seekRelative(command.payload.offset);
           }
           break;
         case 'NEXT_TRACK':
@@ -258,35 +322,50 @@ class RemoteService {
         case 'PREV_TRACK':
           playbackService.previous();
           break;
+        case 'SUBTITLES_TOGGLE':
+          // Subtitles toggle on video player
+          break;
+
+        // --- 5. Audio & Volume Controls ---
         case 'SET_VOLUME':
-          if (typeof command.payload?.volume === 'number') {
-            playbackService.setVolume(command.payload.volume);
-            audioService.setVolume(command.payload.volume);
+          if (command.payload && typeof command.payload.level === 'number') {
+            const vol = Math.max(0, Math.min(1, command.payload.level));
+            playbackService.setVolume(vol);
+            audioService.setVolume(vol);
           }
           break;
         case 'VOLUME_DELTA':
-          if (typeof command.payload?.delta === 'number') {
-            const curVol = playbackService.getState().volume;
-            const nextVol = Math.max(0, Math.min(1, curVol + command.payload.delta));
-            playbackService.setVolume(nextVol);
-            audioService.setVolume(nextVol);
+          {
+            const cur = playbackService.getState().volume;
+            const next = Math.max(0, Math.min(1, cur + (command.payload?.delta || 0.05)));
+            playbackService.setVolume(next);
+            audioService.setVolume(next);
           }
           break;
         case 'MUTE_TOGGLE':
           audioService.toggleMute();
           break;
 
-        // --- 4. Ambient Lighting & System ---
+        // --- 6. Quick Launch & Apps ---
+        case 'LAUNCH_APP':
+          if (command.payload && command.payload.appId) {
+            appLauncher.launchApp(command.payload.appId);
+          }
+          break;
+
+        // --- 7. Ambient Lighting Controls ---
         case 'SET_AMBIENT_MODE':
-          if (command.payload?.mode) {
+          if (command.payload && command.payload.mode) {
             ambientService.setMode(command.payload.mode);
           }
           break;
         case 'SET_AMBIENT_INTENSITY':
-          if (typeof command.payload?.intensity === 'number') {
+          if (command.payload && typeof command.payload.intensity === 'number') {
             ambientService.setIntensity(command.payload.intensity);
           }
           break;
+
+        // --- 8. Power & System Controls ---
         case 'TRIGGER_SCREENSAVER':
           this.callbacks.onTriggerScreensaver?.();
           break;
@@ -294,37 +373,21 @@ class RemoteService {
           this.callbacks.onOpenSleepTimer?.();
           break;
         case 'POWER_ACTION':
-          if (command.payload?.action) {
-            if (command.payload.action === 'screensaver') {
-              this.callbacks.onTriggerScreensaver?.();
-            } else if (window.electronAPI?.executeSystemPower) {
-              window.electronAPI.executeSystemPower(command.payload.action);
-            }
-          }
-          break;
-
-        // --- 5. App Launching & Direct Playback ---
-        case 'LAUNCH_APP':
-          if (command.payload?.app) {
-            appLauncher.launchApp(command.payload.app);
-          }
-          break;
-        case 'PLAY_MEDIA':
-          if (command.payload?.media) {
-            appLauncher.launchMedia(command.payload.media);
+          if (command.payload && command.payload.action) {
+            displayService.triggerPowerAction(command.payload.action);
           }
           break;
 
         default:
-          console.warn('[RemoteService] Unhandled command type:', command.type);
-          return { success: false, error: `Unhandled command: ${command.type}` };
+          console.warn('[RemoteService] Unrecognized command type:', (command as any).type);
+          return { success: false, error: 'Unknown command' };
       }
 
       this.broadcastState();
       return { success: true };
     } catch (err: any) {
       console.error('[RemoteService] Error executing command:', err);
-      return { success: false, error: err?.message || 'Execution error' };
+      return { success: false, error: err.message };
     }
   }
 
@@ -354,6 +417,17 @@ class RemoteService {
     // 3. Electron IPC Bridge to Node WebSocket server
     if (window.electronAPI?.sendRemoteState) {
       window.electronAPI.sendRemoteState(snapshot);
+    }
+
+    // 4. HTTP POST sync to local dev server
+    if (typeof fetch !== 'undefined') {
+      try {
+        fetch('/api/remote/sync-state', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(snapshot),
+        }).catch(() => {});
+      } catch (e) {}
     }
   }
 
@@ -393,6 +467,33 @@ class RemoteService {
     }
   }
 
+  private initBrowserReceiver(): void {
+    // If not in Electron, connect to SSE events to receive commands from remote phones
+    if (typeof window === 'undefined' || window.electronAPI?.onRemoteCommand) return;
+
+    try {
+      if (this.sseReceiver) {
+        this.sseReceiver.close();
+      }
+
+      this.sseReceiver = new EventSource('/api/remote/events');
+      this.sseReceiver.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          if (data && data.type === 'COMMAND' && data.payload) {
+            this.handleCommand(data.payload);
+          }
+        } catch (e) {}
+      };
+
+      this.sseReceiver.onerror = () => {
+        // SSE error, will auto-reconnect
+      };
+    } catch (e) {
+      console.warn('[RemoteService] SSE receiver init notice:', e);
+    }
+  }
+
   private listenToElectronIPC(): void {
     if (window.electronAPI?.onRemoteCommand) {
       window.electronAPI.onRemoteCommand((cmd: RemoteCommand) => {
@@ -426,7 +527,6 @@ class RemoteService {
 
   private startSyncLoop(): void {
     if (this.syncTimer) clearInterval(this.syncTimer);
-    // Periodically pulse state (keeps positionSeconds updated on remote during playback)
     this.syncTimer = setInterval(() => {
       const playState = playbackService.getState();
       if (playState.status === 'playing' || this.connectedClients > 0) {
