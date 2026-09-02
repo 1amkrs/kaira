@@ -2,12 +2,16 @@ import { defineConfig, Plugin } from 'vite';
 import react from '@vitejs/plugin-react';
 import os from 'os';
 import crypto from 'crypto';
+import localtunnel from 'localtunnel';
 
 interface NetworkInterfaceInfo {
   name: string;
   ip: string;
   isPrimary: boolean;
 }
+
+let activeDevTunnel: any = null;
+let activeDevTunnelUrl: string | null = null;
 
 function getNetworkInterfaces(): NetworkInterfaceInfo[] {
   const interfaces = os.networkInterfaces();
@@ -250,6 +254,57 @@ function kairaRemotePlugin(): Plugin {
               timestamp: Date.now(),
             })
           );
+        }
+
+        // Endpoint: /api/remote/tunnel/status
+        if (url.startsWith('/api/remote/tunnel/status')) {
+          res.setHeader('Content-Type', 'application/json');
+          return res.end(JSON.stringify({ active: Boolean(activeDevTunnelUrl), url: activeDevTunnelUrl }));
+        }
+
+        // Endpoint: /api/remote/tunnel/start (POST)
+        if (url.startsWith('/api/remote/tunnel/start') && req.method === 'POST') {
+          (async () => {
+            try {
+              if (activeDevTunnel && activeDevTunnelUrl) {
+                res.setHeader('Content-Type', 'application/json');
+                return res.end(JSON.stringify({ success: true, url: activeDevTunnelUrl }));
+              }
+              const tunnel = await localtunnel({ port: 3000 });
+              activeDevTunnel = tunnel;
+              activeDevTunnelUrl = `${tunnel.url}/?mode=remote`;
+
+              tunnel.on('close', () => {
+                activeDevTunnel = null;
+                activeDevTunnelUrl = null;
+              });
+              tunnel.on('error', () => {
+                activeDevTunnel = null;
+                activeDevTunnelUrl = null;
+              });
+
+              res.setHeader('Content-Type', 'application/json');
+              res.end(JSON.stringify({ success: true, url: activeDevTunnelUrl }));
+            } catch (err: any) {
+              res.statusCode = 500;
+              res.setHeader('Content-Type', 'application/json');
+              res.end(JSON.stringify({ success: false, error: err.message }));
+            }
+          })();
+          return;
+        }
+
+        // Endpoint: /api/remote/tunnel/stop (POST)
+        if (url.startsWith('/api/remote/tunnel/stop') && req.method === 'POST') {
+          if (activeDevTunnel) {
+            try {
+              activeDevTunnel.close();
+            } catch (e) {}
+            activeDevTunnel = null;
+            activeDevTunnelUrl = null;
+          }
+          res.setHeader('Content-Type', 'application/json');
+          return res.end(JSON.stringify({ success: true }));
         }
 
         // Endpoint: /api/remote/status

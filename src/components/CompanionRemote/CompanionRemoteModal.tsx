@@ -6,7 +6,13 @@ import {
   Check,
   ArrowLeft,
   Wifi,
-  Network
+  Globe,
+  Network,
+  Loader2,
+  HelpCircle,
+  ShieldAlert,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react';
 import { Focusable } from '../Focusable/Focusable';
 import { spatialNav } from '../../services/spatialNav/spatialNavEngine';
@@ -25,10 +31,13 @@ export const CompanionRemoteModal: React.FC<CompanionRemoteModalProps> = ({ onCl
   const [interfaces, setInterfaces] = useState<NetworkInterfaceInfo[]>(() => remoteService.getAvailableInterfaces());
   const [selectedIp, setSelectedIp] = useState<string>(() => remoteService.getSelectedIp());
   const [copied, setCopied] = useState<boolean>(false);
+  const [connectionMode, setConnectionMode] = useState<'local' | 'cloud'>('local');
+  const [tunnelUrl, setTunnelUrl] = useState<string | null>(() => remoteService.getTunnelUrl());
+  const [isStartingTunnel, setIsStartingTunnel] = useState<boolean>(false);
+  const [showTroubleshoot, setShowTroubleshoot] = useState<boolean>(false);
 
   useEffect(() => {
     spatialNav.pushScope('companion-remote-modal');
-    // Re-discover server details
     remoteService.discoverServerInfo().then(() => {
       setInterfaces(remoteService.getAvailableInterfaces());
       setSelectedIp(remoteService.getSelectedIp());
@@ -51,26 +60,43 @@ export const CompanionRemoteModal: React.FC<CompanionRemoteModalProps> = ({ onCl
     };
   }, []);
 
-  const remoteUrl = useMemo(() => {
-    return remoteService.getRemoteUrl();
-  }, [selectedIp, networkState.ip]);
+  const handleToggleCloudMode = async () => {
+    if (connectionMode === 'local') {
+      setConnectionMode('cloud');
+      if (!tunnelUrl) {
+        setIsStartingTunnel(true);
+        const url = await remoteService.startTunnel();
+        setTunnelUrl(url);
+        setIsStartingTunnel(false);
+      }
+    } else {
+      setConnectionMode('local');
+    }
+  };
+
+  const activeUrl = useMemo(() => {
+    if (connectionMode === 'cloud' && tunnelUrl) {
+      return tunnelUrl;
+    }
+    return remoteService.getRemoteUrl(false);
+  }, [connectionMode, tunnelUrl, selectedIp, networkState.ip]);
 
   const qrSvg = useMemo(() => {
     try {
-      return generateQRCodeSVG(remoteUrl, 240, '#000000', '#ffffff');
+      return generateQRCodeSVG(activeUrl, 240, '#000000', '#ffffff');
     } catch (e) {
       console.warn('[CompanionRemoteModal] QR generation notice:', e);
       return '';
     }
-  }, [remoteUrl]);
+  }, [activeUrl]);
 
   const handleOpenInNewTab = () => {
-    window.open(remoteUrl, '_blank', 'width=420,height=840');
+    window.open(activeUrl, '_blank', 'width=420,height=840');
   };
 
   const handleCopyLink = () => {
     if (navigator.clipboard) {
-      navigator.clipboard.writeText(remoteUrl);
+      navigator.clipboard.writeText(activeUrl);
       setCopied(true);
       setTimeout(() => setCopied(false), 2500);
     }
@@ -88,7 +114,7 @@ export const CompanionRemoteModal: React.FC<CompanionRemoteModalProps> = ({ onCl
       aria-modal="true"
       aria-label="Companion Phone Remote Pairing"
     >
-      <div className="tv-remote-modal-card">
+      <div className="tv-remote-modal-card" style={{ maxWidth: '840px' }}>
         {/* Header */}
         <div className="tv-remote-modal-header">
           <div className="tv-remote-title-group">
@@ -107,6 +133,29 @@ export const CompanionRemoteModal: React.FC<CompanionRemoteModalProps> = ({ onCl
           </div>
         </div>
 
+        {/* Connection Mode Toggle Pills */}
+        <div style={{ display: 'flex', gap: '10px', padding: '0 24px 12px 24px' }}>
+          <button
+            type="button"
+            className={`tv-modal-btn ${connectionMode === 'local' ? 'primary' : 'secondary'}`}
+            style={{ borderRadius: '20px', padding: '6px 14px', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '6px' }}
+            onClick={() => setConnectionMode('local')}
+          >
+            <Wifi size={14} />
+            <span>Local Wi-Fi Mode ({selectedIp})</span>
+          </button>
+
+          <button
+            type="button"
+            className={`tv-modal-btn ${connectionMode === 'cloud' ? 'primary' : 'secondary'}`}
+            style={{ borderRadius: '20px', padding: '6px 14px', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '6px' }}
+            onClick={handleToggleCloudMode}
+          >
+            {isStartingTunnel ? <Loader2 size={14} className="animate-spin" /> : <Globe size={14} />}
+            <span>Cloud / Any Network Mode (Bypass Firewall)</span>
+          </button>
+        </div>
+
         {/* Content Body */}
         <div className="tv-remote-body-grid">
           {/* QR Code Column */}
@@ -115,7 +164,9 @@ export const CompanionRemoteModal: React.FC<CompanionRemoteModalProps> = ({ onCl
               className="tv-qr-svg-container"
               dangerouslySetInnerHTML={{ __html: qrSvg }}
             />
-            <span className="tv-qr-scan-label">Scan with Phone Camera</span>
+            <span className="tv-qr-scan-label">
+              {isStartingTunnel ? 'Generating Cloud Link...' : 'Scan with Phone Camera'}
+            </span>
           </div>
 
           {/* Instructions Column */}
@@ -124,9 +175,13 @@ export const CompanionRemoteModal: React.FC<CompanionRemoteModalProps> = ({ onCl
             <div className="tv-guide-step-row">
               <div className="tv-step-number-bubble">1</div>
               <div className="tv-step-info">
-                <span className="tv-step-title">Connect to Same Wi-Fi</span>
+                <span className="tv-step-title">
+                  {connectionMode === 'local' ? 'Connect to Same Wi-Fi' : 'Works on Any Network'}
+                </span>
                 <span className="tv-step-desc">
-                  Ensure your smartphone is connected to the same Wi-Fi network ({selectedIp}).
+                  {connectionMode === 'local'
+                    ? `Make sure your phone is on the same Wi-Fi (${selectedIp}).`
+                    : 'Works seamlessly over Wi-Fi, 4G, 5G, or across different router bands.'}
                 </span>
               </div>
             </div>
@@ -148,52 +203,86 @@ export const CompanionRemoteModal: React.FC<CompanionRemoteModalProps> = ({ onCl
               <div className="tv-step-info">
                 <span className="tv-step-title">Instant Control</span>
                 <span className="tv-step-desc">
-                  Swipe on the glass touchpad, type with phone keyboard, speak voice searches, and control media in real time.
+                  Touchpad navigation, phone keyboard typing, voice search dictation, and media playback.
                 </span>
               </div>
             </div>
 
             {/* Direct URL Box */}
             <div className="tv-direct-url-box" onClick={handleCopyLink} title="Click to copy">
-              <span className="tv-direct-url-text">{remoteUrl}</span>
+              <span className="tv-direct-url-text">{activeUrl}</span>
               <button type="button" className="tv-copy-icon-btn" aria-label="Copy Link">
                 {copied ? <Check size={14} color="#81c995" /> : <Copy size={14} />}
               </button>
             </div>
 
-            {/* Multiple Network Adapters Switcher (if > 1 available) */}
-            {interfaces.length > 1 && (
+            {/* Multiple Network Adapters Switcher (Local Mode only) */}
+            {connectionMode === 'local' && interfaces.length > 1 && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginTop: '4px' }}>
                 <span style={{ fontSize: '11px', color: 'rgba(255,255,255,0.5)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                  Network Adapter
+                  Select Network Adapter:
                 </span>
                 <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
                   {interfaces.map((iface, idx) => (
-                    <Focusable
+                    <button
                       key={iface.ip}
-                      id={`iface-opt-${idx}`}
-                      groupId="remote-ifaces"
-                      indexInGroup={idx}
-                      onSelect={() => handleSelectInterface(iface.ip)}
+                      type="button"
+                      className={`tv-modal-btn ${selectedIp === iface.ip ? 'primary' : 'secondary'}`}
+                      style={{ padding: '4px 10px', fontSize: '12px', height: '28px' }}
+                      onClick={() => handleSelectInterface(iface.ip)}
                     >
-                      {(isFocused) => (
-                        <button
-                          type="button"
-                          className={`tv-modal-btn ${selectedIp === iface.ip ? 'primary' : 'secondary'} ${isFocused ? 'is-focused' : ''}`}
-                          style={{ padding: '4px 10px', fontSize: '12px', height: '28px' }}
-                          onClick={() => handleSelectInterface(iface.ip)}
-                        >
-                          {iface.name.toLowerCase().includes('wi-fi') || iface.name.toLowerCase().includes('wifi') ? (
-                            <Wifi size={12} />
-                          ) : (
-                            <Network size={12} />
-                          )}
-                          <span>{iface.name}: {iface.ip}</span>
-                        </button>
+                      {iface.name.toLowerCase().includes('wi-fi') || iface.name.toLowerCase().includes('wifi') ? (
+                        <Wifi size={12} />
+                      ) : (
+                        <Network size={12} />
                       )}
-                    </Focusable>
+                      <span>{iface.name}: {iface.ip}</span>
+                    </button>
                   ))}
                 </div>
+              </div>
+            )}
+
+            {/* Troubleshooting / Not Reachable Drawer */}
+            {connectionMode === 'local' && (
+              <div style={{ marginTop: '8px', background: 'rgba(255,255,255,0.04)', borderRadius: '10px', padding: '10px 12px' }}>
+                <button
+                  type="button"
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    color: '#8ab4f8',
+                    cursor: 'pointer',
+                    fontSize: '12px',
+                    fontWeight: 600,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    width: '100%',
+                    padding: 0,
+                  }}
+                  onClick={() => setShowTroubleshoot((prev) => !prev)}
+                >
+                  <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <HelpCircle size={14} />
+                    Phone says "Site cannot be reached"?
+                  </span>
+                  {showTroubleshoot ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                </button>
+
+                {showTroubleshoot && (
+                  <div style={{ marginTop: '8px', fontSize: '11px', color: 'rgba(255,255,255,0.7)', lineHeight: '1.5' }}>
+                    <p style={{ margin: '0 0 6px 0' }}>
+                      <strong>1. Easiest Solution:</strong> Switch to <strong>[Cloud / Any Network Mode]</strong> above — it bypasses all Windows Firewall and router blocks.
+                    </p>
+                    <p style={{ margin: '0 0 6px 0' }}>
+                      <strong>2. Windows Wi-Fi Profile:</strong> On Windows, if your Wi-Fi is set to <em>"Public"</em>, Windows Firewall blocks incoming connections. Open Windows <em>Settings &gt; Network &amp; Internet &gt; Wi-Fi</em> and change it to <strong>"Private network"</strong>.
+                    </p>
+                    <p style={{ margin: 0 }}>
+                      <strong>3. Router Isolation:</strong> Ensure your phone is not on Mobile Cellular Data and is connected to the same Wi-Fi router.
+                    </p>
+                  </div>
+                )}
               </div>
             )}
           </div>

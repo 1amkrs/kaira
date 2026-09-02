@@ -144,7 +144,51 @@ class RemoteService {
     return this.connectedClients;
   }
 
-  public getRemoteUrl(): string {
+  private tunnelUrl: string | null = null;
+  private isTunnelStarting: boolean = false;
+
+  public async startTunnel(): Promise<string | null> {
+    if (this.tunnelUrl) return this.tunnelUrl;
+    this.isTunnelStarting = true;
+    try {
+      const res = await fetch('/api/remote/tunnel/start', { method: 'POST' });
+      if (res.ok) {
+        const data = await res.json();
+        if (data && data.url) {
+          this.tunnelUrl = data.url;
+          this.broadcastState();
+          return this.tunnelUrl;
+        }
+      }
+    } catch (e) {
+      console.warn('[RemoteService] startTunnel error:', e);
+    } finally {
+      this.isTunnelStarting = false;
+    }
+    return null;
+  }
+
+  public async stopTunnel(): Promise<void> {
+    if (!this.tunnelUrl) return;
+    try {
+      await fetch('/api/remote/tunnel/stop', { method: 'POST' });
+    } catch (e) {}
+    this.tunnelUrl = null;
+    this.broadcastState();
+  }
+
+  public getTunnelUrl(): string | null {
+    return this.tunnelUrl;
+  }
+
+  public getIsTunnelStarting(): boolean {
+    return this.isTunnelStarting;
+  }
+
+  public getRemoteUrl(preferTunnel: boolean = false): string {
+    if (preferTunnel && this.tunnelUrl) {
+      return this.tunnelUrl;
+    }
     const hostIp = this.getSelectedIp();
     const port = this.serverPort || (window.location.port ? parseInt(window.location.port, 10) : 3000);
     const portStr = port === 80 || port === 443 ? '' : `:${port}`;
