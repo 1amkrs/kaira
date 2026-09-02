@@ -21,8 +21,10 @@ import { AerialScreensaver } from './components/Screensaver/AerialScreensaver';
 import { ProfileModal, UserProfile } from './components/Profile/ProfileModal';
 import { SleepTimerModal } from './components/SleepTimer/SleepTimerModal';
 import { QuickSettingsModal } from './components/QuickSettings/QuickSettingsModal';
+import { CompanionRemoteModal } from './components/CompanionRemote/CompanionRemoteModal';
 import { sleepTimerService } from './services/sleep/sleepTimerService';
 import { profileService } from './services/profile/ProfileService';
+import { remoteService } from './services/remote/RemoteService';
 import { SplashScreen } from './components/Splash/SplashScreen';
 import { gamepadManager } from './services/controller/gamepadManager';
 import { appLauncher, LaunchFeedback } from './services/appLauncher/appLauncher';
@@ -30,7 +32,7 @@ import { mediaProvider, ContinueWatchingItem } from './services/media/LiveMediaP
 import { playbackService } from './services/playback/PlaybackService';
 import { addonService } from './services/addons/AddonService';
 import { MediaItem } from './types';
-import { Loader2, Gamepad, Volume2, VolumeX } from 'lucide-react';
+import { Loader2, Gamepad, Volume2, VolumeX, Smartphone } from 'lucide-react';
 import './App.css';
 
 const TABS: NavigationTab[] = ['for-you', 'movies', 'shows', 'music', 'games', 'library'];
@@ -43,6 +45,7 @@ export const App: React.FC = () => {
   const [isQuickSettingsOpen, setIsQuickSettingsOpen] = useState<boolean>(false);
   const [isProfileModalOpen, setIsProfileModalOpen] = useState<boolean>(() => profileService.getState().promptOnLaunch);
   const [isSleepModalOpen, setIsSleepModalOpen] = useState<boolean>(false);
+  const [isRemoteModalOpen, setIsRemoteModalOpen] = useState<boolean>(false);
   const [activeProfile, setActiveProfile] = useState<UserProfile>(() => profileService.getActiveProfile());
 
 
@@ -63,6 +66,7 @@ export const App: React.FC = () => {
   // HUD Toasts & Overlays
   const [launchToast, setLaunchToast] = useState<LaunchFeedback | null>(null);
   const [gamepadToast, setGamepadToast] = useState<{ message: string; connected: boolean } | null>(null);
+  const [remoteToast, setRemoteToast] = useState<{ message: string; count: number } | null>(null);
   const [volumeToast, setVolumeToast] = useState<{ level: number; muted: boolean } | null>(null);
   const volumeToastTimerRef = useRef<NodeJS.Timeout | null>(null);
   const cursorTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -312,6 +316,8 @@ export const App: React.FC = () => {
   const handleBack = useCallback(() => {
     if (isScreensaverActive) {
       setIsScreensaverActive(false);
+    } else if (isRemoteModalOpen) {
+      setIsRemoteModalOpen(false);
     } else if (isQuickSettingsOpen) {
       setIsQuickSettingsOpen(false);
     } else if (isProfileModalOpen) {
@@ -340,6 +346,7 @@ export const App: React.FC = () => {
     }
   }, [
     isScreensaverActive,
+    isRemoteModalOpen,
     isQuickSettingsOpen,
     isProfileModalOpen,
     activeVideoSource,
@@ -413,6 +420,24 @@ export const App: React.FC = () => {
       }
     });
 
+    const unsubRemote = remoteService.subscribeClientCount((count) => {
+      if (count > 0) {
+        setRemoteToast({ message: `Phone Remote Connected (${count})`, count });
+        setTimeout(() => setRemoteToast(null), 3200);
+      }
+    });
+
+    remoteService.init({
+      onSetTab: handleSelectTab,
+      onOpenSearch: () => setActiveModal('search'),
+      onOpenSettings: handleOpenSettings,
+      onOpenQuickSettings: () => setIsQuickSettingsOpen((prev) => !prev),
+      onOpenSleepTimer: () => setIsSleepModalOpen(true),
+      onOpenRemoteModal: () => setIsRemoteModalOpen(true),
+      onBack: handleBack,
+      onTriggerScreensaver: () => setIsScreensaverActive(true),
+    });
+
     const handleMouseMove = () => {
       document.body.classList.remove('hide-cursor');
       if (cursorTimerRef.current) clearTimeout(cursorTimerRef.current);
@@ -427,15 +452,30 @@ export const App: React.FC = () => {
 
     return () => {
       cleanup();
+      unsubRemote();
       window.removeEventListener('keydown', handleVolumeKeys);
       window.removeEventListener('mousemove', handleMouseMove);
       unsubLaunch();
       unsubProfile();
     };
 
-  }, [handleBack, handleOpenSearch, handleOpenSettings, handleTabPrev, handleTabNext, isDetailOpen]);
+  }, [handleBack, handleOpenSearch, handleOpenSettings, handleSelectTab, handleTabPrev, handleTabNext, isDetailOpen]);
 
-  // Update Gamepad callbacks on navigation state change
+  // Sync TV UI state with companion remote
+  useEffect(() => {
+    const modalType = isRemoteModalOpen
+      ? 'remote'
+      : isQuickSettingsOpen
+      ? 'quick-settings'
+      : isProfileModalOpen
+      ? 'profile'
+      : isSleepModalOpen
+      ? 'sleep'
+      : activeModal;
+    remoteService.updateUIState(currentTab, modalType as any);
+  }, [currentTab, activeModal, isQuickSettingsOpen, isProfileModalOpen, isSleepModalOpen, isRemoteModalOpen]);
+
+  // Update Gamepad & Remote callbacks on navigation state change
   useEffect(() => {
     gamepadManager.setCallbacks({
       onBack: handleBack,
@@ -444,7 +484,17 @@ export const App: React.FC = () => {
       onTabPrev: handleTabPrev,
       onTabNext: handleTabNext,
     });
-  }, [handleBack, handleOpenSearch, handleOpenSettings, handleTabPrev, handleTabNext]);
+    remoteService.setCallbacks({
+      onSetTab: handleSelectTab,
+      onOpenSearch: () => setActiveModal('search'),
+      onOpenSettings: handleOpenSettings,
+      onOpenQuickSettings: () => setIsQuickSettingsOpen((prev) => !prev),
+      onOpenSleepTimer: () => setIsSleepModalOpen(true),
+      onOpenRemoteModal: () => setIsRemoteModalOpen(true),
+      onBack: handleBack,
+      onTriggerScreensaver: () => setIsScreensaverActive(true),
+    });
+  }, [handleBack, handleOpenSearch, handleOpenSettings, handleSelectTab, handleTabPrev, handleTabNext]);
 
   return (
     <div className="tv-app-shell">
@@ -457,6 +507,7 @@ export const App: React.FC = () => {
           onOpenSettings={handleOpenSettings}
           onOpenProfile={() => setIsProfileModalOpen(true)}
           onOpenSleepTimer={() => setIsSleepModalOpen(true)}
+          onOpenRemoteModal={() => setIsRemoteModalOpen(true)}
           activeProfile={activeProfile}
           activeProfileName={activeProfile.name}
         />
@@ -616,7 +667,10 @@ export const App: React.FC = () => {
 
       {/* Quick Settings Drawer Overlay */}
       {isQuickSettingsOpen && (
-        <QuickSettingsModal onClose={() => setIsQuickSettingsOpen(false)} />
+        <QuickSettingsModal
+          onClose={() => setIsQuickSettingsOpen(false)}
+          onOpenRemoteModal={() => setIsRemoteModalOpen(true)}
+        />
       )}
 
       {/* User Profile Modal */}
@@ -636,6 +690,11 @@ export const App: React.FC = () => {
         <SleepTimerModal onClose={() => setIsSleepModalOpen(false)} />
       )}
 
+      {/* Companion Phone Remote Modal */}
+      {isRemoteModalOpen && (
+        <CompanionRemoteModal onClose={() => setIsRemoteModalOpen(false)} />
+      )}
+
       {/* 4K Aerial Screensaver with Ambient Clock & Weather */}
       <AerialScreensaver
         isActive={isScreensaverActive}
@@ -647,6 +706,14 @@ export const App: React.FC = () => {
         <div className="tv-gamepad-status-banner animate-fade-in" role="status">
           <Gamepad size={20} color={gamepadToast.connected ? '#81c995' : '#f28b82'} />
           <span>{gamepadToast.message}</span>
+        </div>
+      )}
+
+      {/* Phone Remote Connection HUD Notification */}
+      {remoteToast && (
+        <div className="tv-gamepad-status-banner animate-fade-in" role="status">
+          <Smartphone size={20} color="#81c995" />
+          <span>{remoteToast.message}</span>
         </div>
       )}
 

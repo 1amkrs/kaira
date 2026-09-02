@@ -28,7 +28,9 @@ import {
   Unlock,
   Edit3,
   Moon,
-  Zap
+  Zap,
+  Smartphone,
+  QrCode
 } from 'lucide-react';
 import { Focusable } from '../../components/Focusable/Focusable';
 import { spatialNav } from '../../services/spatialNav/spatialNavEngine';
@@ -42,6 +44,8 @@ import { PinModal, renderAvatarIcon } from '../../components/Profile/PinModal';
 import { ProfileEditorModal } from '../../components/Profile/ProfileEditorModal';
 import { soundEffectsService } from '../../services/audio/soundEffectsService';
 import { systemService } from '../../services/system/SystemService';
+import { remoteService } from '../../services/remote/RemoteService';
+import { generateQRCodeSVG } from '../../utils/qrCodeGenerator';
 import { gamepadManager, GamepadActionDiagnostic } from '../../services/controller/gamepadManager';
 import { SystemDiagnostics } from '../../platform/types';
 import { AmbientState, DisplaySettings } from '../../types';
@@ -52,7 +56,7 @@ interface SettingsScreenProps {
   onClose: () => void;
 }
 
-type SettingsCategory = 'profiles' | 'addons' | 'ublock' | 'display' | 'controller' | 'ambient' | 'tv-mode' | 'system';
+type SettingsCategory = 'profiles' | 'addons' | 'ublock' | 'display' | 'controller' | 'remote' | 'ambient' | 'tv-mode' | 'system';
 
 export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onClose }) => {
   const [activeCategory, setActiveCategory] = useState<SettingsCategory>('profiles');
@@ -62,6 +66,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onClose }) => {
   const [activeGamepads, setActiveGamepads] = useState<string[]>([]);
   const [sfxEnabled, setSfxEnabled] = useState<boolean>(() => soundEffectsService.getEnabled());
   const [diagnostics, setDiagnostics] = useState<SystemDiagnostics | null>(() => systemService.getCachedDiagnostics());
+  const [clientCount, setClientCount] = useState<number>(() => remoteService.getConnectedClients());
   const [lastAction, setLastAction] = useState<GamepadActionDiagnostic | null>(null);
   const [actionLog, setActionLog] = useState<GamepadActionDiagnostic[]>([]);
 
@@ -88,6 +93,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onClose }) => {
     const unsubUblock = ublockService.subscribe(setUblockState);
     const unsubProfile = profileService.subscribe(setProfileState);
     const unsubDiag = systemService.subscribe(setDiagnostics);
+    const unsubRemote = remoteService.subscribeClientCount(setClientCount);
     const unsubGamepad = gamepadManager.subscribeAction((diag) => {
       setLastAction(diag);
       setActionLog((prev) => [diag, ...prev].slice(0, 6));
@@ -98,6 +104,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onClose }) => {
       unsubUblock();
       unsubProfile();
       unsubDiag();
+      unsubRemote();
       unsubGamepad();
     };
   }, []);
@@ -327,8 +334,30 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onClose }) => {
               <div className={`tv-cat-row ${isFocused ? 'focused' : ''}`}>
                 <Gamepad size={22} className="cat-icon" />
                 <div className="cat-text">
-                  <span className="cat-title">Remotes & Controllers</span>
+                  <span className="cat-title">Gamepads & Input</span>
                   <span className="cat-desc">Xbox controllers, button mapping, and deadzone tuning</span>
+                </div>
+                <ChevronRight size={18} className="cat-chevron" />
+              </div>
+            )}
+          </Focusable>
+
+          <Focusable
+            id="cat-remote"
+            groupId="settings-categories"
+            indexInGroup={5}
+            className={`tv-setting-cat-item ${activeCategory === 'remote' ? 'selected' : ''}`}
+            onSelect={() => setActiveCategory('remote')}
+            scaleEffect={true}
+          >
+            {(isFocused) => (
+              <div className={`tv-cat-row ${isFocused ? 'focused' : ''}`}>
+                <Smartphone size={22} className="cat-icon" color="#81c995" />
+                <div className="cat-text">
+                  <span className="cat-title">Companion Phone Remote</span>
+                  <span className="cat-desc">
+                    {clientCount > 0 ? `🟢 ${clientCount} phone${clientCount > 1 ? 's' : ''} connected` : 'Scan QR code to control TV with phone'}
+                  </span>
                 </div>
                 <ChevronRight size={18} className="cat-chevron" />
               </div>
@@ -338,7 +367,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onClose }) => {
           <Focusable
             id="cat-ambient"
             groupId="settings-categories"
-            indexInGroup={5}
+            indexInGroup={6}
             className={`tv-setting-cat-item ${activeCategory === 'ambient' ? 'selected' : ''}`}
             onSelect={() => setActiveCategory('ambient')}
             scaleEffect={true}
@@ -358,7 +387,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onClose }) => {
           <Focusable
             id="cat-tv-mode"
             groupId="settings-categories"
-            indexInGroup={6}
+            indexInGroup={7}
             className={`tv-setting-cat-item ${activeCategory === 'tv-mode' ? 'selected' : ''}`}
             onSelect={() => setActiveCategory('tv-mode')}
             scaleEffect={true}
@@ -1302,6 +1331,92 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onClose }) => {
                     </div>
                   )}
                 </Focusable>
+              </div>
+            </div>
+          )}
+
+          {activeCategory === 'remote' && (
+            <div className="tv-settings-group">
+              <h3 className="tv-group-title">Companion Phone Remote</h3>
+
+              {/* QR Code & Pairing Card */}
+              <div className="tv-setting-row-card" style={{ padding: '24px', alignItems: 'flex-start' }}>
+                <div style={{ display: 'flex', gap: '28px', alignItems: 'center', width: '100%' }}>
+                  <div
+                    style={{
+                      background: '#ffffff',
+                      borderRadius: '16px',
+                      padding: '12px',
+                      boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
+                      flexShrink: 0,
+                    }}
+                  >
+                    <div
+                      style={{ width: '160px', height: '160px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                      dangerouslySetInnerHTML={{ __html: generateQRCodeSVG(remoteService.getRemoteUrl(), 160, '#0a0a0c', '#ffffff') }}
+                    />
+                  </div>
+
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', flex: 1 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <Smartphone size={20} color="#81c995" />
+                      <span style={{ fontSize: '18px', fontWeight: 700, color: '#fff' }}>
+                        {clientCount > 0 ? `🟢 ${clientCount} Phone${clientCount > 1 ? 's' : ''} Connected` : 'Ready to Pair'}
+                      </span>
+                    </div>
+
+                    <p style={{ margin: 0, fontSize: '13px', color: 'rgba(255,255,255,0.7)', lineHeight: '1.4' }}>
+                      Scan this QR code with any smartphone camera on your local Wi-Fi to instantly control Kaira TV with a glass touchpad, media scrubber, phone keyboard typing, and voice search.
+                    </p>
+
+                    <div style={{ background: 'rgba(0,0,0,0.3)', padding: '8px 12px', borderRadius: '10px', fontFamily: 'monospace', fontSize: '13px', color: '#8ab4f8' }}>
+                      {remoteService.getRemoteUrl()}
+                    </div>
+
+                    <div style={{ display: 'flex', gap: '10px', marginTop: '4px' }}>
+                      <Focusable
+                        id="settings-remote-open-preview"
+                        groupId="settings-remote-group"
+                        indexInGroup={0}
+                        className="tv-action-btn-focusable"
+                        onSelect={() => window.open(remoteService.getRemoteUrl(), '_blank', 'width=420,height=840')}
+                      >
+                        {(isFocused) => (
+                          <div className={`tv-action-btn ${isFocused ? 'focused' : ''}`}>
+                            <ExternalLink size={16} />
+                            <span>Open in Browser Tab</span>
+                          </div>
+                        )}
+                      </Focusable>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Diagnostics Card */}
+              <div className="tv-setting-row-card">
+                <div className="tv-row-text">
+                  <span className="tv-row-title">Remote Bridge Diagnostics</span>
+                  <span className="tv-row-desc">
+                    WebSocket Port: {window.location.port || '3000'} / 3001 • Protocols: WebSocket, SSE, HTTP REST, BroadcastChannel
+                  </span>
+                </div>
+                <div style={{ fontSize: '13px', color: '#81c995', fontWeight: 600 }}>
+                  Active & Listening
+                </div>
+              </div>
+
+              {/* Feature Highlights Card */}
+              <div className="tv-setting-row-card">
+                <div className="tv-row-text">
+                  <span className="tv-row-title">Features Available on Phone</span>
+                  <span className="tv-row-desc">
+                    4-Way D-Pad & Touchpad Swipe • Live Media Scrubber • Speech-to-Text Voice Dictation • Ambient Lights Control • Quick App Launcher
+                  </span>
+                </div>
+                <div style={{ fontSize: '13px', color: '#8ab4f8', fontWeight: 500 }}>
+                  Ready
+                </div>
               </div>
             </div>
           )}

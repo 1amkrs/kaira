@@ -1,0 +1,260 @@
+/* ==========================================================================
+   Companion Phone Remote Modal — 10-foot TV UI Styling
+   ========================================================================== */
+
+.tv-remote-modal-backdrop {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(8, 10, 14, 0.88);
+  backdrop-filter: blur(28px);
+  -webkit-backdrop-filter: blur(28px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  animation: modal-fade-in 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes modal-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.tv-remote-modal-card {
+  width: 900px;
+  max-width: 92vw;
+  background: linear-gradient(145deg, #161822, #0f1118);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 28px;
+  padding: 36px 44px;
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.8), 0 0 40px rgba(26, 115, 232, 0.15);
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+  position: relative;
+  animation: card-pop 0.28s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes card-pop {
+  from { opacity: 0; transform: scale(0.95) translateY(12px); }
+  to { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+/* Header */
+.tv-remote-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  padding-bottom: 18px;
+}
+
+.tv-remote-title-group {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.tv-remote-icon-badge {
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #1a73e8, #4285f4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  box-shadow: 0 4px 16px rgba(26, 115, 232, 0.4);
+}
+
+.tv-remote-title {
+  font-size: 24px;
+  font-weight: 700;
+  color: #fff;
+  margin: 0 0 4px 0;
+  letter-spacing: 0.3px;
+}
+
+.tv-remote-subtitle {
+  font-size: 14px;
+  color: rgba(255, 255, 255, 0.6);
+  margin: 0;
+}
+
+/* Connected Devices Status Pill */
+.tv-remote-conn-pill {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 20px;
+  padding: 6px 14px;
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.85);
+  font-weight: 500;
+}
+
+.tv-remote-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #ea4335;
+}
+
+.tv-remote-dot.active {
+  background: #81c995;
+  box-shadow: 0 0 10px rgba(129, 201, 149, 0.8);
+}
+
+/* Modal Content Layout: 2 Columns (QR Code Left, Instructions Right) */
+.tv-remote-body-grid {
+  display: grid;
+  grid-template-columns: 280px 1fr;
+  gap: 36px;
+  align-items: center;
+}
+
+/* Left: QR Code Display Card */
+.tv-qr-card-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  background: #ffffff;
+  border-radius: 22px;
+  padding: 18px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5);
+  position: relative;
+}
+
+.tv-qr-svg-container {
+  width: 240px;
+  height: 240px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.tv-qr-svg-container svg {
+  width: 100%;
+  height: 100%;
+  border-radius: 12px;
+}
+
+.tv-qr-scan-label {
+  margin-top: 10px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #1a1d26;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+}
+
+/* Right: Step-by-Step Guide */
+.tv-remote-guide-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.tv-guide-step-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+}
+
+.tv-step-number-bubble {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: rgba(26, 115, 232, 0.2);
+  border: 1px solid #8ab4f8;
+  color: #8ab4f8;
+  font-size: 14px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.tv-step-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.tv-step-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: #fff;
+}
+
+.tv-step-desc {
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.65);
+  line-height: 1.35;
+}
+
+/* Direct URL Capsule */
+.tv-direct-url-box {
+  background: rgba(0, 0, 0, 0.4);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 14px;
+  padding: 10px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 4px;
+}
+
+.tv-direct-url-text {
+  font-family: monospace;
+  font-size: 14px;
+  color: #8ab4f8;
+  letter-spacing: 0.3px;
+}
+
+/* Footer Actions */
+.tv-remote-modal-footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 14px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  padding-top: 20px;
+}
+
+.tv-modal-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 24px;
+  border-radius: 14px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  border: none;
+}
+
+.tv-modal-btn.secondary {
+  background: rgba(255, 255, 255, 0.08);
+  color: #ffffff;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.tv-modal-btn.primary {
+  background: #1a73e8;
+  color: #ffffff;
+  box-shadow: 0 4px 16px rgba(26, 115, 232, 0.4);
+}
+
+.tv-modal-btn.is-focused {
+  transform: scale(1.05);
+  box-shadow: 0 0 20px rgba(138, 180, 248, 0.6);
+  border-color: #8ab4f8;
+}

@@ -51,5 +51,9 @@ interface Window {
     setUblockAntiPopup?: (enabled: boolean) => Promise<any>;
     resetUblockStats?: () => Promise<any>;
     controlMedia?: (action: string, value?: any) => Promise<{ success: boolean; error?: string }>;
+    sendRemoteState?: (state: any) => void;
+    onRemoteCommand?: (callback: (command: any) => void) => () => void;
+    onRemoteClientCount?: (callback: (count: number) => void) => () => void;
+    getRemoteServerInfo?: () => Promise<{ ip: string; port: number; url: string }>;
   };
 }

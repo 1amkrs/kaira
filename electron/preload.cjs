@@ -22,4 +22,16 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getSelfDebridStatus: () => ipcRenderer.invoke('get-self-debrid-status'),
   startSelfDebrid: () => ipcRenderer.invoke('start-self-debrid'),
   stopSelfDebrid: () => ipcRenderer.invoke('stop-self-debrid'),
+  sendRemoteState: (state) => ipcRenderer.send('remote-state-sync', state),
+  onRemoteCommand: (callback) => {
+    const handler = (e, cmd) => callback(cmd);
+    ipcRenderer.on('remote-command', handler);
+    return () => ipcRenderer.removeListener('remote-command', handler);
+  },
+  onRemoteClientCount: (callback) => {
+    const handler = (e, count) => callback(count);
+    ipcRenderer.on('remote-client-count', handler);
+    return () => ipcRenderer.removeListener('remote-client-count', handler);
+  },
+  getRemoteServerInfo: () => ipcRenderer.invoke('get-remote-server-info'),
 });

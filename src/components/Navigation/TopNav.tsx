@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { Search, Settings, Lock, Moon, Home, Film, Tv, Music, Gamepad2, Bookmark, Library as LibraryIcon } from 'lucide-react';
+import { Search, Settings, Lock, Moon, Home, Film, Tv, Music, Gamepad2, Bookmark, Smartphone, Library as LibraryIcon } from 'lucide-react';
 import { NavigationTab, ScreenId } from '../../types';
 import { UserProfile } from '../../types/profile';
 import { Focusable } from '../Focusable/Focusable';
 import { renderAvatarIcon } from '../Profile/PinModal';
 import { sleepTimerService, SleepTimerState } from '../../services/sleep/sleepTimerService';
+import { remoteService } from '../../services/remote/RemoteService';
 import './TopNav.css';
 
 interface TopNavProps {
@@ -14,6 +15,7 @@ interface TopNavProps {
   onOpenSettings: () => void;
   onOpenProfile?: () => void;
   onOpenSleepTimer?: () => void;
+  onOpenRemoteModal?: () => void;
   activeProfile?: UserProfile;
   activeProfileName?: string;
 }
@@ -36,12 +38,15 @@ export const TopNav: React.FC<TopNavProps> = ({
   onOpenSleepTimer,
   activeProfile,
   activeProfileName = 'Primary',
+  onOpenRemoteModal,
 }) => {
   const [currentTime, setCurrentTime] = useState<string>('');
   const [sleepState, setSleepState] = useState<SleepTimerState>(() => sleepTimerService.getState());
+  const [clientCount, setClientCount] = useState<number>(() => remoteService.getConnectedClients());
 
   useEffect(() => {
     const unsub = sleepTimerService.subscribe(setSleepState);
+    const unsubRemote = remoteService.subscribeClientCount(setClientCount);
     const updateClock = () => {
       const now = new Date();
       setCurrentTime(
@@ -53,6 +58,7 @@ export const TopNav: React.FC<TopNavProps> = ({
     return () => {
       clearInterval(timer);
       unsub();
+      unsubRemote();
     };
   }, []);
 
@@ -172,11 +178,37 @@ export const TopNav: React.FC<TopNavProps> = ({
               </Focusable>
             )}
 
+            {/* Phone Companion Remote */}
+            {onOpenRemoteModal && (
+              <Focusable
+                id="nav-remote-btn"
+                groupId="top-nav"
+                indexInGroup={2 + TABS.length + (onOpenSleepTimer ? 1 : 0)}
+                className="tv-gtv-action-focusable"
+                onSelect={onOpenRemoteModal}
+                scaleEffect={false}
+              >
+                {(isFocused) => (
+                  <div
+                    className={`tv-gtv-action-btn ${clientCount > 0 ? 'active-sleep' : ''} ${isFocused ? 'focused' : ''}`}
+                    title={clientCount > 0 ? `Phone Remote Connected (${clientCount})` : 'Pair Phone Remote'}
+                  >
+                    <Smartphone size={18} color={clientCount > 0 ? '#81c995' : 'currentColor'} />
+                    {clientCount > 0 && (
+                      <span className="tv-gtv-sleep-badge" style={{ background: '#81c995', color: '#0d0e12' }}>
+                        {clientCount}
+                      </span>
+                    )}
+                  </div>
+                )}
+              </Focusable>
+            )}
+
             {/* Settings */}
             <Focusable
               id="nav-settings-btn"
               groupId="top-nav"
-              indexInGroup={2 + TABS.length + (onOpenSleepTimer ? 1 : 0)}
+              indexInGroup={2 + TABS.length + (onOpenSleepTimer ? 1 : 0) + (onOpenRemoteModal ? 1 : 0)}
               className="tv-gtv-action-focusable"
               onSelect={onOpenSettings}
               scaleEffect={false}
@@ -237,6 +269,19 @@ export const TopNav: React.FC<TopNavProps> = ({
           >
             <Search size={18} />
           </button>
+
+          {/* Phone Remote */}
+          {onOpenRemoteModal && (
+            <button
+              type="button"
+              className={`tv-mobile-icon-btn ${clientCount > 0 ? 'active-sleep' : ''}`}
+              onClick={onOpenRemoteModal}
+              aria-label="Pair Phone Remote"
+              title="Pair Phone Remote"
+            >
+              <Smartphone size={18} color={clientCount > 0 ? '#81c995' : 'currentColor'} />
+            </button>
+          )}
 
           {/* Sleep Timer */}
           {onOpenSleepTimer && (

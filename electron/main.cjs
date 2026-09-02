@@ -2,6 +2,9 @@ const { app, BrowserWindow, ipcMain, screen, shell, globalShortcut, session } = 
 const path = require('path');
 const os = require('os');
 const fs = require('fs');
+const http = require('http');
+const crypto = require('crypto');
+const url = require('url');
 const { exec, spawn } = require('child_process');
 const net = require('net');
 
@@ -704,6 +707,7 @@ ipcMain.handle('media-control', async (event, { action, value }) => {
 });
 
 // Self-Debrid IPC Handlers
+// Self-Debrid IPC Handlers
 ipcMain.handle('get-self-debrid-status', async () => {
   return {
     running: selfDebridProcess !== null,
@@ -721,10 +725,280 @@ ipcMain.handle('stop-self-debrid', async () => {
   return { success: true, running: false };
 });
 
+// ==============================================================================
+// 5. Companion Remote WebSocket & HTTP Server
+// ==============================================================================
+let remoteServer = null;
+let remoteWsClients = new Set();
+let remoteSseClients = new Set();
+let latestTVState = null;
+const REMOTE_PORT = 3001;
+
+function encodeWsFrame(data) {
+  const jsonStr = typeof data === 'string' ? data : JSON.stringify(data);
+  const payload = Buffer.from(jsonStr, 'utf8');
+  const length = payload.length;
+
+  let header;
+  if (length <= 125) {
+    header = Buffer.from([0x81, length]);
+  } else if (length <= 65535) {
+    header = Buffer.alloc(4);
+    header[0] = 0x81;
+    header[1] = 126;
+    header.writeUInt16BE(length, 2);
+  } else {
+    header = Buffer.alloc(10);
+    header[0] = 0x81;
+    header[1] = 127;
+    header.writeBigUInt64BE(BigInt(length), 2);
+  }
+  return Buffer.concat([header, payload]);
+}
+
+function broadcastRemoteState(snapshot) {
+  latestTVState = snapshot;
+  const frame = encodeWsFrame({ type: 'STATE_UPDATE', payload: snapshot });
+  for (const client of remoteWsClients) {
+    try {
+      client.write(frame);
+    } catch (e) {
+      remoteWsClients.delete(client);
+    }
+  }
+  for (const sseRes of remoteSseClients) {
+    try {
+      sseRes.write(`data: ${JSON.stringify({ type: 'STATE_UPDATE', payload: snapshot })}\n\n`);
+    } catch (e) {
+      remoteSseClients.delete(sseRes);
+    }
+  }
+}
+
+function updateClientCount() {
+  const total = remoteWsClients.size + remoteSseClients.size;
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('remote-client-count', total);
+  }
+}
+
+function handleWsConnection(socket, req) {
+  remoteWsClients.add(socket);
+  updateClientCount();
+
+  if (latestTVState) {
+    try {
+      socket.write(encodeWsFrame({ type: 'STATE_UPDATE', payload: latestTVState }));
+    } catch (e) {}
+  }
+
+  let buffer = Buffer.alloc(0);
+
+  socket.on('data', (chunk) => {
+    buffer = Buffer.concat([buffer, chunk]);
+    while (buffer.length >= 2) {
+      const firstByte = buffer[0];
+      const secondByte = buffer[1];
+      const opcode = firstByte & 0x0f;
+      const isMasked = (secondByte & 0x80) !== 0;
+      let payloadLen = secondByte & 0x7f;
+      let offset = 2;
+
+      if (payloadLen === 126) {
+        if (buffer.length < 4) break;
+        payloadLen = buffer.readUInt16BE(2);
+        offset = 4;
+      } else if (payloadLen === 127) {
+        if (buffer.length < 10) break;
+        payloadLen = Number(buffer.readBigUInt64BE(2));
+        offset = 10;
+      }
+
+      const maskKeyLen = isMasked ? 4 : 0;
+      if (buffer.length < offset + maskKeyLen + payloadLen) break;
+
+      let maskKey = null;
+      if (isMasked) {
+        maskKey = buffer.slice(offset, offset + 4);
+        offset += 4;
+      }
+
+      const rawPayload = buffer.slice(offset, offset + payloadLen);
+      buffer = buffer.slice(offset + payloadLen);
+
+      if (isMasked && maskKey) {
+        for (let i = 0; i < rawPayload.length; i++) {
+          rawPayload[i] ^= maskKey[i % 4];
+        }
+      }
+
+      if (opcode === 0x08) {
+        socket.end();
+        break;
+      } else if (opcode === 0x09) {
+        socket.write(Buffer.from([0x8a, 0x00])); // Pong
+      } else if (opcode === 0x01) {
+        try {
+          const msg = JSON.parse(rawPayload.toString('utf8'));
+          if (msg.type === 'COMMAND' && msg.payload) {
+            if (mainWindow && !mainWindow.isDestroyed()) {
+              mainWindow.webContents.send('remote-command', msg.payload);
+            }
+          } else if (msg.type === 'REQUEST_STATE' && latestTVState) {
+            socket.write(encodeWsFrame({ type: 'STATE_UPDATE', payload: latestTVState }));
+          }
+        } catch (e) {}
+      }
+    }
+  });
+
+  socket.on('close', () => {
+    remoteWsClients.delete(socket);
+    updateClientCount();
+  });
+
+  socket.on('error', () => {
+    remoteWsClients.delete(socket);
+    updateClientCount();
+  });
+}
+
+function startRemoteServer() {
+  if (remoteServer) return;
+
+  const server = http.createServer((req, res) => {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+
+    if (req.method === 'OPTIONS') {
+      res.writeHead(204);
+      return res.end();
+    }
+
+    const host = req.headers.host || 'localhost';
+    const parsedUrl = new URL(req.url, `http://${host}`);
+
+    if (parsedUrl.pathname === '/api/remote/status') {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify(latestTVState || { connected: true, timestamp: Date.now() }));
+    }
+
+    if (parsedUrl.pathname === '/api/remote/command' && req.method === 'POST') {
+      let body = '';
+      req.on('data', (chunk) => { body += chunk; });
+      req.on('end', () => {
+        try {
+          const cmd = JSON.parse(body);
+          if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.send('remote-command', cmd.payload || cmd);
+          }
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ success: true }));
+        } catch (err) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ success: false, error: err.message }));
+        }
+      });
+      return;
+    }
+
+    if (parsedUrl.pathname === '/api/remote/events') {
+      res.writeHead(200, {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        'Connection': 'keep-alive',
+      });
+      res.write(':\n\n');
+      remoteSseClients.add(res);
+      updateClientCount();
+
+      if (latestTVState) {
+        res.write(`data: ${JSON.stringify({ type: 'STATE_UPDATE', payload: latestTVState })}\n\n`);
+      }
+
+      req.on('close', () => {
+        remoteSseClients.delete(res);
+        updateClientCount();
+      });
+      return;
+    }
+
+    res.writeHead(200, { 'Content-Type': 'text/plain' });
+    res.end('Kaira Companion Remote Bridge Active');
+  });
+
+  server.on('upgrade', (req, socket, head) => {
+    const key = req.headers['sec-websocket-key'];
+    if (!key) {
+      socket.destroy();
+      return;
+    }
+    const acceptKey = crypto
+      .createHash('sha1')
+      .update(key + '258EAFA5-E914-47DA-95CA-C5AB0DC85B11')
+      .digest('base64');
+
+    socket.write(
+      'HTTP/1.1 101 Switching Protocols\r\n' +
+      'Upgrade: websocket\r\n' +
+      'Connection: Upgrade\r\n' +
+      `Sec-WebSocket-Accept: ${acceptKey}\r\n\r\n`
+    );
+
+    handleWsConnection(socket, req);
+  });
+
+  server.listen(REMOTE_PORT, '0.0.0.0', () => {
+    console.log(`[Electron Main] 📱 Kaira Companion Remote Server listening on port ${REMOTE_PORT}`);
+  });
+
+  server.on('error', (err) => {
+    console.warn('[Electron Main] Remote Server notice:', err.message);
+  });
+
+  remoteServer = server;
+}
+
+function stopRemoteServer() {
+  if (remoteServer) {
+    try {
+      remoteServer.close();
+    } catch (e) {}
+    remoteServer = null;
+  }
+}
+
+ipcMain.on('remote-state-sync', (event, snapshot) => {
+  broadcastRemoteState(snapshot);
+});
+
+ipcMain.handle('get-remote-server-info', async () => {
+  let ipAddress = '127.0.0.1';
+  try {
+    const interfaces = os.networkInterfaces();
+    for (const name of Object.keys(interfaces)) {
+      for (const net of interfaces[name] || []) {
+        if (!net.internal && net.family === 'IPv4') {
+          ipAddress = net.address;
+          break;
+        }
+      }
+    }
+  } catch (e) {}
+
+  return {
+    ip: ipAddress,
+    port: REMOTE_PORT,
+    url: `http://${ipAddress}:${REMOTE_PORT}/remote`,
+  };
+});
+
 // App Lifecycle
 app.whenReady().then(() => {
   createMainWindow();
   startSelfDebrid();
+  startRemoteServer();
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createMainWindow();
@@ -733,10 +1007,12 @@ app.whenReady().then(() => {
 
 app.on('before-quit', () => {
   stopSelfDebrid();
+  stopRemoteServer();
 });
 
 app.on('window-all-closed', () => {
   stopSelfDebrid();
+  stopRemoteServer();
   if (ambientProcess) {
     try {
       ambientProcess.kill();

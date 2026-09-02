@@ -11,7 +11,9 @@ import {
   Sliders, 
   ArrowLeft,
   Check,
-  Moon
+  Moon,
+  Smartphone,
+  QrCode
 } from 'lucide-react';
 import { Focusable } from '../Focusable/Focusable';
 import { spatialNav } from '../../services/spatialNav/spatialNavEngine';
@@ -20,20 +22,23 @@ import { displayService } from '../../services/display/displayService';
 import { ambientService } from '../../services/ambient/ambientService';
 import { networkService } from '../../services/network/NetworkService';
 import { systemService } from '../../services/system/SystemService';
+import { remoteService } from '../../services/remote/RemoteService';
 import { AmbientState, DisplaySettings } from '../../types';
 import './QuickSettingsModal.css';
 
 interface QuickSettingsModalProps {
   onClose: () => void;
+  onOpenRemoteModal?: () => void;
 }
 
-export const QuickSettingsModal: React.FC<QuickSettingsModalProps> = ({ onClose }) => {
+export const QuickSettingsModal: React.FC<QuickSettingsModalProps> = ({ onClose, onOpenRemoteModal }) => {
   const [volume, setVolume] = useState<number>(() => Math.round(audioService.getVolume() * 100));
   const [isMuted, setIsMuted] = useState<boolean>(false);
   const [ambientState, setAmbientState] = useState<AmbientState>(() => ambientService.getState());
   const [displaySettings, setDisplaySettings] = useState<DisplaySettings>(() => displayService.getSettings());
   const [networkState, setNetworkState] = useState(() => networkService.getState());
   const [diagnostics, setDiagnostics] = useState(() => systemService.getCachedDiagnostics());
+  const [clientCount, setClientCount] = useState<number>(() => remoteService.getConnectedClients());
 
   useEffect(() => {
     spatialNav.pushScope('quick-settings-modal');
@@ -46,10 +51,12 @@ export const QuickSettingsModal: React.FC<QuickSettingsModalProps> = ({ onClose 
     const unsubAmbient = ambientService.subscribe(setAmbientState);
     const unsubNetwork = networkService.subscribe(setNetworkState);
     const unsubDiag = systemService.subscribe(setDiagnostics);
+    const unsubRemote = remoteService.subscribeClientCount(setClientCount);
     return () => {
       unsubAmbient();
       unsubNetwork();
       unsubDiag();
+      unsubRemote();
     };
   }, []);
 
@@ -216,7 +223,44 @@ export const QuickSettingsModal: React.FC<QuickSettingsModalProps> = ({ onClose 
             </div>
           </div>
 
-          {/* 4. Controller & Network Card */}
+          {/* 4. Phone Companion Remote Card */}
+          <div className="tv-qs-card">
+            <div className="tv-qs-card-header">
+              <div className="tv-qs-card-icon">
+                <Smartphone size={20} color="#81c995" />
+              </div>
+              <div className="tv-qs-card-info">
+                <span className="tv-qs-card-title">Companion Remote</span>
+                <span className="tv-qs-card-sub">
+                  {clientCount > 0 ? `🟢 ${clientCount} Phone${clientCount > 1 ? 's' : ''} Connected` : 'Pair phone to control TV'}
+                </span>
+              </div>
+            </div>
+
+            {onOpenRemoteModal && (
+              <div className="tv-qs-stepper-row" style={{ marginTop: '10px' }}>
+                <Focusable
+                  id="qs-open-remote-modal"
+                  groupId="qs-remote"
+                  indexInGroup={0}
+                  className="tv-qs-step-btn"
+                  onSelect={() => {
+                    onClose();
+                    onOpenRemoteModal();
+                  }}
+                >
+                  {(isFocused) => (
+                    <div className={`tv-qs-btn-inner ${isFocused ? 'focused' : ''}`} style={{ width: '100%', justifyContent: 'center' }}>
+                      <QrCode size={15} />
+                      <span>Show Pairing QR Code</span>
+                    </div>
+                  )}
+                </Focusable>
+              </div>
+            )}
+          </div>
+
+          {/* 5. Controller & Network Card */}
           <div className="tv-qs-card">
             <div className="tv-qs-card-header">
               <div className="tv-qs-card-icon">

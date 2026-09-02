@@ -1,0 +1,965 @@
+/* ==========================================================================
+   Kaira Companion Remote Web App — Mobile-First Styling
+   Optimized for Smartphone Screens (iOS Safari, Android Chrome, PWA)
+   ========================================================================== */
+
+:root {
+  --remote-bg: #0a0a0c;
+  --remote-card-bg: rgba(22, 24, 32, 0.78);
+  --remote-card-border: rgba(255, 255, 255, 0.08);
+  --remote-accent: #1a73e8;
+  --remote-accent-glow: rgba(26, 115, 232, 0.35);
+  --remote-text: #ffffff;
+  --remote-text-sec: rgba(255, 255, 255, 0.65);
+  --remote-text-dim: rgba(255, 255, 255, 0.38);
+  --remote-dpad-bg: #141720;
+  --remote-btn-press: #252a38;
+  --remote-green: #81c995;
+  --remote-yellow: #fdd663;
+  --remote-red: #ea4335;
+}
+
+/* Ensure mobile viewport occupies full screen without bouncing */
+html, body {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  background-color: var(--remote-bg);
+  color: var(--remote-text);
+  font-family: -apple-system, BlinkMacSystemFont, "Google Sans", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+  overscroll-behavior-y: none;
+  overflow: hidden;
+}
+
+.kaira-remote-container {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  max-width: 480px;
+  margin: 0 auto;
+  background-color: var(--remote-bg);
+  padding-top: max(12px, env(safe-area-inset-top));
+  padding-bottom: max(12px, env(safe-area-inset-bottom));
+  padding-left: max(16px, env(safe-area-inset-left));
+  padding-right: max(16px, env(safe-area-inset-right));
+  box-sizing: border-box;
+  position: relative;
+  overflow: hidden;
+}
+
+/* ─── Top Header Bar ───────────────────────────────────────────────────────── */
+.remote-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 0 12px 0;
+  border-bottom: 1px solid var(--remote-card-border);
+  flex-shrink: 0;
+}
+
+.remote-brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.remote-logo-icon {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  background: linear-gradient(135deg, #1a73e8, #8ab4f8);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 2px 10px var(--remote-accent-glow);
+}
+
+.remote-title-wrap {
+  display: flex;
+  flex-direction: column;
+}
+
+.remote-app-title {
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+  color: #fff;
+  line-height: 1.1;
+}
+
+.remote-status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  color: var(--remote-text-sec);
+  margin-top: 2px;
+}
+
+.status-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background-color: var(--remote-red);
+}
+
+.status-dot.connected {
+  background-color: var(--remote-green);
+  box-shadow: 0 0 8px rgba(129, 201, 149, 0.6);
+}
+
+.status-dot.connecting,
+.status-dot.reconnecting {
+  background-color: var(--remote-yellow);
+  animation: pulse-dot 1.2s infinite ease-in-out;
+}
+
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.4; transform: scale(0.85); }
+}
+
+.remote-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.remote-header-btn {
+  background: var(--remote-card-bg);
+  border: 1px solid var(--remote-card-border);
+  color: var(--remote-text-sec);
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  touch-action: manipulation;
+}
+
+.remote-header-btn:active {
+  background: var(--remote-btn-press);
+  transform: scale(0.92);
+}
+
+.remote-header-btn.power-btn {
+  color: #f28b82;
+  border-color: rgba(234, 67, 53, 0.25);
+}
+
+/* ─── Main Viewport Area ──────────────────────────────────────────────────── */
+.remote-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 14px 0 8px 0;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* ─── Bottom Navigation Bar ────────────────────────────────────────────────── */
+.remote-bottom-nav {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+  background: rgba(18, 20, 27, 0.88);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid var(--remote-card-border);
+  border-radius: 20px;
+  padding: 6px;
+  margin-top: auto;
+  flex-shrink: 0;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+}
+
+.remote-nav-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 8px 4px;
+  border-radius: 14px;
+  background: transparent;
+  border: none;
+  color: var(--remote-text-dim);
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  touch-action: manipulation;
+}
+
+.remote-nav-item.active {
+  background: rgba(26, 115, 232, 0.16);
+  color: #8ab4f8;
+  font-weight: 600;
+}
+
+.remote-nav-item:active {
+  transform: scale(0.94);
+}
+
+/* ─── D-Pad & Touchpad View ────────────────────────────────────────────────── */
+.touchpad-view-container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  gap: 12px;
+}
+
+.mode-toggle-pill {
+  display: flex;
+  align-self: center;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--remote-card-border);
+  border-radius: 24px;
+  padding: 3px;
+  gap: 4px;
+}
+
+.mode-toggle-btn {
+  padding: 6px 16px;
+  border-radius: 20px;
+  background: transparent;
+  border: none;
+  color: var(--remote-text-sec);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  touch-action: manipulation;
+}
+
+.mode-toggle-btn.active {
+  background: var(--remote-accent);
+  color: #fff;
+  font-weight: 600;
+  box-shadow: 0 2px 8px var(--remote-accent-glow);
+}
+
+/* D-Pad Controller Wheel */
+.dpad-container {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  min-height: 220px;
+}
+
+.dpad-wheel {
+  width: 230px;
+  height: 230px;
+  border-radius: 50%;
+  background: var(--remote-dpad-bg);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6), inset 0 2px 4px rgba(255, 255, 255, 0.05);
+}
+
+.dpad-btn {
+  position: absolute;
+  background: transparent;
+  border: none;
+  color: var(--remote-text-sec);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  touch-action: manipulation;
+  transition: all 0.12s ease;
+}
+
+.dpad-btn:active {
+  color: #8ab4f8;
+  transform: scale(0.9);
+}
+
+.dpad-btn.up {
+  top: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 70px;
+  height: 60px;
+}
+.dpad-btn.up:active {
+  transform: translateX(-50%) translateY(-2px) scale(0.92);
+}
+
+.dpad-btn.down {
+  bottom: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 70px;
+  height: 60px;
+}
+.dpad-btn.down:active {
+  transform: translateX(-50%) translateY(2px) scale(0.92);
+}
+
+.dpad-btn.left {
+  left: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 60px;
+  height: 70px;
+}
+.dpad-btn.left:active {
+  transform: translateY(-50%) translateX(-2px) scale(0.92);
+}
+
+.dpad-btn.right {
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 60px;
+  height: 70px;
+}
+.dpad-btn.right:active {
+  transform: translateY(-50%) translateX(2px) scale(0.92);
+}
+
+.dpad-center-ok {
+  width: 82px;
+  height: 82px;
+  border-radius: 50%;
+  background: linear-gradient(145deg, #1f2330, #161922);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: #ffffff;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.5);
+  transition: all 0.12s ease;
+  touch-action: manipulation;
+  z-index: 2;
+}
+
+.dpad-center-ok:active {
+  background: var(--remote-accent);
+  transform: scale(0.92);
+  box-shadow: 0 0 16px var(--remote-accent-glow);
+}
+
+/* Touchpad Swipe Surface */
+.touchpad-surface {
+  flex: 1;
+  min-height: 220px;
+  background: radial-gradient(circle at center, rgba(30, 36, 50, 0.5) 0%, rgba(16, 18, 24, 0.8) 100%);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 28px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  touch-action: none;
+  cursor: pointer;
+  box-shadow: inset 0 2px 10px rgba(0, 0, 0, 0.4), 0 8px 24px rgba(0, 0, 0, 0.3);
+  overflow: hidden;
+}
+
+.touchpad-hint-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  color: var(--remote-text-dim);
+  pointer-events: none;
+}
+
+.touchpad-hint-text {
+  font-size: 12px;
+  letter-spacing: 0.2px;
+}
+
+.touchpad-ripple {
+  position: absolute;
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: rgba(138, 180, 248, 0.3);
+  border: 1px solid rgba(138, 180, 248, 0.6);
+  pointer-events: none;
+  transform: translate(-50%, -50%) scale(0.8);
+  animation: ripple-fade 0.35s ease-out forwards;
+}
+
+@keyframes ripple-fade {
+  to { transform: translate(-50%, -50%) scale(2.2); opacity: 0; }
+}
+
+/* Quick TV Action Controls Row */
+.remote-actions-row {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.remote-action-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  background: var(--remote-card-bg);
+  border: 1px solid var(--remote-card-border);
+  border-radius: 16px;
+  padding: 10px 4px;
+  color: var(--remote-text);
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  touch-action: manipulation;
+}
+
+.remote-action-btn:active {
+  background: var(--remote-btn-press);
+  transform: scale(0.92);
+}
+
+.remote-action-btn.back-btn {
+  color: #f28b82;
+}
+
+.remote-action-btn.home-btn {
+  color: #8ab4f8;
+}
+
+/* Volume & Playback Quick Strip */
+.remote-volume-strip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: rgba(22, 25, 34, 0.85);
+  border: 1px solid var(--remote-card-border);
+  border-radius: 18px;
+  padding: 6px 12px;
+  margin-top: 2px;
+}
+
+.volume-cluster {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.volume-btn {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: var(--remote-text);
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.12s ease;
+  touch-action: manipulation;
+}
+
+.volume-btn:active {
+  background: var(--remote-accent);
+  color: #fff;
+  transform: scale(0.92);
+}
+
+.volume-value-badge {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--remote-text-sec);
+  min-width: 36px;
+  text-align: center;
+}
+
+/* ─── Now Playing Media View ──────────────────────────────────────────────── */
+.now-playing-container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  gap: 14px;
+  justify-content: center;
+}
+
+.now-playing-card {
+  background: var(--remote-card-bg);
+  border: 1px solid var(--remote-card-border);
+  border-radius: 24px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.5);
+  position: relative;
+  overflow: hidden;
+}
+
+.media-artwork-wrap {
+  width: 170px;
+  height: 170px;
+  border-radius: 20px;
+  overflow: hidden;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.6);
+  margin-bottom: 14px;
+  background: #1a1d26;
+  position: relative;
+}
+
+.media-artwork-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.media-artwork-placeholder {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #1a233a, #13151c);
+  color: #8ab4f8;
+}
+
+.media-title-text {
+  font-size: 18px;
+  font-weight: 700;
+  color: #fff;
+  margin: 0 0 4px 0;
+  max-width: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.media-subtitle-text {
+  font-size: 13px;
+  color: var(--remote-text-sec);
+  margin: 0 0 12px 0;
+  max-width: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Scrubber Bar */
+.media-scrubber-container {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.scrubber-track-wrap {
+  width: 100%;
+  height: 12px;
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  touch-action: none;
+}
+
+.scrubber-track {
+  width: 100%;
+  height: 5px;
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 3px;
+  position: relative;
+}
+
+.scrubber-fill {
+  height: 100%;
+  background: var(--remote-accent);
+  border-radius: 3px;
+}
+
+.scrubber-thumb {
+  position: absolute;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #ffffff;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.6);
+}
+
+.scrubber-times {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+  color: var(--remote-text-dim);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Media Transport Controls */
+.media-transport-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  margin-top: 8px;
+}
+
+.transport-btn {
+  background: rgba(255, 255, 255, 0.07);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: var(--remote-text);
+  width: 46px;
+  height: 46px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.12s ease;
+  touch-action: manipulation;
+}
+
+.transport-btn:active {
+  background: var(--remote-btn-press);
+  transform: scale(0.9);
+}
+
+.transport-btn.play-pause-btn {
+  width: 62px;
+  height: 62px;
+  background: var(--remote-accent);
+  border-color: #8ab4f8;
+  color: #ffffff;
+  box-shadow: 0 4px 18px var(--remote-accent-glow);
+}
+
+.transport-btn.play-pause-btn:active {
+  transform: scale(0.92);
+  background: #174ea6;
+}
+
+/* Idle State in Now Playing */
+.now-playing-idle {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  text-align: center;
+  gap: 12px;
+  color: var(--remote-text-sec);
+}
+
+.idle-icon-wrap {
+  width: 80px;
+  height: 80px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.04);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--remote-text-dim);
+  margin-bottom: 4px;
+}
+
+/* ─── Keyboard & Voice Search View ────────────────────────────────────────── */
+.keyboard-voice-container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  gap: 14px;
+}
+
+.input-card {
+  background: var(--remote-card-bg);
+  border: 1px solid var(--remote-card-border);
+  border-radius: 20px;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.remote-text-input-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 14px;
+  padding: 10px 12px;
+}
+
+.remote-text-input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  color: #fff;
+  font-size: 15px;
+  outline: none;
+}
+
+.remote-text-input::placeholder {
+  color: var(--remote-text-dim);
+}
+
+.voice-search-cta {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 24px 0;
+}
+
+.voice-mic-btn {
+  width: 76px;
+  height: 76px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #1a73e8, #4285f4);
+  border: none;
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: 0 6px 24px var(--remote-accent-glow);
+  transition: all 0.2s ease;
+  touch-action: manipulation;
+}
+
+.voice-mic-btn.listening {
+  background: linear-gradient(135deg, #ea4335, #ff5252);
+  box-shadow: 0 0 24px rgba(234, 67, 53, 0.7);
+  animation: pulse-mic 1.2s infinite ease-in-out;
+}
+
+@keyframes pulse-mic {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.08); }
+}
+
+.voice-mic-btn:active {
+  transform: scale(0.92);
+}
+
+.voice-status-label {
+  font-size: 13px;
+  color: var(--remote-text-sec);
+  font-weight: 500;
+}
+
+.suggestions-title {
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  color: var(--remote-text-dim);
+  margin-top: 4px;
+}
+
+.suggestions-chips-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.suggestion-chip {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 18px;
+  padding: 7px 12px;
+  font-size: 12px;
+  color: var(--remote-text-sec);
+  cursor: pointer;
+  transition: all 0.12s ease;
+  touch-action: manipulation;
+}
+
+.suggestion-chip:active {
+  background: var(--remote-accent);
+  color: #fff;
+  transform: scale(0.95);
+}
+
+/* ─── Quick Launcher & TV Controls View ───────────────────────────────────── */
+.quick-launcher-container {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding-bottom: 8px;
+}
+
+.launcher-section-title {
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  color: var(--remote-text-dim);
+  margin-bottom: 6px;
+}
+
+/* Tabs Grid */
+.tabs-launcher-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+.tab-launch-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  background: var(--remote-card-bg);
+  border: 1px solid var(--remote-card-border);
+  border-radius: 16px;
+  padding: 12px 6px;
+  color: var(--remote-text);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  touch-action: manipulation;
+}
+
+.tab-launch-card.active-tab {
+  background: rgba(26, 115, 232, 0.2);
+  border-color: #8ab4f8;
+  color: #8ab4f8;
+  font-weight: 600;
+}
+
+.tab-launch-card:active {
+  transform: scale(0.93);
+}
+
+/* Ambient Lighting Section */
+.ambient-controls-card {
+  background: var(--remote-card-bg);
+  border: 1px solid var(--remote-card-border);
+  border-radius: 20px;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.ambient-modes-row {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+}
+
+.ambient-mode-btn {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--remote-card-border);
+  border-radius: 12px;
+  padding: 8px 4px;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--remote-text-sec);
+  cursor: pointer;
+  transition: all 0.12s ease;
+  touch-action: manipulation;
+}
+
+.ambient-mode-btn.active {
+  background: var(--remote-accent);
+  color: #fff;
+  border-color: #8ab4f8;
+}
+
+.ambient-mode-btn:active {
+  transform: scale(0.93);
+}
+
+.ambient-slider-wrap {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.ambient-range-slider {
+  flex: 1;
+  accent-color: var(--remote-accent);
+  cursor: pointer;
+}
+
+/* System Power Controls Grid */
+.power-actions-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+.power-action-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--remote-card-border);
+  border-radius: 16px;
+  padding: 12px 6px;
+  color: var(--remote-text-sec);
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.12s ease;
+  touch-action: manipulation;
+}
+
+.power-action-btn:active {
+  background: rgba(234, 67, 53, 0.15);
+  color: #f28b82;
+  transform: scale(0.93);
+}
+
+/* Toast Message */
+.remote-toast-pill {
+  position: absolute;
+  top: max(56px, calc(env(safe-area-inset-top) + 48px));
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(26, 29, 38, 0.95);
+  border: 1px solid #8ab4f8;
+  color: #ffffff;
+  font-size: 13px;
+  font-weight: 500;
+  padding: 8px 16px;
+  border-radius: 20px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6);
+  z-index: 100;
+  pointer-events: none;
+  animation: toast-fade 0.25s ease-out;
+}
+
+@keyframes toast-fade {
+  from { opacity: 0; transform: translate(-50%, -8px); }
+  to { opacity: 1; transform: translate(-50%, 0); }
+}
