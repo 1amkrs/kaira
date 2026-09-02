@@ -91,15 +91,6 @@ export const NowPlayingRemote: React.FC<NowPlayingRemoteProps> = ({ tvState }) =
     }
   };
 
-  // Volume Slider Handlers
-  const handleVolumeSlide = (clientX: number) => {
-    if (!volumeSliderRef.current) return;
-    const rect = volumeSliderRef.current.getBoundingClientRect();
-    const ratio = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
-    remoteClient.triggerHaptic(8);
-    remoteClient.sendCommand('SET_VOLUME', { level: ratio });
-  };
-
   const duration = media?.durationSeconds || 0;
   const progressPercent = duration > 0 ? (seekPos / duration) * 100 : 0;
   const remainingSeconds = Math.max(0, duration - seekPos);
@@ -108,58 +99,48 @@ export const NowPlayingRemote: React.FC<NowPlayingRemoteProps> = ({ tvState }) =
 
   if (!media) {
     return (
-      <div className="now-playing-apple-container">
-        <div className="now-playing-idle-card">
-          <div className="idle-artwork-placeholder">
-            <Tv size={48} strokeWidth={1.5} />
-          </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-            <span style={{ fontSize: '18px', fontWeight: 600, color: '#fff' }}>Not Playing</span>
-            <span style={{ fontSize: '13px', color: 'rgba(235, 235, 245, 0.5)', maxWidth: '220px' }}>
-              Play any video, show, or music track on Kaira TV to control it here.
-            </span>
-          </div>
+      <div className="ref-player-view">
+        <div className="ref-artwork-card">
+          <Tv size={48} strokeWidth={1.5} color="rgba(255,255,255,0.4)" />
+        </div>
+        <div style={{ textAlign: 'center', marginBottom: 'auto' }}>
+          <h3 style={{ fontSize: '18px', fontWeight: 600, margin: '0 0 4px 0', color: '#1c1d21' }}>Not Playing</h3>
+          <p style={{ fontSize: '13px', color: '#8e8e93', margin: 0, maxWidth: '240px' }}>
+            Play a movie, show, or song on Kaira TV to control media here.
+          </p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="now-playing-apple-container">
-      {/* Apple Album Artwork Card */}
-      <div className="apple-artwork-container">
-        {media.artwork && (
-          <div
-            className="apple-artwork-ambient-blur"
-            style={{ backgroundImage: `url(${media.artwork})` }}
-          />
-        )}
+    <div className="ref-player-view">
+      {/* Artwork Poster */}
+      <div className="ref-artwork-card">
         {media.artwork ? (
           <img
             src={media.artwork}
             alt={media.title}
-            className="apple-artwork-img"
+            className="ref-artwork-img"
           />
         ) : (
-          <div className="idle-artwork-placeholder" style={{ width: '100%', height: '100%' }}>
-            <Disc3 size={56} className={media.isPlaying ? 'spin-icon' : ''} />
-          </div>
+          <Disc3 size={56} color="rgba(255,255,255,0.4)" className={media.isPlaying ? 'spin-icon' : ''} />
         )}
       </div>
 
       {/* Media Metadata */}
-      <div className="apple-media-meta">
-        <h2 className="apple-media-title">{media.title || 'Untitled Media'}</h2>
-        <span className="apple-media-artist">
+      <div style={{ width: '100%', padding: '0 8px', textAlign: 'center' }}>
+        <h2 className="ref-player-title">{media.title || 'Untitled Media'}</h2>
+        <p className="ref-player-artist">
           {media.artist || media.subtitle || media.album || 'Kaira TV'}
-        </span>
+        </p>
       </div>
 
-      {/* Apple Liquid Scrubber */}
-      <div className="apple-scrubber-wrap">
+      {/* Scrubber Progress Bar */}
+      <div style={{ width: '100%', padding: '0 4px' }}>
         <div
           ref={progressBarRef}
-          className={`apple-scrubber-track ${isDragging ? 'dragging' : ''}`}
+          className="ref-scrubber-track"
           onTouchStart={(e) => handleSeekStart(e.touches[0].clientX)}
           onTouchMove={(e) => handleSeekMove(e.touches[0].clientX)}
           onTouchEnd={handleSeekEnd}
@@ -176,113 +157,71 @@ export const NowPlayingRemote: React.FC<NowPlayingRemoteProps> = ({ tvState }) =
           }}
         >
           <div
-            className="apple-scrubber-fill"
+            className="ref-scrubber-fill"
             style={{ width: `${progressPercent}%` }}
-          />
-          <div
-            className="apple-scrubber-knob"
-            style={{ left: `${progressPercent}%` }}
           />
         </div>
 
-        <div className="apple-scrubber-timestamps">
+        <div className="ref-timestamps">
           <span>{formatSeconds(seekPos)}</span>
           <span>{duration > 0 ? `-${formatSeconds(remainingSeconds)}` : '--:--'}</span>
         </div>
       </div>
 
-      {/* Apple Transport Row */}
-      <div className="apple-transport-row">
-        {/* Rewind 15s */}
+      {/* Transport Controls */}
+      <div className="ref-player-transport">
         <button
           type="button"
-          className="apple-transport-btn"
+          className="ref-circle-btn"
           onClick={() => handleSeekRelative(-15)}
           title="Rewind 15s"
           aria-label="Rewind 15 Seconds"
         >
-          <RotateCcw size={24} />
+          <RotateCcw size={20} />
         </button>
 
-        {/* Previous Track */}
         <button
           type="button"
-          className="apple-transport-btn"
+          className="ref-circle-btn"
           onClick={handlePrev}
-          title="Previous Track"
+          title="Previous"
           aria-label="Previous Track"
         >
-          <SkipBack size={26} fill="currentColor" />
+          <SkipBack size={20} fill="currentColor" />
         </button>
 
-        {/* Play / Pause Main Circle */}
         <button
           type="button"
-          className="apple-play-pause-circle"
+          className="ref-play-btn"
           onClick={handlePlayPause}
           title={media.isPlaying ? 'Pause' : 'Play'}
           aria-label={media.isPlaying ? 'Pause' : 'Play'}
         >
           {media.isPlaying ? (
-            <Pause size={28} fill="currentColor" />
+            <Pause size={24} fill="currentColor" />
           ) : (
-            <Play size={28} fill="currentColor" style={{ marginLeft: '3px' }} />
+            <Play size={24} fill="currentColor" style={{ marginLeft: '2px' }} />
           )}
         </button>
 
-        {/* Next Track */}
         <button
           type="button"
-          className="apple-transport-btn"
+          className="ref-circle-btn"
           onClick={handleNext}
-          title="Next Track"
+          title="Next"
           aria-label="Next Track"
         >
-          <SkipForward size={26} fill="currentColor" />
+          <SkipForward size={20} fill="currentColor" />
         </button>
 
-        {/* Fast Forward 15s */}
         <button
           type="button"
-          className="apple-transport-btn"
+          className="ref-circle-btn"
           onClick={() => handleSeekRelative(15)}
           title="Fast Forward 15s"
           aria-label="Fast Forward 15 Seconds"
         >
-          <RotateCw size={24} />
-        </button>
-      </div>
-
-      {/* Apple Volume Slider Row */}
-      <div className="apple-volume-slider-row">
-        <button
-          type="button"
-          style={{ background: 'transparent', border: 'none', color: 'rgba(235,235,245,0.6)', cursor: 'pointer', padding: 0 }}
-          onClick={() => remoteClient.sendCommand('MUTE_TOGGLE')}
-          aria-label="Mute"
-        >
-          {isMuted ? <VolumeX size={18} color="#ff453a" /> : <Volume size={18} />}
-        </button>
-
-        <div
-          ref={volumeSliderRef}
-          className="apple-volume-slider-track"
-          onClick={(e) => handleVolumeSlide(e.clientX)}
-          onTouchMove={(e) => handleVolumeSlide(e.touches[0].clientX)}
-        >
-          <div
-            className="apple-volume-slider-fill"
-            style={{ width: `${isMuted ? 0 : volumeLevel}%` }}
-          />
-        </div>
-
-        <button
-          type="button"
-          style={{ background: 'transparent', border: 'none', color: 'rgba(235,235,245,0.6)', cursor: 'pointer', padding: 0 }}
-          onClick={() => remoteClient.sendCommand('SET_VOLUME', { level: 1 })}
-          aria-label="Max Volume"
-        >
-          <Volume2 size={18} />
+          <RotateCw size={20} />
         </button>
       </div>
     </div>

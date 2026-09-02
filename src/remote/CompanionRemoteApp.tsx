@@ -1,11 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import {
-  Gamepad2,
-  Disc3,
   Power,
-  VolumeX,
-  Volume2,
-  Tv
+  Tv,
+  LogOut,
+  Home,
+  Layers,
+  MessageSquareQuote
 } from 'lucide-react';
 import { remoteClient, ConnectionStatus } from './remoteClient';
 import { TVStateSnapshot } from '../services/remote/remoteTypes';
@@ -22,10 +22,7 @@ export const CompanionRemoteApp: React.FC = () => {
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   useEffect(() => {
-    // Set page title & mobile viewport
-    document.title = 'Kaira Companion Remote';
-
-    // Connect remote client
+    document.title = 'Kaira Remote';
     remoteClient.connect();
 
     const unsubscribe = remoteClient.subscribe({
@@ -34,7 +31,7 @@ export const CompanionRemoteApp: React.FC = () => {
         if (status === 'connected') {
           showToast('🟢 Connected to Kaira TV');
         } else if (status === 'disconnected') {
-          showToast('🔴 Disconnected from TV');
+          showToast('🔴 Disconnected');
         }
       },
       onStateUpdate: (state) => {
@@ -58,108 +55,100 @@ export const CompanionRemoteApp: React.FC = () => {
     }, 2800);
   };
 
-  const isMediaPlaying = tvState?.nowPlaying?.isPlaying;
-  const isMuted = tvState?.isMuted || tvState?.volume === 0;
-
-  const handlePowerAction = () => {
+  const handlePower = () => {
+    remoteClient.triggerHaptic(20);
     if (confirm('Put Kaira TV to sleep / start screensaver?')) {
       remoteClient.sendCommand('TRIGGER_SCREENSAVER');
     }
   };
 
-  const handleToggleMute = () => {
-    remoteClient.sendCommand('MUTE_TOGGLE');
+  const handleSource = () => {
+    remoteClient.triggerHaptic(15);
+    remoteClient.sendCommand('QUICK_SETTINGS');
   };
+
+  const tvDisplayName = tvState?.tvName || 'Bedroom TV';
 
   return (
     <div className="kaira-remote-container">
-      {/* ─── Top Header ─── */}
-      <header className="remote-header">
-        <div className="remote-brand">
-          <div className="remote-logo-icon">
-            <Tv size={16} color="#fff" />
-          </div>
-          <div className="remote-title-wrap">
-            <span className="remote-app-title">Kaira Remote</span>
-            <div className="remote-status-pill">
-              <span className={`status-dot ${connectionStatus}`} />
-              <span>
-                {connectionStatus === 'connected'
-                  ? `${tvState?.tvName || 'Connected'}`
-                  : connectionStatus === 'connecting'
-                  ? 'Connecting...'
-                  : connectionStatus === 'reconnecting'
-                  ? 'Reconnecting...'
-                  : 'Offline (Check Wi-Fi)'}
-              </span>
-            </div>
-          </div>
+      {/* ─── 1. Reference Top Header ─── */}
+      <header className="ref-header">
+        <button
+          type="button"
+          className="ref-power-btn"
+          onClick={handlePower}
+          title="Power / Sleep"
+          aria-label="Power"
+        >
+          <Power size={20} strokeWidth={2.3} />
+        </button>
+
+        <div className="ref-device-pill">
+          <Tv size={16} strokeWidth={2.2} />
+          <span>{tvDisplayName}</span>
+          <span className={`ref-conn-dot ${connectionStatus === 'connected' ? 'connected' : 'connecting'}`} />
         </div>
 
-        <div className="remote-header-actions">
-          <button
-            type="button"
-            className="remote-header-btn"
-            onClick={handleToggleMute}
-            title={isMuted ? 'Unmute' : 'Mute'}
-            aria-label="Toggle Mute"
-            style={isMuted ? { color: '#f28b82' } : undefined}
-          >
-            {isMuted ? <VolumeX size={17} /> : <Volume2 size={17} />}
-          </button>
-
-          <button
-            type="button"
-            className="remote-header-btn power-btn"
-            onClick={handlePowerAction}
-            title="Screensaver / Power"
-            aria-label="Power"
-          >
-            <Power size={17} />
-          </button>
-        </div>
+        <button
+          type="button"
+          className="ref-header-action-btn"
+          onClick={handleSource}
+          title="Inputs / Source"
+          aria-label="Inputs"
+        >
+          <LogOut size={20} strokeWidth={2.2} style={{ transform: 'rotate(180deg)' }} />
+        </button>
       </header>
 
-      {/* ─── Main Viewport ─── */}
-      <main className="remote-body">
-        {activeView === 'touchpad' && (
+      {/* ─── 2. Main Viewport Body ─── */}
+      <main className="ref-body">
+        {activeView === 'touchpad' ? (
           <TouchpadRemote tvState={tvState} />
-        )}
-
-        {activeView === 'now-playing' && (
+        ) : (
           <NowPlayingRemote tvState={tvState} />
         )}
       </main>
 
-      {/* ─── Bottom Navigation Bar ─── */}
-      <nav className="remote-bottom-nav" role="navigation" aria-label="Remote Navigation">
+      {/* ─── 3. Floating Apple Glass Dock ─── */}
+      <nav className="ref-dock" role="navigation" aria-label="Dock Navigation">
         <button
           type="button"
-          className={`remote-nav-item ${activeView === 'touchpad' ? 'active' : ''}`}
+          className={`ref-dock-tab ${activeView === 'touchpad' ? 'active' : ''}`}
           onClick={() => {
             setActiveView('touchpad');
             remoteClient.triggerHaptic(10);
           }}
+          title="Remote"
+          aria-label="Remote"
         >
-          <Gamepad2 size={20} />
-          <span>Remote</span>
+          <Home size={18} strokeWidth={2.2} />
         </button>
 
         <button
           type="button"
-          className={`remote-nav-item ${activeView === 'now-playing' ? 'active' : ''}`}
+          className={`ref-dock-tab ${activeView === 'now-playing' ? 'active' : ''}`}
           onClick={() => {
             setActiveView('now-playing');
             remoteClient.triggerHaptic(10);
           }}
-          style={isMediaPlaying ? { color: '#81c995' } : undefined}
+          title="Media / Now Playing"
+          aria-label="Now Playing"
         >
-          <Disc3 size={20} className={isMediaPlaying ? 'spin-icon' : ''} />
-          <span>Now Playing</span>
+          <Layers size={18} strokeWidth={2.2} />
+        </button>
+
+        <button
+          type="button"
+          className="ref-dock-tab"
+          onClick={handleSource}
+          title="Quick Menu"
+          aria-label="Quick Menu"
+        >
+          <MessageSquareQuote size={18} strokeWidth={2.2} />
         </button>
       </nav>
 
-      {/* HUD Toast Message */}
+      {/* Toast Notification */}
       {toastMessage && (
         <div className="remote-toast-pill" role="status">
           {toastMessage}

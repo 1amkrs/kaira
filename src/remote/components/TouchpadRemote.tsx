@@ -1,19 +1,22 @@
-import React, { useState, useRef } from 'react';
+import React, { useState } from 'react';
 import {
   ChevronUp,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
-  ChevronLeft as BackIcon,
-  Tv,
-  Play,
-  Pause,
-  SlidersHorizontal,
+  Undo2,
+  Home,
+  LogOut,
   Plus,
   Minus,
   VolumeX,
-  Volume2,
-  Maximize2
+  Settings,
+  Keyboard,
+  Mic,
+  Play,
+  Pause,
+  Rewind,
+  FastForward
 } from 'lucide-react';
 import { remoteClient } from '../remoteClient';
 import { TVStateSnapshot } from '../../services/remote/remoteTypes';
@@ -23,25 +26,18 @@ interface TouchpadRemoteProps {
 }
 
 export const TouchpadRemote: React.FC<TouchpadRemoteProps> = ({ tvState }) => {
-  const [controlMode, setControlMode] = useState<'clickpad' | 'touchpad'>('clickpad');
-  const [ripples, setRipples] = useState<Array<{ x: number; y: number; id: number }>>([]);
+  const [activeDir, setActiveDir] = useState<'up' | 'down' | 'left' | 'right' | null>(null);
 
-  // Touch Surface Tracking
-  const touchStartRef = useRef<{ x: number; y: number; time: number } | null>(null);
-  const lastSwipeTimeRef = useRef<number>(0);
-  const lastTapTimeRef = useRef<number>(0);
-  const hasMovedRef = useRef<boolean>(false);
-
-  // D-Pad / Clickpad Actions
-  const handleNav = (direction: 'up' | 'down' | 'left' | 'right') => {
+  // Directional Navigation
+  const handleNav = (dir: 'up' | 'down' | 'left' | 'right') => {
     remoteClient.triggerHaptic(12);
-    const cmdMap = {
+    const map = {
       up: 'NAV_UP' as const,
       down: 'NAV_DOWN' as const,
       left: 'NAV_LEFT' as const,
       right: 'NAV_RIGHT' as const,
     };
-    remoteClient.sendCommand(cmdMap[direction]);
+    remoteClient.sendCommand(map[dir]);
   };
 
   const handleSelect = () => {
@@ -59,12 +55,7 @@ export const TouchpadRemote: React.FC<TouchpadRemoteProps> = ({ tvState }) => {
     remoteClient.sendCommand('HOME');
   };
 
-  const handlePlayPause = () => {
-    remoteClient.triggerHaptic(15);
-    remoteClient.sendCommand('PLAY_PAUSE');
-  };
-
-  const handleQuickSettings = () => {
+  const handleInput = () => {
     remoteClient.triggerHaptic(15);
     remoteClient.sendCommand('QUICK_SETTINGS');
   };
@@ -74,232 +65,176 @@ export const TouchpadRemote: React.FC<TouchpadRemoteProps> = ({ tvState }) => {
     remoteClient.sendCommand('VOLUME_DELTA', { delta });
   };
 
+  const handleTabDelta = (dir: 'prev' | 'next') => {
+    remoteClient.triggerHaptic(10);
+    remoteClient.sendCommand(dir === 'prev' ? 'TAB_PREV' : 'TAB_NEXT');
+  };
+
   const handleToggleMute = () => {
     remoteClient.triggerHaptic(15);
     remoteClient.sendCommand('MUTE_TOGGLE');
   };
 
-  // Glass Touch Surface Events
-  const handleTouchStart = (e: React.TouchEvent<HTMLDivElement>) => {
-    if (e.touches.length !== 1) return;
-    const t = e.touches[0];
-    const rect = e.currentTarget.getBoundingClientRect();
-    const x = t.clientX - rect.left;
-    const y = t.clientY - rect.top;
-
-    touchStartRef.current = { x: t.clientX, y: t.clientY, time: Date.now() };
-    hasMovedRef.current = false;
-    const rippleId = Date.now();
-    setRipples((prev) => [...prev.slice(-3), { x, y, id: rippleId }]);
+  const handleSettings = () => {
+    remoteClient.triggerHaptic(15);
+    remoteClient.sendCommand('QUICK_SETTINGS');
   };
 
-  const handleTouchMove = (e: React.TouchEvent<HTMLDivElement>) => {
-    if (!touchStartRef.current || e.touches.length !== 1) return;
-    const t = e.touches[0];
-    const dx = t.clientX - touchStartRef.current.x;
-    const dy = t.clientY - touchStartRef.current.y;
-    const dist = Math.hypot(dx, dy);
-
-    const SWIPE_THRESHOLD = 32;
-    const now = Date.now();
-
-    if (dist >= SWIPE_THRESHOLD && now - lastSwipeTimeRef.current > 100) {
-      hasMovedRef.current = true;
-      lastSwipeTimeRef.current = now;
-
-      if (Math.abs(dx) > Math.abs(dy)) {
-        if (dx > 0) handleNav('right');
-        else handleNav('left');
-      } else {
-        if (dy > 0) handleNav('down');
-        else handleNav('up');
-      }
-
-      touchStartRef.current = { x: t.clientX, y: t.clientY, time: now };
-    }
+  const handleKeyboard = () => {
+    remoteClient.triggerHaptic(15);
+    remoteClient.sendCommand('SEARCH');
   };
 
-  const handleTouchEnd = () => {
-    if (!touchStartRef.current) return;
-    const now = Date.now();
-    const duration = now - touchStartRef.current.time;
-
-    if (!hasMovedRef.current && duration < 280) {
-      if (now - lastTapTimeRef.current < 280) {
-        handleBack();
-        lastTapTimeRef.current = 0;
-      } else {
-        lastTapTimeRef.current = now;
-        setTimeout(() => {
-          if (lastTapTimeRef.current === now) {
-            handleSelect();
-          }
-        }, 220);
-      }
-    }
-
-    touchStartRef.current = null;
-    hasMovedRef.current = false;
+  const handleNumericQuick = () => {
+    remoteClient.triggerHaptic(15);
+    remoteClient.sendCommand('OPEN_SLEEP_TIMER');
   };
 
-  const isMediaPlaying = tvState?.nowPlaying?.isPlaying;
-  const isMuted = tvState?.isMuted || tvState?.volume === 0;
+  const handleVoice = () => {
+    remoteClient.triggerHaptic(15);
+    remoteClient.sendCommand('SEARCH');
+  };
+
+  const handlePlay = () => {
+    remoteClient.triggerHaptic(15);
+    remoteClient.sendCommand('PLAY');
+  };
+
+  const handlePause = () => {
+    remoteClient.triggerHaptic(15);
+    remoteClient.sendCommand('PAUSE');
+  };
+
+  const handleRewind = () => {
+    remoteClient.triggerHaptic(12);
+    remoteClient.sendCommand('SEEK_RELATIVE', { delta: -15 });
+  };
+
+  const handleFastForward = () => {
+    remoteClient.triggerHaptic(12);
+    remoteClient.sendCommand('SEEK_RELATIVE', { delta: 15 });
+  };
 
   return (
-    <div className="touchpad-view-container">
-      {/* Apple Segmented Control */}
-      <div className="apple-segmented-control" role="tablist">
+    <div className="ref-remote-view">
+      {/* ─── 1. Main Circular D-Pad Clickpad Wheel ─── */}
+      <div className="ref-clickpad-wheel">
+        {/* Up Sector */}
         <button
           type="button"
-          className={`apple-segment-btn ${controlMode === 'clickpad' ? 'active' : ''}`}
-          onClick={() => {
-            setControlMode('clickpad');
-            remoteClient.triggerHaptic(10);
-          }}
+          className={`ref-sector up ${activeDir === 'up' ? 'is-active' : ''}`}
+          onClick={() => handleNav('up')}
+          onPointerDown={() => setActiveDir('up')}
+          onPointerUp={() => setActiveDir(null)}
+          onPointerLeave={() => setActiveDir(null)}
+          onPointerCancel={() => setActiveDir(null)}
+          aria-label="Up"
         >
-          Clickpad
+          <ChevronUp size={22} strokeWidth={2.5} className="ref-sector-glyph" />
         </button>
+
+        {/* Down Sector */}
         <button
           type="button"
-          className={`apple-segment-btn ${controlMode === 'touchpad' ? 'active' : ''}`}
-          onClick={() => {
-            setControlMode('touchpad');
-            remoteClient.triggerHaptic(10);
-          }}
+          className={`ref-sector down ${activeDir === 'down' ? 'is-active' : ''}`}
+          onClick={() => handleNav('down')}
+          onPointerDown={() => setActiveDir('down')}
+          onPointerUp={() => setActiveDir(null)}
+          onPointerLeave={() => setActiveDir(null)}
+          onPointerCancel={() => setActiveDir(null)}
+          aria-label="Down"
         >
-          Touch Surface
+          <ChevronDown size={22} strokeWidth={2.5} className="ref-sector-glyph" />
+        </button>
+
+        {/* Left Sector */}
+        <button
+          type="button"
+          className={`ref-sector left ${activeDir === 'left' ? 'is-active' : ''}`}
+          onClick={() => handleNav('left')}
+          onPointerDown={() => setActiveDir('left')}
+          onPointerUp={() => setActiveDir(null)}
+          onPointerLeave={() => setActiveDir(null)}
+          onPointerCancel={() => setActiveDir(null)}
+          aria-label="Left"
+        >
+          <ChevronLeft size={22} strokeWidth={2.5} className="ref-sector-glyph" />
+        </button>
+
+        {/* Right Sector */}
+        <button
+          type="button"
+          className={`ref-sector right ${activeDir === 'right' ? 'is-active' : ''}`}
+          onClick={() => handleNav('right')}
+          onPointerDown={() => setActiveDir('right')}
+          onPointerUp={() => setActiveDir(null)}
+          onPointerLeave={() => setActiveDir(null)}
+          onPointerCancel={() => setActiveDir(null)}
+          aria-label="Right"
+        >
+          <ChevronRight size={22} strokeWidth={2.5} className="ref-sector-glyph" />
+        </button>
+
+        {/* Center Select Button */}
+        <button
+          type="button"
+          className="ref-center-btn"
+          onClick={handleSelect}
+          aria-label="Select"
+        >
+          Select
         </button>
       </div>
 
-      {/* Main Interaction Area */}
-      {controlMode === 'clickpad' ? (
-        <div className="apple-clickpad-frame">
-          <div className="apple-clickpad-outer-ring">
-            {/* Top Quadrant */}
-            <button
-              type="button"
-              className="clickpad-sector up"
-              onClick={() => handleNav('up')}
-              aria-label="Navigate Up"
-            >
-              <ChevronUp size={24} strokeWidth={2.5} className="clickpad-arrow-glyph" />
-            </button>
-
-            {/* Bottom Quadrant */}
-            <button
-              type="button"
-              className="clickpad-sector down"
-              onClick={() => handleNav('down')}
-              aria-label="Navigate Down"
-            >
-              <ChevronDown size={24} strokeWidth={2.5} className="clickpad-arrow-glyph" />
-            </button>
-
-            {/* Left Quadrant */}
-            <button
-              type="button"
-              className="clickpad-sector left"
-              onClick={() => handleNav('left')}
-              aria-label="Navigate Left"
-            >
-              <ChevronLeft size={24} strokeWidth={2.5} className="clickpad-arrow-glyph" />
-            </button>
-
-            {/* Right Quadrant */}
-            <button
-              type="button"
-              className="clickpad-sector right"
-              onClick={() => handleNav('right')}
-              aria-label="Navigate Right"
-            >
-              <ChevronRight size={24} strokeWidth={2.5} className="clickpad-arrow-glyph" />
-            </button>
-
-            {/* Center Concave Clickpad Button */}
-            <button
-              type="button"
-              className="apple-clickpad-center"
-              onClick={handleSelect}
-              aria-label="Select / OK"
-            >
-              <span>select</span>
-            </button>
-          </div>
-        </div>
-      ) : (
-        <div
-          className="apple-touch-surface"
-          onTouchStart={handleTouchStart}
-          onTouchMove={handleTouchMove}
-          onTouchEnd={handleTouchEnd}
-          role="region"
-          aria-label="Apple Glass Touch Surface"
-        >
-          {ripples.map((r) => (
-            <div
-              key={r.id}
-              className="apple-touch-ripple"
-              style={{ left: r.x, top: r.y }}
-            />
-          ))}
-          <div className="apple-touch-crosshair">
-            <div className="apple-touch-dot" />
-          </div>
-          <span className="apple-touch-caption">Swipe to Navigate • Tap to Select</span>
-        </div>
-      )}
-
-      {/* Apple Siri Remote Tactile Button Cluster & Volume Rocker */}
-      <div className="apple-remote-cluster">
-        {/* Row 1: Back, TV/Home, Play/Pause */}
+      {/* ─── 2. Middle Row: Back, Home, Source/Input ─── */}
+      <div className="ref-mid-row">
         <button
           type="button"
-          className="apple-key-btn"
+          className="ref-circle-btn"
           onClick={handleBack}
           title="Back"
           aria-label="Back"
         >
-          <BackIcon size={20} strokeWidth={2.5} />
-          <span className="apple-key-label">Back</span>
+          <Undo2 size={20} strokeWidth={2.2} />
         </button>
 
         <button
           type="button"
-          className="apple-key-btn"
+          className="ref-circle-btn"
           onClick={handleHome}
-          title="TV / Home"
+          title="Home"
           aria-label="Home"
         >
-          <Tv size={18} />
-          <span className="apple-key-label">TV</span>
+          <Home size={21} strokeWidth={2} />
         </button>
 
         <button
           type="button"
-          className="apple-key-btn"
-          onClick={handlePlayPause}
-          title="Play / Pause"
-          aria-label="Play / Pause"
+          className="ref-circle-btn"
+          onClick={handleInput}
+          title="Input / Menu"
+          aria-label="Input / Menu"
         >
-          {isMediaPlaying ? <Pause size={18} /> : <Play size={18} fill="currentColor" />}
-          <span className="apple-key-label">{isMediaPlaying ? 'Pause' : 'Play'}</span>
+          <LogOut size={20} strokeWidth={2.2} style={{ transform: 'rotate(180deg)' }} />
         </button>
+      </div>
 
-        {/* Right Column: Siri Remote Physical Volume Rocker Pill */}
-        <div className="apple-volume-rocker" style={{ gridRow: 'span 2' }}>
+      {/* ─── 3. Rockers & Center Mute Cluster ─── */}
+      <div className="ref-rocker-row">
+        {/* Left Volume Rocker */}
+        <div className="ref-rocker-pill">
           <button
             type="button"
-            className="apple-rocker-half"
+            className="ref-rocker-btn"
             onClick={() => handleVolumeDelta(0.05)}
             title="Volume Up"
             aria-label="Volume Up"
           >
             <Plus size={20} strokeWidth={2.5} />
           </button>
-          <div className="apple-rocker-divider" />
           <button
             type="button"
-            className="apple-rocker-half"
+            className="ref-rocker-btn"
             onClick={() => handleVolumeDelta(-0.05)}
             title="Volume Down"
             aria-label="Volume Down"
@@ -308,29 +243,127 @@ export const TouchpadRemote: React.FC<TouchpadRemoteProps> = ({ tvState }) => {
           </button>
         </div>
 
-        {/* Row 2: Control Center / Quick Settings, Mute Toggle */}
+        {/* Center Mute Button */}
         <button
           type="button"
-          className="apple-key-btn"
-          onClick={handleQuickSettings}
-          title="Control Center / Quick Settings"
-          aria-label="Control Center"
+          className="ref-mute-btn"
+          onClick={handleToggleMute}
+          title="Mute Toggle"
+          aria-label="Mute"
         >
-          <SlidersHorizontal size={18} />
-          <span className="apple-key-label">Control</span>
+          <VolumeX size={22} strokeWidth={2} />
         </button>
 
-        <button
-          type="button"
-          className="apple-key-btn"
-          onClick={handleToggleMute}
-          title={isMuted ? 'Unmute' : 'Mute'}
-          aria-label="Toggle Mute"
-          style={isMuted ? { color: '#ff453a' } : undefined}
-        >
-          {isMuted ? <VolumeX size={18} /> : <Volume2 size={18} />}
-          <span className="apple-key-label">{isMuted ? 'Muted' : 'Mute'}</span>
-        </button>
+        {/* Right Channel / Tab Rocker */}
+        <div className="ref-rocker-pill">
+          <button
+            type="button"
+            className="ref-rocker-btn"
+            onClick={() => handleTabDelta('next')}
+            title="Channel / Tab Up"
+            aria-label="Channel Up"
+          >
+            <ChevronUp size={22} strokeWidth={2.5} />
+          </button>
+          <button
+            type="button"
+            className="ref-rocker-btn"
+            onClick={() => handleTabDelta('prev')}
+            title="Channel / Tab Down"
+            aria-label="Channel Down"
+          >
+            <ChevronDown size={22} strokeWidth={2.5} />
+          </button>
+        </div>
+      </div>
+
+      {/* ─── 4. Bottom Function Rows ─── */}
+      <div className="ref-func-grid">
+        {/* Utility Row: Settings, Keyboard, 123, Mic */}
+        <div className="ref-func-row">
+          <button
+            type="button"
+            className="ref-pill-btn"
+            onClick={handleSettings}
+            title="Settings"
+            aria-label="Settings"
+          >
+            <Settings size={18} strokeWidth={2} />
+          </button>
+
+          <button
+            type="button"
+            className="ref-pill-btn"
+            onClick={handleKeyboard}
+            title="Keyboard / Search"
+            aria-label="Keyboard"
+          >
+            <Keyboard size={18} strokeWidth={2} />
+          </button>
+
+          <button
+            type="button"
+            className="ref-pill-btn"
+            onClick={handleNumericQuick}
+            title="Quick 123"
+            aria-label="123"
+          >
+            123
+          </button>
+
+          <button
+            type="button"
+            className="ref-pill-btn"
+            onClick={handleVoice}
+            title="Voice Search"
+            aria-label="Voice Search"
+          >
+            <Mic size={18} strokeWidth={2} />
+          </button>
+        </div>
+
+        {/* Media Row: Play, Pause, Rewind, Fast Forward */}
+        <div className="ref-func-row">
+          <button
+            type="button"
+            className="ref-pill-btn"
+            onClick={handlePlay}
+            title="Play"
+            aria-label="Play"
+          >
+            <Play size={16} fill="currentColor" strokeWidth={0} />
+          </button>
+
+          <button
+            type="button"
+            className="ref-pill-btn"
+            onClick={handlePause}
+            title="Pause"
+            aria-label="Pause"
+          >
+            <Pause size={16} fill="currentColor" strokeWidth={0} />
+          </button>
+
+          <button
+            type="button"
+            className="ref-pill-btn"
+            onClick={handleRewind}
+            title="Rewind 15s"
+            aria-label="Rewind"
+          >
+            <Rewind size={18} fill="currentColor" strokeWidth={0} />
+          </button>
+
+          <button
+            type="button"
+            className="ref-pill-btn"
+            onClick={handleFastForward}
+            title="Fast Forward 15s"
+            aria-label="Fast Forward"
+          >
+            <FastForward size={18} fill="currentColor" strokeWidth={0} />
+          </button>
+        </div>
       </div>
     </div>
   );
