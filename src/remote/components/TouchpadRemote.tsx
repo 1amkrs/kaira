@@ -18,10 +18,9 @@ import { TVStateSnapshot } from '../../services/remote/remoteTypes';
 
 interface TouchpadRemoteProps {
   tvState: TVStateSnapshot | null;
-  onOpenKeyboard: () => void;
 }
 
-export const TouchpadRemote: React.FC<TouchpadRemoteProps> = ({ tvState, onOpenKeyboard }) => {
+export const TouchpadRemote: React.FC<TouchpadRemoteProps> = ({ tvState }) => {
   const [controlMode, setControlMode] = useState<'dpad' | 'touchpad'>('dpad');
   const [ripple, setRipple] = useState<{ x: number; y: number; id: number } | null>(null);
 
@@ -55,7 +54,7 @@ export const TouchpadRemote: React.FC<TouchpadRemoteProps> = ({ tvState, onOpenK
   };
 
   const handleSearch = () => {
-    onOpenKeyboard();
+    remoteClient.sendCommand('SEARCH');
   };
 
   const handleQuickSettings = () => {

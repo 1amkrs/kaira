@@ -2,8 +2,6 @@ import React, { useState, useEffect } from 'react';
 import {
   Gamepad2,
   Disc3,
-  Search,
-  LayoutGrid,
   Power,
   VolumeX,
   Volume2,
@@ -13,11 +11,9 @@ import { remoteClient, ConnectionStatus } from './remoteClient';
 import { TVStateSnapshot } from '../services/remote/remoteTypes';
 import { TouchpadRemote } from './components/TouchpadRemote';
 import { NowPlayingRemote } from './components/NowPlayingRemote';
-import { KeyboardVoiceRemote } from './components/KeyboardVoiceRemote';
-import { QuickLauncherRemote } from './components/QuickLauncherRemote';
 import './CompanionRemote.css';
 
-type RemoteView = 'touchpad' | 'now-playing' | 'keyboard' | 'launch';
+type RemoteView = 'touchpad' | 'now-playing';
 
 export const CompanionRemoteApp: React.FC = () => {
   const [activeView, setActiveView] = useState<RemoteView>('touchpad');
@@ -127,22 +123,11 @@ export const CompanionRemoteApp: React.FC = () => {
       {/* ─── Main Viewport ─── */}
       <main className="remote-body">
         {activeView === 'touchpad' && (
-          <TouchpadRemote
-            tvState={tvState}
-            onOpenKeyboard={() => setActiveView('keyboard')}
-          />
+          <TouchpadRemote tvState={tvState} />
         )}
 
         {activeView === 'now-playing' && (
           <NowPlayingRemote tvState={tvState} />
-        )}
-
-        {activeView === 'keyboard' && (
-          <KeyboardVoiceRemote />
-        )}
-
-        {activeView === 'launch' && (
-          <QuickLauncherRemote tvState={tvState} />
         )}
       </main>
 
@@ -171,30 +156,6 @@ export const CompanionRemoteApp: React.FC = () => {
         >
           <Disc3 size={20} className={isMediaPlaying ? 'spin-icon' : ''} />
           <span>Now Playing</span>
-        </button>
-
-        <button
-          type="button"
-          className={`remote-nav-item ${activeView === 'keyboard' ? 'active' : ''}`}
-          onClick={() => {
-            setActiveView('keyboard');
-            remoteClient.triggerHaptic(10);
-          }}
-        >
-          <Search size={20} />
-          <span>Search & Mic</span>
-        </button>
-
-        <button
-          type="button"
-          className={`remote-nav-item ${activeView === 'launch' ? 'active' : ''}`}
-          onClick={() => {
-            setActiveView('launch');
-            remoteClient.triggerHaptic(10);
-          }}
-        >
-          <LayoutGrid size={20} />
-          <span>Apps & Lights</span>
         </button>
       </nav>
 
