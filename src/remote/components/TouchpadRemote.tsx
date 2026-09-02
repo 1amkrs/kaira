@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import {
   ChevronUp,
   ChevronDown,
@@ -26,7 +26,15 @@ interface TouchpadRemoteProps {
 }
 
 export const TouchpadRemote: React.FC<TouchpadRemoteProps> = ({ tvState }) => {
+  const [controlMode, setControlMode] = useState<'clickpad' | 'touchpad'>('clickpad');
   const [activeDir, setActiveDir] = useState<'up' | 'down' | 'left' | 'right' | null>(null);
+  const [ripples, setRipples] = useState<Array<{ x: number; y: number; id: number }>>([]);
+
+  // Touch Surface Tracking
+  const touchStartRef = useRef<{ x: number; y: number; time: number } | null>(null);
+  const lastSwipeTimeRef = useRef<number>(0);
+  const lastTapTimeRef = useRef<number>(0);
+  const hasMovedRef = useRef<boolean>(false);
 
   // Directional Navigation
   const handleNav = (dir: 'up' | 'down' | 'left' | 'right') => {
@@ -115,76 +123,186 @@ export const TouchpadRemote: React.FC<TouchpadRemoteProps> = ({ tvState }) => {
     remoteClient.sendCommand('SEEK_RELATIVE', { delta: 15 });
   };
 
+  // Glass Touchpad Gestures
+  const handleTouchStart = (e: React.TouchEvent<HTMLDivElement>) => {
+    if (e.touches.length !== 1) return;
+    const t = e.touches[0];
+    const rect = e.currentTarget.getBoundingClientRect();
+    const x = t.clientX - rect.left;
+    const y = t.clientY - rect.top;
+
+    touchStartRef.current = { x: t.clientX, y: t.clientY, time: Date.now() };
+    hasMovedRef.current = false;
+    const rippleId = Date.now();
+    setRipples((prev) => [...prev.slice(-3), { x, y, id: rippleId }]);
+  };
+
+  const handleTouchMove = (e: React.TouchEvent<HTMLDivElement>) => {
+    if (!touchStartRef.current || e.touches.length !== 1) return;
+    const t = e.touches[0];
+    const dx = t.clientX - touchStartRef.current.x;
+    const dy = t.clientY - touchStartRef.current.y;
+    const dist = Math.hypot(dx, dy);
+
+    const SWIPE_THRESHOLD = 30;
+    const now = Date.now();
+
+    if (dist >= SWIPE_THRESHOLD && now - lastSwipeTimeRef.current > 100) {
+      hasMovedRef.current = true;
+      lastSwipeTimeRef.current = now;
+
+      if (Math.abs(dx) > Math.abs(dy)) {
+        if (dx > 0) handleNav('right');
+        else handleNav('left');
+      } else {
+        if (dy > 0) handleNav('down');
+        else handleNav('up');
+      }
+
+      touchStartRef.current = { x: t.clientX, y: t.clientY, time: now };
+    }
+  };
+
+  const handleTouchEnd = () => {
+    if (!touchStartRef.current) return;
+    const now = Date.now();
+    const duration = now - touchStartRef.current.time;
+
+    if (!hasMovedRef.current && duration < 280) {
+      if (now - lastTapTimeRef.current < 280) {
+        handleBack();
+        lastTapTimeRef.current = 0;
+      } else {
+        lastTapTimeRef.current = now;
+        setTimeout(() => {
+          if (lastTapTimeRef.current === now) {
+            handleSelect();
+          }
+        }, 220);
+      }
+    }
+
+    touchStartRef.current = null;
+    hasMovedRef.current = false;
+  };
+
   return (
     <div className="ref-remote-view">
-      {/* ─── 1. Main Circular D-Pad Clickpad Wheel ─── */}
-      <div className="ref-clickpad-wheel">
-        {/* Up Sector */}
+      {/* ─── 0. Mode Switcher (Clickpad vs Touchpad) ─── */}
+      <div className="ref-mode-pill" role="tablist">
         <button
           type="button"
-          className={`ref-sector up ${activeDir === 'up' ? 'is-active' : ''}`}
-          onClick={() => handleNav('up')}
-          onPointerDown={() => setActiveDir('up')}
-          onPointerUp={() => setActiveDir(null)}
-          onPointerLeave={() => setActiveDir(null)}
-          onPointerCancel={() => setActiveDir(null)}
-          aria-label="Up"
+          className={`ref-mode-btn ${controlMode === 'clickpad' ? 'active' : ''}`}
+          onClick={() => {
+            setControlMode('clickpad');
+            remoteClient.triggerHaptic(10);
+          }}
         >
-          <ChevronUp size={26} strokeWidth={2.6} className="ref-sector-glyph" />
+          Clickpad
         </button>
-
-        {/* Down Sector */}
         <button
           type="button"
-          className={`ref-sector down ${activeDir === 'down' ? 'is-active' : ''}`}
-          onClick={() => handleNav('down')}
-          onPointerDown={() => setActiveDir('down')}
-          onPointerUp={() => setActiveDir(null)}
-          onPointerLeave={() => setActiveDir(null)}
-          onPointerCancel={() => setActiveDir(null)}
-          aria-label="Down"
+          className={`ref-mode-btn ${controlMode === 'touchpad' ? 'active' : ''}`}
+          onClick={() => {
+            setControlMode('touchpad');
+            remoteClient.triggerHaptic(10);
+          }}
         >
-          <ChevronDown size={26} strokeWidth={2.6} className="ref-sector-glyph" />
-        </button>
-
-        {/* Left Sector */}
-        <button
-          type="button"
-          className={`ref-sector left ${activeDir === 'left' ? 'is-active' : ''}`}
-          onClick={() => handleNav('left')}
-          onPointerDown={() => setActiveDir('left')}
-          onPointerUp={() => setActiveDir(null)}
-          onPointerLeave={() => setActiveDir(null)}
-          onPointerCancel={() => setActiveDir(null)}
-          aria-label="Left"
-        >
-          <ChevronLeft size={26} strokeWidth={2.6} className="ref-sector-glyph" />
-        </button>
-
-        {/* Right Sector */}
-        <button
-          type="button"
-          className={`ref-sector right ${activeDir === 'right' ? 'is-active' : ''}`}
-          onClick={() => handleNav('right')}
-          onPointerDown={() => setActiveDir('right')}
-          onPointerUp={() => setActiveDir(null)}
-          onPointerLeave={() => setActiveDir(null)}
-          onPointerCancel={() => setActiveDir(null)}
-          aria-label="Right"
-        >
-          <ChevronRight size={26} strokeWidth={2.6} className="ref-sector-glyph" />
-        </button>
-
-        {/* Center Select Button */}
-        <button
-          type="button"
-          className="ref-center-btn"
-          onClick={handleSelect}
-          aria-label="Select"
-        >
-          Select
+          Touch Surface
         </button>
       </div>
+
+      {/* ─── 1. Main Interaction Surface (Clickpad OR Touchpad) ─── */}
+      {controlMode === 'clickpad' ? (
+        <div className="ref-clickpad-wheel">
+          {/* Up Sector */}
+          <button
+            type="button"
+            className={`ref-sector up ${activeDir === 'up' ? 'is-active' : ''}`}
+            onClick={() => handleNav('up')}
+            onPointerDown={() => setActiveDir('up')}
+            onPointerUp={() => setActiveDir(null)}
+            onPointerLeave={() => setActiveDir(null)}
+            onPointerCancel={() => setActiveDir(null)}
+            aria-label="Up"
+          >
+            <ChevronUp size={26} strokeWidth={2.6} className="ref-sector-glyph" />
+          </button>
+
+          {/* Down Sector */}
+          <button
+            type="button"
+            className={`ref-sector down ${activeDir === 'down' ? 'is-active' : ''}`}
+            onClick={() => handleNav('down')}
+            onPointerDown={() => setActiveDir('down')}
+            onPointerUp={() => setActiveDir(null)}
+            onPointerLeave={() => setActiveDir(null)}
+            onPointerCancel={() => setActiveDir(null)}
+            aria-label="Down"
+          >
+            <ChevronDown size={26} strokeWidth={2.6} className="ref-sector-glyph" />
+          </button>
+
+          {/* Left Sector */}
+          <button
+            type="button"
+            className={`ref-sector left ${activeDir === 'left' ? 'is-active' : ''}`}
+            onClick={() => handleNav('left')}
+            onPointerDown={() => setActiveDir('left')}
+            onPointerUp={() => setActiveDir(null)}
+            onPointerLeave={() => setActiveDir(null)}
+            onPointerCancel={() => setActiveDir(null)}
+            aria-label="Left"
+          >
+            <ChevronLeft size={26} strokeWidth={2.6} className="ref-sector-glyph" />
+          </button>
+
+          {/* Right Sector */}
+          <button
+            type="button"
+            className={`ref-sector right ${activeDir === 'right' ? 'is-active' : ''}`}
+            onClick={() => handleNav('right')}
+            onPointerDown={() => setActiveDir('right')}
+            onPointerUp={() => setActiveDir(null)}
+            onPointerLeave={() => setActiveDir(null)}
+            onPointerCancel={() => setActiveDir(null)}
+            aria-label="Right"
+          >
+            <ChevronRight size={26} strokeWidth={2.6} className="ref-sector-glyph" />
+          </button>
+
+          {/* Center Select Button */}
+          <button
+            type="button"
+            className="ref-center-btn"
+            onClick={handleSelect}
+            aria-label="Select"
+          >
+            Select
+          </button>
+        </div>
+      ) : (
+        <div
+          className="ref-touchpad-surface"
+          onTouchStart={handleTouchStart}
+          onTouchMove={handleTouchMove}
+          onTouchEnd={handleTouchEnd}
+          role="region"
+          aria-label="Touchpad Surface"
+        >
+          {ripples.map((r) => (
+            <div
+              key={r.id}
+              className="ref-touch-ripple"
+              style={{ left: r.x, top: r.y }}
+            />
+          ))}
+          <div className="ref-crosshair-circle">
+            <div className="ref-crosshair-dot" />
+          </div>
+          <span className="ref-touchpad-hint">Swipe to Navigate • Tap to Select</span>
+        </div>
+      )}
 
       {/* ─── 2. Middle Row: Back, Home, Source/Input ─── */}
       <div className="ref-mid-row">
