@@ -2,6 +2,7 @@ import { defineConfig, Plugin } from 'vite';
 import react from '@vitejs/plugin-react';
 import os from 'os';
 import crypto from 'crypto';
+import { spawn } from 'child_process';
 import localtunnel from 'localtunnel';
 
 interface NetworkInterfaceInfo {
@@ -10,8 +11,97 @@ interface NetworkInterfaceInfo {
   isPrimary: boolean;
 }
 
-let activeDevTunnel: any = null;
+let activeCloudProcess: any = null;
 let activeDevTunnelUrl: string | null = null;
+
+async function startCloudTunnel(port: number = 3000): Promise<string | null> {
+  if (activeDevTunnelUrl) return activeDevTunnelUrl;
+
+  // 1. Try Cloudflare Quick Tunnel (Fastest, zero splash screen)
+  try {
+    const cfUrl = await new Promise<string | null>((resolve) => {
+      let resolved = false;
+      const child = spawn('npx', ['--yes', 'cloudflared', 'tunnel', '--url', `http://localhost:${port}`], {
+        shell: true,
+      });
+      activeCloudProcess = child;
+
+      const timer = setTimeout(() => {
+        if (!resolved) {
+          resolved = true;
+          resolve(null);
+        }
+      }, 15000);
+
+      child.stderr.on('data', (d) => {
+        const str = d.toString();
+        const match = str.match(/https:\/\/[a-z0-9-]+\.trycloudflare\.com/i);
+        if (match && !resolved) {
+          resolved = true;
+          clearTimeout(timer);
+          resolve(match[0]);
+        }
+      });
+
+      child.on('close', () => {
+        activeCloudProcess = null;
+        activeDevTunnelUrl = null;
+        if (!resolved) {
+          resolved = true;
+          clearTimeout(timer);
+          resolve(null);
+        }
+      });
+
+      child.on('error', () => {
+        activeCloudProcess = null;
+        activeDevTunnelUrl = null;
+        if (!resolved) {
+          resolved = true;
+          clearTimeout(timer);
+          resolve(null);
+        }
+      });
+    });
+
+    if (cfUrl) {
+      activeDevTunnelUrl = `${cfUrl}/?mode=remote`;
+      return activeDevTunnelUrl;
+    }
+  } catch (e) {
+    console.warn('[Vite Remote] Cloudflare tunnel notice:', e);
+  }
+
+  // 2. Fallback to localtunnel
+  try {
+    const tunnel = await localtunnel({ port });
+    activeCloudProcess = tunnel;
+    activeDevTunnelUrl = `${tunnel.url}/?mode=remote`;
+    tunnel.on('close', () => {
+      activeCloudProcess = null;
+      activeDevTunnelUrl = null;
+    });
+    return activeDevTunnelUrl;
+  } catch (e) {
+    console.warn('[Vite Remote] localtunnel fallback notice:', e);
+  }
+
+  return null;
+}
+
+function stopCloudTunnel() {
+  if (activeCloudProcess) {
+    try {
+      if (typeof activeCloudProcess.kill === 'function') {
+        activeCloudProcess.kill();
+      } else if (typeof activeCloudProcess.close === 'function') {
+        activeCloudProcess.close();
+      }
+    } catch (e) {}
+    activeCloudProcess = null;
+  }
+  activeDevTunnelUrl = null;
+}
 
 function getNetworkInterfaces(): NetworkInterfaceInfo[] {
   const interfaces = os.networkInterfaces();
@@ -266,25 +356,14 @@ function kairaRemotePlugin(): Plugin {
         if (url.startsWith('/api/remote/tunnel/start') && req.method === 'POST') {
           (async () => {
             try {
-              if (activeDevTunnel && activeDevTunnelUrl) {
+              const url = await startCloudTunnel(3000);
+              if (url) {
                 res.setHeader('Content-Type', 'application/json');
-                return res.end(JSON.stringify({ success: true, url: activeDevTunnelUrl }));
+                return res.end(JSON.stringify({ success: true, url }));
               }
-              const tunnel = await localtunnel({ port: 3000 });
-              activeDevTunnel = tunnel;
-              activeDevTunnelUrl = `${tunnel.url}/?mode=remote`;
-
-              tunnel.on('close', () => {
-                activeDevTunnel = null;
-                activeDevTunnelUrl = null;
-              });
-              tunnel.on('error', () => {
-                activeDevTunnel = null;
-                activeDevTunnelUrl = null;
-              });
-
+              res.statusCode = 500;
               res.setHeader('Content-Type', 'application/json');
-              res.end(JSON.stringify({ success: true, url: activeDevTunnelUrl }));
+              res.end(JSON.stringify({ success: false, error: 'Could not create cloud tunnel' }));
             } catch (err: any) {
               res.statusCode = 500;
               res.setHeader('Content-Type', 'application/json');
@@ -296,13 +375,7 @@ function kairaRemotePlugin(): Plugin {
 
         // Endpoint: /api/remote/tunnel/stop (POST)
         if (url.startsWith('/api/remote/tunnel/stop') && req.method === 'POST') {
-          if (activeDevTunnel) {
-            try {
-              activeDevTunnel.close();
-            } catch (e) {}
-            activeDevTunnel = null;
-            activeDevTunnelUrl = null;
-          }
+          stopCloudTunnel();
           res.setHeader('Content-Type', 'application/json');
           return res.end(JSON.stringify({ success: true }));
         }
