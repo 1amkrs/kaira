@@ -1,3 +1,4 @@
+import Peer, { DataConnection } from 'peerjs';
 import { spatialNav } from '../spatialNav/spatialNavEngine';
 import { playbackService } from '../playback/PlaybackService';
 import { audioService } from '../audio/AudioService';
@@ -51,6 +52,11 @@ class RemoteService {
   private serverPort: number = 3000;
   private sseReceiver: EventSource | null = null;
 
+  // WebRTC PeerJS P2P (Serverless cross-device connection for GitHub Pages / Cloud)
+  private tvPeer: Peer | null = null;
+  private tvPeerId: string = '';
+  private peerConnections: Set<DataConnection> = new Set();
+
   constructor() {
     this.initBroadcastChannel();
   }
@@ -59,6 +65,7 @@ class RemoteService {
     this.callbacks = callbacks;
     if (!this.isInitialized) {
       this.isInitialized = true;
+      this.initWebRTCPeer();
       this.discoverServerInfo();
       this.listenToSubsystems();
       this.listenToElectronIPC();
@@ -81,6 +88,86 @@ class RemoteService {
     this.broadcastState();
   }
 
+  // ─── WEBRTC PEERJS INITIALIZATION (Serverless P2P) ─────────────────────────
+
+  private initWebRTCPeer(): void {
+    if (typeof window === 'undefined') return;
+
+    try {
+      // Generate or retrieve persistent short TV Room ID
+      let storedId = '';
+      try {
+        storedId = sessionStorage.getItem('kaira_tv_peer_id') || '';
+      } catch (e) {}
+
+      if (!storedId) {
+        storedId = `kaira-${Math.random().toString(36).substring(2, 7)}`;
+        try {
+          sessionStorage.setItem('kaira_tv_peer_id', storedId);
+        } catch (e) {}
+      }
+
+      this.tvPeerId = storedId;
+      this.tvPeer = new Peer(this.tvPeerId, {
+        debug: 1,
+      });
+
+      this.tvPeer.on('open', (id) => {
+        console.log(`[RemoteService] 🌐 WebRTC Peer Ready with ID: ${id}`);
+        this.tvPeerId = id;
+        this.broadcastState();
+      });
+
+      this.tvPeer.on('connection', (conn) => {
+        console.log(`[RemoteService] 📱 Incoming WebRTC Peer Connection from phone: ${conn.peer}`);
+
+        conn.on('open', () => {
+          this.peerConnections.add(conn);
+          this.setConnectedClients(this.peerConnections.size);
+
+          // Send immediate TV State snapshot
+          conn.send({ type: 'STATE_UPDATE', payload: this.getTVState() });
+        });
+
+        conn.on('data', (data: any) => {
+          if (data && data.type === 'COMMAND' && data.payload) {
+            this.handleCommand(data.payload);
+          } else if (data && data.type === 'REQUEST_STATE') {
+            conn.send({ type: 'STATE_UPDATE', payload: this.getTVState() });
+          }
+        });
+
+        conn.on('close', () => {
+          this.peerConnections.delete(conn);
+          this.setConnectedClients(this.peerConnections.size);
+        });
+
+        conn.on('error', (err) => {
+          console.warn('[RemoteService] Peer connection error:', err);
+          this.peerConnections.delete(conn);
+          this.setConnectedClients(this.peerConnections.size);
+        });
+      });
+
+      this.tvPeer.on('error', (err: any) => {
+        console.warn('[RemoteService] PeerJS error:', err?.type || err);
+        // If ID is taken, fallback to random ID
+        if (err?.type === 'unavailable-id') {
+          this.tvPeerId = `kaira-${Math.random().toString(36).substring(2, 9)}`;
+          try {
+            this.tvPeer = new Peer(this.tvPeerId);
+          } catch (e) {}
+        }
+      });
+    } catch (e) {
+      console.warn('[RemoteService] WebRTC PeerJS init notice:', e);
+    }
+  }
+
+  public getPeerId(): string {
+    return this.tvPeerId;
+  }
+
   public async discoverServerInfo(): Promise<void> {
     // 1. Try Electron API
     if (window.electronAPI?.getRemoteServerInfo) {
@@ -99,7 +186,7 @@ class RemoteService {
       } catch (e) {}
     }
 
-    // 2. Try HTTP endpoint /api/remote/info
+    // 2. Try HTTP endpoint /api/remote/info (Local dev server)
     try {
       const res = await fetch('/api/remote/info');
       if (res.ok) {
@@ -112,14 +199,15 @@ class RemoteService {
           }
           networkService.setIp(this.selectedIp);
           this.broadcastState();
+          return;
         }
       }
-    } catch (e) {
-      // Fallback to window.location
-      const host = window.location.hostname;
-      if (host && host !== 'localhost' && host !== '127.0.0.1') {
-        this.selectedIp = host;
-      }
+    } catch (e) {}
+
+    // Fallback: If on GitHub Pages or public HTTPS host
+    const host = window.location.hostname;
+    if (host && host !== 'localhost' && host !== '127.0.0.1') {
+      this.selectedIp = host;
     }
   }
 
@@ -141,7 +229,7 @@ class RemoteService {
   }
 
   public getConnectedClients(): number {
-    return this.connectedClients;
+    return Math.max(this.connectedClients, this.peerConnections.size);
   }
 
   private tunnelUrl: string | null = null;
@@ -189,17 +277,33 @@ class RemoteService {
     if (preferTunnel && this.tunnelUrl) {
       return this.tunnelUrl;
     }
+
+    const isStaticDeploy =
+      typeof window !== 'undefined' &&
+      (window.location.hostname.includes('github.io') ||
+        window.location.hostname.includes('vercel.app') ||
+        window.location.hostname.includes('netlify.app') ||
+        (window.location.protocol === 'https:' && !this.tunnelUrl));
+
+    const peerParam = this.tvPeerId ? `&peer=${encodeURIComponent(this.tvPeerId)}` : '';
+
+    if (isStaticDeploy) {
+      // Build static host URL (e.g. https://1amkrs.github.io/kaira/?mode=remote&peer=kaira-xxx)
+      const origin = window.location.origin;
+      const pathname = window.location.pathname;
+      return `${origin}${pathname}?mode=remote${peerParam}`;
+    }
+
     const hostIp = this.getSelectedIp();
     const port = this.serverPort || (window.location.port ? parseInt(window.location.port, 10) : 3000);
     const portStr = port === 80 || port === 443 ? '' : `:${port}`;
-    return `${window.location.protocol}//${hostIp}${portStr}/?mode=remote`;
+    return `${window.location.protocol}//${hostIp}${portStr}/?mode=remote${peerParam}`;
   }
 
   public getTVState(): TVStateSnapshot {
     const playState = playbackService.getState();
     const curSource = playState.currentSource;
     const amb = ambientService.getState();
-    const net = networkService.getState();
     const diag = systemService.getCachedDiagnostics();
 
     let nowPlaying: NowPlayingMedia | null = null;
@@ -235,10 +339,10 @@ class RemoteService {
         intensity: amb.intensity,
         connected: amb.connected,
       },
-      connectedClients: this.connectedClients,
+      connectedClients: this.getConnectedClients(),
       serverIp: hostIp,
       serverPort: port,
-      tvName: diag?.deviceModel || 'Kaira TV OS',
+      tvName: diag?.deviceModel || 'Kaira TV',
       uptimeSeconds: Math.floor(diag?.uptimeSeconds || performance.now() / 1000),
       timestamp: Date.now(),
     };
@@ -254,7 +358,7 @@ class RemoteService {
 
   public subscribeClientCount(listener: (count: number) => void): () => void {
     this.clientCountListeners.add(listener);
-    listener(this.connectedClients);
+    listener(this.getConnectedClients());
     return () => {
       this.clientCountListeners.delete(listener);
     };
@@ -324,10 +428,6 @@ class RemoteService {
 
         // --- 3. Search & Text Input ---
         case 'SEARCH_QUERY':
-          if (command.payload && typeof command.payload.query === 'string') {
-            this.callbacks.onOpenSearch?.(command.payload.query);
-          }
-          break;
         case 'VOICE_QUERY':
           if (command.payload && typeof command.payload.query === 'string') {
             soundEffectsService.playSelectChime();
@@ -365,9 +465,6 @@ class RemoteService {
           break;
         case 'PREV_TRACK':
           playbackService.previous();
-          break;
-        case 'SUBTITLES_TOGGLE':
-          // Subtitles toggle on video player
           break;
 
         // --- 5. Audio & Volume Controls ---
@@ -423,7 +520,6 @@ class RemoteService {
           break;
 
         default:
-          console.warn('[RemoteService] Unrecognized command type:', (command as any).type);
           return { success: false, error: 'Unknown command' };
       }
 
@@ -450,7 +546,18 @@ class RemoteService {
     // 1. Notify local React listeners
     this.listeners.forEach((fn) => fn(snapshot));
 
-    // 2. BroadcastChannel for same-origin tabs / popup preview
+    // 2. Broadcast via WebRTC PeerJS to all connected phone clients
+    for (const conn of this.peerConnections) {
+      try {
+        if (conn.open) {
+          conn.send({ type: 'STATE_UPDATE', payload: snapshot });
+        }
+      } catch (e) {
+        this.peerConnections.delete(conn);
+      }
+    }
+
+    // 3. BroadcastChannel for same-origin tabs / popup preview
     if (this.broadcastChannel) {
       try {
         const msg: RemoteServerMessage = { type: 'STATE_UPDATE', payload: snapshot };
@@ -458,13 +565,13 @@ class RemoteService {
       } catch (e) {}
     }
 
-    // 3. Electron IPC Bridge to Node WebSocket server
+    // 4. Electron IPC Bridge to Node WebSocket server
     if (window.electronAPI?.sendRemoteState) {
       window.electronAPI.sendRemoteState(snapshot);
     }
 
-    // 4. HTTP POST sync to local dev server
-    if (typeof fetch !== 'undefined') {
+    // 5. HTTP POST sync to local dev server (if available)
+    if (typeof fetch !== 'undefined' && !window.location.hostname.includes('github.io')) {
       try {
         fetch('/api/remote/sync-state', {
           method: 'POST',
@@ -512,8 +619,7 @@ class RemoteService {
   }
 
   private initBrowserReceiver(): void {
-    // If not in Electron, connect to SSE events to receive commands from remote phones
-    if (typeof window === 'undefined' || window.electronAPI?.onRemoteCommand) return;
+    if (typeof window === 'undefined' || window.electronAPI?.onRemoteCommand || window.location.hostname.includes('github.io')) return;
 
     try {
       if (this.sseReceiver) {
@@ -531,7 +637,7 @@ class RemoteService {
       };
 
       this.sseReceiver.onerror = () => {
-        // SSE error, will auto-reconnect
+        // SSE auto-reconnect
       };
     } catch (e) {
       console.warn('[RemoteService] SSE receiver init notice:', e);
@@ -553,17 +659,14 @@ class RemoteService {
   }
 
   private listenToSubsystems(): void {
-    // Playback state changes
     playbackService.subscribe(() => {
       this.broadcastState();
     });
 
-    // Ambient light state changes
     ambientService.subscribe(() => {
       this.broadcastState();
     });
 
-    // Audio changes
     audioService.subscribe?.(() => {
       this.broadcastState();
     });
@@ -573,7 +676,7 @@ class RemoteService {
     if (this.syncTimer) clearInterval(this.syncTimer);
     this.syncTimer = setInterval(() => {
       const playState = playbackService.getState();
-      if (playState.status === 'playing' || this.connectedClients > 0) {
+      if (playState.status === 'playing' || this.getConnectedClients() > 0) {
         this.broadcastState();
       }
     }, 1000);

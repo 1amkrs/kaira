@@ -135,25 +135,47 @@ export const CompanionRemoteModal: React.FC<CompanionRemoteModalProps> = ({ onCl
 
         {/* Connection Mode Toggle Pills */}
         <div style={{ display: 'flex', gap: '10px', padding: '0 24px 12px 24px' }}>
-          <button
-            type="button"
-            className={`tv-modal-btn ${connectionMode === 'local' ? 'primary' : 'secondary'}`}
-            style={{ borderRadius: '20px', padding: '6px 14px', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '6px' }}
-            onClick={() => setConnectionMode('local')}
-          >
-            <Wifi size={14} />
-            <span>Local Wi-Fi Mode ({selectedIp})</span>
-          </button>
+          {window.location.hostname.includes('github.io') || window.location.hostname.includes('vercel.app') || window.location.hostname.includes('netlify.app') ? (
+            <div
+              style={{
+                borderRadius: '20px',
+                padding: '6px 14px',
+                fontSize: '13px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                background: 'rgba(52, 199, 89, 0.15)',
+                color: '#34c759',
+                border: '1px solid rgba(52, 199, 89, 0.3)',
+                fontWeight: 600
+              }}
+            >
+              <Globe size={15} />
+              <span>⚡ WebRTC Serverless P2P Active (Works on Any Phone / 4G / 5G / Wi-Fi)</span>
+            </div>
+          ) : (
+            <>
+              <button
+                type="button"
+                className={`tv-modal-btn ${connectionMode === 'local' ? 'primary' : 'secondary'}`}
+                style={{ borderRadius: '20px', padding: '6px 14px', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '6px' }}
+                onClick={() => setConnectionMode('local')}
+              >
+                <Wifi size={14} />
+                <span>Local Wi-Fi Mode ({selectedIp})</span>
+              </button>
 
-          <button
-            type="button"
-            className={`tv-modal-btn ${connectionMode === 'cloud' ? 'primary' : 'secondary'}`}
-            style={{ borderRadius: '20px', padding: '6px 14px', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '6px' }}
-            onClick={handleToggleCloudMode}
-          >
-            {isStartingTunnel ? <Loader2 size={14} className="animate-spin" /> : <Globe size={14} />}
-            <span>Cloud / Any Network Mode (Bypass Firewall)</span>
-          </button>
+              <button
+                type="button"
+                className={`tv-modal-btn ${connectionMode === 'cloud' ? 'primary' : 'secondary'}`}
+                style={{ borderRadius: '20px', padding: '6px 14px', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '6px' }}
+                onClick={handleToggleCloudMode}
+              >
+                {isStartingTunnel ? <Loader2 size={14} className="animate-spin" /> : <Globe size={14} />}
+                <span>Cloud / Any Network Mode (Bypass Firewall)</span>
+              </button>
+            </>
+          )}
         </div>
 
         {/* Content Body */}

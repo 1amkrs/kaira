@@ -1,3 +1,4 @@
+import Peer, { DataConnection } from 'peerjs';
 import {
   RemoteCommand,
   RemoteCommandType,
@@ -18,6 +19,8 @@ class RemoteClient {
   private ws: WebSocket | null = null;
   private sse: EventSource | null = null;
   private broadcastChannel: BroadcastChannel | null = null;
+  private peer: Peer | null = null;
+  private peerConnection: DataConnection | null = null;
   private status: ConnectionStatus = 'disconnected';
   private latestState: TVStateSnapshot | null = null;
   private listeners: Set<RemoteClientListener> = new Set();
@@ -27,6 +30,7 @@ class RemoteClient {
   private serverHost: string = '';
   private serverPort: number = 3000;
   private isExplicitlyClosed: boolean = false;
+  private targetPeerId: string | null = null;
 
   constructor() {
     this.initBroadcastChannel();
@@ -37,14 +41,46 @@ class RemoteClient {
     this.serverHost = host || window.location.hostname || 'localhost';
     this.serverPort = port || (window.location.port ? parseInt(window.location.port, 10) : 3000);
 
+    // 1. Check for WebRTC Peer ID from URL or sessionStorage
+    const urlParams = new URLSearchParams(window.location.search);
+    const peerFromUrl = urlParams.get('peer');
+    if (peerFromUrl) {
+      this.targetPeerId = peerFromUrl;
+      try {
+        sessionStorage.setItem('kaira_target_peer', peerFromUrl);
+      } catch (e) {}
+    } else {
+      try {
+        this.targetPeerId = sessionStorage.getItem('kaira_target_peer');
+      } catch (e) {}
+    }
+
     this.setStatus('connecting');
-    this.tryWebSocket();
+
+    // 2. If targetPeerId is available, connect via WebRTC PeerJS (Works on GitHub Pages & Static Hosts)
+    if (this.targetPeerId) {
+      console.log(`[RemoteClient] 🌐 Connecting via WebRTC PeerJS to TV: ${this.targetPeerId}`);
+      this.connectWebRTCPeer(this.targetPeerId);
+    }
+
+    // 3. Also try local WebSocket if on local network / dev server
+    if (!window.location.hostname.includes('github.io')) {
+      this.tryWebSocket();
+    }
   }
 
   public disconnect(): void {
     this.isExplicitlyClosed = true;
     if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
     if (this.pollTimer) clearInterval(this.pollTimer);
+    if (this.peerConnection) {
+      this.peerConnection.close();
+      this.peerConnection = null;
+    }
+    if (this.peer) {
+      this.peer.destroy();
+      this.peer = null;
+    }
     if (this.ws) {
       this.ws.close();
       this.ws = null;
@@ -87,23 +123,37 @@ class RemoteClient {
       timestamp: Date.now(),
     };
 
-    // 1. Send via WebSocket if connected
+    let sent = false;
+
+    // 1. Send via WebRTC DataConnection (GitHub Pages / Internet)
+    if (this.peerConnection && this.peerConnection.open) {
+      try {
+        this.peerConnection.send({ type: 'COMMAND', payload: cmd });
+        sent = true;
+      } catch (e) {}
+    }
+
+    // 2. Send via WebSocket if open
     if (this.ws && this.ws.readyState === WebSocket.OPEN) {
       const msg: RemoteClientMessage = { type: 'COMMAND', payload: cmd };
       this.ws.send(JSON.stringify(msg));
-      return true;
+      sent = true;
     }
 
-    // 2. Send via BroadcastChannel for same-origin tabs
+    // 3. Send via BroadcastChannel for same-origin tabs
     if (this.broadcastChannel) {
       try {
         const msg: RemoteClientMessage = { type: 'COMMAND', payload: cmd };
         this.broadcastChannel.postMessage(msg);
+        sent = true;
       } catch (e) {}
     }
 
-    // 3. Fallback via HTTP POST
-    this.sendHttpCommand(cmd);
+    // 4. Fallback via HTTP POST if on local dev server
+    if (!sent && !window.location.hostname.includes('github.io')) {
+      this.sendHttpCommand(cmd);
+    }
+
     return true;
   }
 
@@ -115,12 +165,71 @@ class RemoteClient {
     }
   }
 
+  // ─── WEBRTC PEERJS CONNECTION ──────────────────────────────────────────────
+
+  private connectWebRTCPeer(targetId: string): void {
+    try {
+      if (this.peer) {
+        this.peer.destroy();
+      }
+
+      const clientPeerId = `phone-${Math.random().toString(36).substring(2, 8)}`;
+      this.peer = new Peer(clientPeerId, { debug: 1 });
+
+      this.peer.on('open', () => {
+        console.log(`[RemoteClient] 📱 Client Peer ready, connecting to TV ${targetId}...`);
+        const conn = this.peer!.connect(targetId, {
+          reliable: true,
+        });
+
+        this.setupPeerConnection(conn);
+      });
+
+      this.peer.on('error', (err) => {
+        console.warn('[RemoteClient] PeerJS client error:', err);
+      });
+    } catch (e) {
+      console.warn('[RemoteClient] WebRTC connection error:', e);
+    }
+  }
+
+  private setupPeerConnection(conn: DataConnection): void {
+    this.peerConnection = conn;
+
+    conn.on('open', () => {
+      console.log('[RemoteClient] 🟢 WebRTC DataChannel Connected directly to Kaira TV!');
+      this.setStatus('connected');
+      this.reconnectAttempts = 0;
+      // Request TV state
+      conn.send({ type: 'REQUEST_STATE' });
+    });
+
+    conn.on('data', (data: any) => {
+      if (data && data.type === 'STATE_UPDATE' && data.payload) {
+        this.handleStateUpdate(data.payload);
+      }
+    });
+
+    conn.on('close', () => {
+      console.warn('[RemoteClient] WebRTC DataChannel closed');
+      if (!this.isExplicitlyClosed) {
+        this.setStatus('reconnecting');
+        setTimeout(() => {
+          if (this.targetPeerId) this.connectWebRTCPeer(this.targetPeerId);
+        }, 2000);
+      }
+    });
+
+    conn.on('error', (err) => {
+      console.warn('[RemoteClient] WebRTC DataChannel error:', err);
+    });
+  }
+
   // ─── WEBSOCKET CONNECTION ──────────────────────────────────────────────────
 
   private tryWebSocket(): void {
-    if (this.isExplicitlyClosed) return;
+    if (this.isExplicitlyClosed || window.location.hostname.includes('github.io')) return;
 
-    // Try primary port, or secondary port 3001 if in Electron
     const wsProt = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const portsToTry = [this.serverPort, 3001, 3000];
     const targetPort = portsToTry[Math.min(this.reconnectAttempts, portsToTry.length - 1)] || this.serverPort;
@@ -137,53 +246,47 @@ class RemoteClient {
       this.ws.onopen = () => {
         this.setStatus('connected');
         this.reconnectAttempts = 0;
-        // Identify client device
-        const identifyMsg: RemoteClientMessage = {
-          type: 'IDENTIFY',
-          payload: {
-            deviceName: navigator.userAgent.includes('iPhone')
-              ? 'iPhone'
-              : navigator.userAgent.includes('Android')
-              ? 'Android Phone'
-              : 'Mobile Device',
-            browser: navigator.userAgent,
-          },
-        };
-        this.ws?.send(JSON.stringify(identifyMsg));
-        this.ws?.send(JSON.stringify({ type: 'REQUEST_STATE' }));
+        this.ws?.send(
+          JSON.stringify({
+            type: 'IDENTIFY',
+            payload: {
+              deviceType: 'mobile-web',
+              userAgent: navigator.userAgent,
+            },
+          })
+        );
       };
 
       this.ws.onmessage = (event) => {
         try {
-          const msg = JSON.parse(event.data) as RemoteServerMessage;
-          this.handleServerMessage(msg);
+          const msg: RemoteServerMessage = JSON.parse(event.data);
+          if (msg.type === 'STATE_UPDATE' && msg.payload) {
+            this.handleStateUpdate(msg.payload);
+          }
         } catch (e) {}
       };
 
       this.ws.onerror = () => {
-        // Switch to SSE / HTTP fallback on failure
-        this.trySseFallback();
+        this.trySSEFallback();
       };
 
       this.ws.onclose = () => {
-        if (!this.isExplicitlyClosed) {
-          this.setStatus('reconnecting');
+        if (!this.isExplicitlyClosed && !this.peerConnection?.open) {
           this.scheduleReconnect();
         }
       };
     } catch (err) {
-      this.trySseFallback();
+      this.trySSEFallback();
     }
   }
 
-  // ─── SSE / HTTP FALLBACK ───────────────────────────────────────────────────
+  // ─── SSE FALLBACK ──────────────────────────────────────────────────────────
 
-  private trySseFallback(): void {
-    if (this.isExplicitlyClosed || this.sse) return;
+  private trySSEFallback(): void {
+    if (this.sse || this.isExplicitlyClosed || window.location.hostname.includes('github.io')) return;
 
     try {
-      const sseUrl = `${window.location.protocol}//${this.serverHost}:${this.serverPort}/api/remote/events`;
-      this.sse = new EventSource(sseUrl);
+      this.sse = new EventSource('/api/remote/events');
 
       this.sse.onopen = () => {
         this.setStatus('connected');
@@ -192,8 +295,10 @@ class RemoteClient {
 
       this.sse.onmessage = (event) => {
         try {
-          const msg = JSON.parse(event.data) as RemoteServerMessage;
-          this.handleServerMessage(msg);
+          const msg: RemoteServerMessage = JSON.parse(event.data);
+          if (msg.type === 'STATE_UPDATE' && msg.payload) {
+            this.handleStateUpdate(msg.payload);
+          }
         } catch (e) {}
       };
 
@@ -202,99 +307,79 @@ class RemoteClient {
           this.sse.close();
           this.sse = null;
         }
-        this.startHttpPolling();
       };
-    } catch (e) {
-      this.startHttpPolling();
-    }
+    } catch (e) {}
   }
+
+  // ─── HTTP COMMAND FALLBACK ─────────────────────────────────────────────────
 
   private async sendHttpCommand(cmd: RemoteCommand): Promise<void> {
-    const urls = [
-      `${window.location.protocol}//${this.serverHost}:${this.serverPort}/api/remote/command`,
-      `${window.location.protocol}//${this.serverHost}:3001/api/remote/command`,
-    ];
+    if (window.location.hostname.includes('github.io')) return;
 
-    for (const url of urls) {
-      try {
-        const res = await fetch(url, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(cmd),
-          mode: 'cors',
-        });
-        if (res.ok) return;
-      } catch (e) {}
-    }
+    try {
+      await fetch('/api/remote/command', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(cmd),
+      });
+    } catch (e) {}
   }
 
-  private startHttpPolling(): void {
-    if (this.pollTimer) clearInterval(this.pollTimer);
-
-    const poll = async () => {
-      try {
-        const res = await fetch(
-          `${window.location.protocol}//${this.serverHost}:${this.serverPort}/api/remote/status`,
-          { mode: 'cors' }
-        );
-        if (res.ok) {
-          const state = await res.json();
-          this.handleServerMessage({ type: 'STATE_UPDATE', payload: state });
-          this.setStatus('connected');
-        } else {
-          this.setStatus('reconnecting');
-        }
-      } catch (e) {
-        this.setStatus('disconnected');
-      }
-    };
-
-    poll();
-    this.pollTimer = setInterval(poll, 1500);
-  }
-
-  private scheduleReconnect(): void {
-    if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
-    this.reconnectAttempts++;
-    const delay = Math.min(1000 * Math.pow(1.5, this.reconnectAttempts), 8000);
-    this.reconnectTimer = setTimeout(() => {
-      this.tryWebSocket();
-    }, delay);
-  }
-
-  private handleServerMessage(msg: RemoteServerMessage): void {
-    if (!msg) return;
-
-    if (msg.type === 'STATE_UPDATE' && msg.payload) {
-      this.latestState = msg.payload;
-      this.listeners.forEach((l) => l.onStateUpdate?.(msg.payload));
-    } else if (msg.type === 'TOAST' && msg.payload?.message) {
-      this.listeners.forEach((l) => l.onToast?.(msg.payload.message));
-    }
-  }
-
-  private setStatus(status: ConnectionStatus): void {
-    if (this.status !== status) {
-      this.status = status;
-      this.listeners.forEach((l) => l.onStatusChange?.(status));
-    }
-  }
+  // ─── BROADCAST CHANNEL FOR SAME-ORIGIN TABS ────────────────────────────────
 
   private initBroadcastChannel(): void {
     if (typeof window === 'undefined' || typeof BroadcastChannel === 'undefined') return;
 
     try {
       this.broadcastChannel = new BroadcastChannel('tvos_remote_channel');
+
       this.broadcastChannel.onmessage = (event) => {
-        const data = event.data as RemoteServerMessage;
-        if (data && data.type) {
-          this.handleServerMessage(data);
+        const msg = event.data as RemoteServerMessage;
+        if (!msg || !msg.type) return;
+
+        if (msg.type === 'STATE_UPDATE' && msg.payload) {
           this.setStatus('connected');
+          this.handleStateUpdate(msg.payload);
         }
       };
-      // Request initial state from TV
-      this.broadcastChannel.postMessage({ type: 'REQUEST_STATE' });
+
+      // Announce client presence
+      this.broadcastChannel.postMessage({
+        type: 'IDENTIFY',
+        payload: { deviceType: 'browser-tab' },
+      });
     } catch (e) {}
+  }
+
+  // ─── RECONNECT LOOP ────────────────────────────────────────────────────────
+
+  private scheduleReconnect(): void {
+    if (this.isExplicitlyClosed || this.reconnectTimer) return;
+
+    this.setStatus('reconnecting');
+    this.reconnectAttempts++;
+
+    const delay = Math.min(1000 * Math.pow(1.5, this.reconnectAttempts), 8000);
+    this.reconnectTimer = setTimeout(() => {
+      this.reconnectTimer = null;
+      if (this.targetPeerId) {
+        this.connectWebRTCPeer(this.targetPeerId);
+      }
+      if (!window.location.hostname.includes('github.io')) {
+        this.tryWebSocket();
+      }
+    }, delay);
+  }
+
+  private handleStateUpdate(state: TVStateSnapshot): void {
+    this.latestState = state;
+    this.listeners.forEach((l) => l.onStateUpdate?.(state));
+  }
+
+  private setStatus(newStatus: ConnectionStatus): void {
+    if (this.status === newStatus) return;
+    this.status = newStatus;
+    this.listeners.forEach((l) => l.onStatusChange?.(newStatus));
   }
 }
 
