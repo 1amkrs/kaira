@@ -130,7 +130,7 @@ export const TouchpadRemote: React.FC<TouchpadRemoteProps> = ({ tvState }) => {
           onPointerCancel={() => setActiveDir(null)}
           aria-label="Up"
         >
-          <ChevronUp size={22} strokeWidth={2.5} className="ref-sector-glyph" />
+          <ChevronUp size={26} strokeWidth={2.6} className="ref-sector-glyph" />
         </button>
 
         {/* Down Sector */}
@@ -144,7 +144,7 @@ export const TouchpadRemote: React.FC<TouchpadRemoteProps> = ({ tvState }) => {
           onPointerCancel={() => setActiveDir(null)}
           aria-label="Down"
         >
-          <ChevronDown size={22} strokeWidth={2.5} className="ref-sector-glyph" />
+          <ChevronDown size={26} strokeWidth={2.6} className="ref-sector-glyph" />
         </button>
 
         {/* Left Sector */}
@@ -158,7 +158,7 @@ export const TouchpadRemote: React.FC<TouchpadRemoteProps> = ({ tvState }) => {
           onPointerCancel={() => setActiveDir(null)}
           aria-label="Left"
         >
-          <ChevronLeft size={22} strokeWidth={2.5} className="ref-sector-glyph" />
+          <ChevronLeft size={26} strokeWidth={2.6} className="ref-sector-glyph" />
         </button>
 
         {/* Right Sector */}
@@ -172,7 +172,7 @@ export const TouchpadRemote: React.FC<TouchpadRemoteProps> = ({ tvState }) => {
           onPointerCancel={() => setActiveDir(null)}
           aria-label="Right"
         >
-          <ChevronRight size={22} strokeWidth={2.5} className="ref-sector-glyph" />
+          <ChevronRight size={26} strokeWidth={2.6} className="ref-sector-glyph" />
         </button>
 
         {/* Center Select Button */}
@@ -195,7 +195,7 @@ export const TouchpadRemote: React.FC<TouchpadRemoteProps> = ({ tvState }) => {
           title="Back"
           aria-label="Back"
         >
-          <Undo2 size={20} strokeWidth={2.2} />
+          <Undo2 size={24} strokeWidth={2.4} />
         </button>
 
         <button
@@ -205,7 +205,7 @@ export const TouchpadRemote: React.FC<TouchpadRemoteProps> = ({ tvState }) => {
           title="Home"
           aria-label="Home"
         >
-          <Home size={21} strokeWidth={2} />
+          <Home size={25} strokeWidth={2.2} />
         </button>
 
         <button
@@ -215,7 +215,7 @@ export const TouchpadRemote: React.FC<TouchpadRemoteProps> = ({ tvState }) => {
           title="Input / Menu"
           aria-label="Input / Menu"
         >
-          <LogOut size={20} strokeWidth={2.2} style={{ transform: 'rotate(180deg)' }} />
+          <LogOut size={24} strokeWidth={2.4} style={{ transform: 'rotate(180deg)' }} />
         </button>
       </div>
 
@@ -230,7 +230,7 @@ export const TouchpadRemote: React.FC<TouchpadRemoteProps> = ({ tvState }) => {
             title="Volume Up"
             aria-label="Volume Up"
           >
-            <Plus size={20} strokeWidth={2.5} />
+            <Plus size={24} strokeWidth={2.6} />
           </button>
           <button
             type="button"
@@ -239,7 +239,7 @@ export const TouchpadRemote: React.FC<TouchpadRemoteProps> = ({ tvState }) => {
             title="Volume Down"
             aria-label="Volume Down"
           >
-            <Minus size={20} strokeWidth={2.5} />
+            <Minus size={24} strokeWidth={2.6} />
           </button>
         </div>
 
@@ -251,7 +251,7 @@ export const TouchpadRemote: React.FC<TouchpadRemoteProps> = ({ tvState }) => {
           title="Mute Toggle"
           aria-label="Mute"
         >
-          <VolumeX size={22} strokeWidth={2} />
+          <VolumeX size={26} strokeWidth={2.2} />
         </button>
 
         {/* Right Channel / Tab Rocker */}
@@ -263,7 +263,7 @@ export const TouchpadRemote: React.FC<TouchpadRemoteProps> = ({ tvState }) => {
             title="Channel / Tab Up"
             aria-label="Channel Up"
           >
-            <ChevronUp size={22} strokeWidth={2.5} />
+            <ChevronUp size={26} strokeWidth={2.6} />
           </button>
           <button
             type="button"
@@ -272,7 +272,7 @@ export const TouchpadRemote: React.FC<TouchpadRemoteProps> = ({ tvState }) => {
             title="Channel / Tab Down"
             aria-label="Channel Down"
           >
-            <ChevronDown size={22} strokeWidth={2.5} />
+            <ChevronDown size={26} strokeWidth={2.6} />
           </button>
         </div>
       </div>
@@ -288,7 +288,7 @@ export const TouchpadRemote: React.FC<TouchpadRemoteProps> = ({ tvState }) => {
             title="Settings"
             aria-label="Settings"
           >
-            <Settings size={18} strokeWidth={2} />
+            <Settings size={20} strokeWidth={2.2} />
           </button>
 
           <button
@@ -298,7 +298,7 @@ export const TouchpadRemote: React.FC<TouchpadRemoteProps> = ({ tvState }) => {
             title="Keyboard / Search"
             aria-label="Keyboard"
           >
-            <Keyboard size={18} strokeWidth={2} />
+            <Keyboard size={20} strokeWidth={2.2} />
           </button>
 
           <button
@@ -318,7 +318,7 @@ export const TouchpadRemote: React.FC<TouchpadRemoteProps> = ({ tvState }) => {
             title="Voice Search"
             aria-label="Voice Search"
           >
-            <Mic size={18} strokeWidth={2} />
+            <Mic size={20} strokeWidth={2.2} />
           </button>
         </div>
 
@@ -331,7 +331,7 @@ export const TouchpadRemote: React.FC<TouchpadRemoteProps> = ({ tvState }) => {
             title="Play"
             aria-label="Play"
           >
-            <Play size={16} fill="currentColor" strokeWidth={0} />
+            <Play size={18} fill="currentColor" strokeWidth={0} />
           </button>
 
           <button
@@ -341,7 +341,7 @@ export const TouchpadRemote: React.FC<TouchpadRemoteProps> = ({ tvState }) => {
             title="Pause"
             aria-label="Pause"
           >
-            <Pause size={16} fill="currentColor" strokeWidth={0} />
+            <Pause size={18} fill="currentColor" strokeWidth={0} />
           </button>
 
           <button
@@ -351,7 +351,7 @@ export const TouchpadRemote: React.FC<TouchpadRemoteProps> = ({ tvState }) => {
             title="Rewind 15s"
             aria-label="Rewind"
           >
-            <Rewind size={18} fill="currentColor" strokeWidth={0} />
+            <Rewind size={20} fill="currentColor" strokeWidth={0} />
           </button>
 
           <button
@@ -361,7 +361,7 @@ export const TouchpadRemote: React.FC<TouchpadRemoteProps> = ({ tvState }) => {
             title="Fast Forward 15s"
             aria-label="Fast Forward"
           >
-            <FastForward size={18} fill="currentColor" strokeWidth={0} />
+            <FastForward size={20} fill="currentColor" strokeWidth={0} />
           </button>
         </div>
       </div>
