@@ -1166,7 +1166,7 @@ export const VideoPlayerScreen: React.FC<VideoPlayerScreenProps> = ({
 
       {/* 7. Floating Skip Intro Button (Appears during intro window) */}
       {isInsideIntro && !isMenuOpen && (
-        <div className="tv-player-floating-skip-intro animate-pop">
+        <div className={`tv-player-floating-skip-intro ${isHudVisible ? 'hud-visible' : 'hud-hidden'} animate-pop`}>
           <Focusable
             id="player-floating-skip-intro-btn"
             groupId="player-skip-intro"
@@ -1176,13 +1176,23 @@ export const VideoPlayerScreen: React.FC<VideoPlayerScreenProps> = ({
             onSelect={handleSkipIntro}
           >
             {(isFocused) => (
-              <div className={`tv-skip-intro-btn ${isFocused ? 'focused' : ''}`}>
-                <FastForward size={20} className="tv-skip-intro-icon" />
-                <div className="tv-skip-intro-text-col">
-                  <span className="tv-skip-intro-title">Skip Intro</span>
-                  <span className="tv-skip-intro-sub">
-                    {Math.max(0, Math.ceil((introSegment?.end || 0) - engineState.currentTime))}s (Press I or Enter)
+              <div
+                className={`tv-skip-intro-btn ${isFocused ? 'focused' : ''}`}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleSkipIntro();
+                }}
+              >
+                <div className="tv-skip-intro-icon-wrap">
+                  <FastForward size={16} strokeWidth={2.6} className="tv-skip-intro-icon" />
+                </div>
+                <span className="tv-skip-intro-title">Skip Intro</span>
+                <span className="tv-skip-intro-divider" />
+                <div className="tv-skip-intro-badge">
+                  <span className="tv-skip-intro-timer">
+                    {Math.max(0, Math.ceil((introSegment?.end || 0) - engineState.currentTime))}s
                   </span>
+                  <span className="tv-skip-intro-keyhint">Press ↵</span>
                 </div>
               </div>
             )}
@@ -1192,7 +1202,7 @@ export const VideoPlayerScreen: React.FC<VideoPlayerScreenProps> = ({
 
       {/* 7b. Floating Play Next Episode Prompt (During Credits / Outro, Strictly for TV Shows) */}
       {isOutroOrNearEnd && nextEpisode && (
-        <div className="tv-player-floating-next-prompt animate-pop">
+        <div className={`tv-player-floating-next-prompt ${isHudVisible ? 'hud-visible' : 'hud-hidden'} animate-pop`}>
           <Focusable
             id="player-floating-next-btn"
             groupId="player-floating-next"
