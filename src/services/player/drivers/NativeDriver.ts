@@ -184,9 +184,9 @@ export class NativeDriver implements IPlaybackDriver {
 
   private onError = (): void => {
     if (this.isDestroyed) return;
-    if (this.retryCount < 20 && this.state.currentTime === 0) {
+    if (this.retryCount < 4 && this.state.currentTime === 0) {
       this.retryCount++;
-      console.log(`[NativeDriver] Waiting for torrent buffer from Self-Debrid (attempt ${this.retryCount}/20)...`);
+      console.log(`[NativeDriver] Waiting for torrent buffer from Self-Debrid (attempt ${this.retryCount}/4)...`);
       this.state.status = 'buffering';
       this.callbacks?.onBuffering(true);
       setTimeout(() => {
@@ -196,7 +196,7 @@ export class NativeDriver implements IPlaybackDriver {
             this.doPlay();
           } catch (_) {}
         }
-      }, 2500);
+      }, 2000);
       return;
     }
     const msg = this.videoElement?.error?.message || 'Video playback error';

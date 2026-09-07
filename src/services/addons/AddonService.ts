@@ -91,6 +91,7 @@ class AddonService {
     apiKey: '',
     enabled: false,
   };
+  private cachedTorrentHashes: Set<string> = new Set();
 
   constructor() {
     this.loadState();
@@ -235,6 +236,57 @@ class AddonService {
     console.log(`[AddonService] Resolving streams for [${type}]: ${cleanImdbId}`);
 
     const streams: AddonStream[] = [];
+
+    // 0. Pre-check Self-Debrid Local Disk Cache & Completed Torrents
+    const isSelfDebrid = this.debridConfig.enabled && this.debridConfig.provider === 'selfdebrid';
+    if (isSelfDebrid) {
+      const selfUrl = (this.debridConfig.endpointUrl || 'http://localhost:8081').replace(/\/+$/, '');
+      try {
+        const checkParams = new URLSearchParams();
+        if (titleHint) checkParams.set('title', titleHint);
+        if (seasonNumber !== undefined) checkParams.set('season', String(seasonNumber));
+        if (episodeNumber !== undefined) checkParams.set('episode', String(episodeNumber));
+
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 1200);
+
+        const [cacheCheckRes, cacheInvRes] = await Promise.allSettled([
+          fetch(`${selfUrl}/cache/check?${checkParams.toString()}`, { signal: controller.signal }).then((r) => r.json()),
+          fetch(`${selfUrl}/cache`, { signal: controller.signal }).then((r) => r.json()),
+        ]);
+        clearTimeout(timeoutId);
+
+        if (cacheInvRes.status === 'fulfilled' && cacheInvRes.value?.cached_hashes) {
+          this.cachedTorrentHashes.clear();
+          const hashes = cacheInvRes.value.cached_hashes;
+          Object.keys(hashes).forEach((h) => {
+            if (hashes[h]?.completed) {
+              this.cachedTorrentHashes.add(h.toLowerCase());
+            }
+          });
+        }
+
+        if (cacheCheckRes.status === 'fulfilled' && cacheCheckRes.value?.cached) {
+          const c = cacheCheckRes.value;
+          console.log(`[AddonService] ⚡ Found local cached file in Self-Debrid:`, c.name);
+          streams.push({
+            name: 'Self-Debrid [⚡ Local Disk Cache]',
+            title: `${titleHint || c.name} • Instant Disk Playback`,
+            description: `Pre-downloaded in Debrid Cache (${c.name}) • Zero Buffering`,
+            url: c.stream_url,
+            streamType: 'direct',
+            quality: '1080p',
+            resolution: '1080p Disk Cache',
+            audio: 'AAC Stereo Transcode',
+            providerName: 'Self-Debrid Local',
+            isDebrid: true,
+            isCached: true,
+          });
+        }
+      } catch (err) {
+        console.warn('[AddonService] Self-Debrid local cache pre-check notice:', err);
+      }
+    }
 
     // 1. Primary Full Feature Stream (VidLink Mirror)
     if (isImdb) {
@@ -429,10 +481,18 @@ class AddonService {
       }
     }
 
+    const isCachedTorrent = isSelfDebrid && Boolean(raw.infoHash && this.cachedTorrentHashes.has(raw.infoHash.toLowerCase()));
+
     return {
-      name: isSelfDebrid ? `Self-Debrid [${parsed.quality}]` : (raw.name ? raw.name.replace(/\n/g, ' ') : providerName),
+      name: isCachedTorrent
+        ? `Self-Debrid [⚡ Cached ${parsed.quality}]`
+        : isSelfDebrid
+        ? `Self-Debrid [${parsed.quality}]`
+        : (raw.name ? raw.name.replace(/\n/g, ' ') : providerName),
       title: rawTitle,
-      description: raw.description || parsed.qualityDesc,
+      description: isCachedTorrent
+        ? '100% Downloaded in Local Debrid Cache • Instant Playback'
+        : raw.description || parsed.qualityDesc,
       url: streamUrl,
       streamType,
       infoHash: raw.infoHash,
@@ -444,6 +504,7 @@ class AddonService {
       audio: parsed.audio,
       providerName: isSelfDebrid ? 'Self-Debrid Local' : providerName,
       isDebrid: isSelfDebrid || raw.name?.includes('RD') || raw.name?.includes('Debrid') || Boolean(raw.url),
+      isCached: isCachedTorrent || Boolean(raw.isCached),
       behaviorHints: raw.behaviorHints,
     };
   }
@@ -518,6 +579,12 @@ class AddonService {
 
     const calculateScore = (s: AddonStream): number => {
       let score = 0;
+
+      // 0. Local Debrid Cache Absolute Priority (+50,000)
+      // Files already downloaded in debrid cache or 100% pre-cached torrents play instantly with zero wait
+      if (s.isCached || s.name?.includes('Local Disk Cache') || s.name?.includes('Cached')) {
+        score += 50000;
+      }
 
       // 1. Debrid & Self-Debrid Priority Bonus
       if (s.isDebrid && s.streamType === 'direct') {

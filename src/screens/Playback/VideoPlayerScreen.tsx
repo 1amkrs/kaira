@@ -203,6 +203,81 @@ export const VideoPlayerScreen: React.FC<VideoPlayerScreenProps> = ({
     }
   }, [source.streamUrl, source.streamType]);
 
+  // 1c. Stream Loading Watchdog & Automatic VidSrc Server 2 Fallback
+  // If a debrid/direct torrent stream takes too much time to load (>10s) or errors out, automatically fall back to VidSrc Server 2
+  const [hasFallenBackToVidSrc, setHasFallenBackToVidSrc] = useState<boolean>(false);
+  const loadingWatchdogRef = useRef<NodeJS.Timeout | null>(null);
+
+  const triggerVidSrcFallback = useCallback((reason: string) => {
+    if (hasFallenBackToVidSrc) return;
+    setHasFallenBackToVidSrc(true);
+
+    console.warn(`[VideoPlayerScreen] Triggering VidSrc Server 2 fallback: ${reason}`);
+    triggerFeedback('Switching to VidSrc Server 2 (Cloud Mirror)...');
+
+    const cleanImdb = source.imdbId || (source.mediaId?.startsWith('tt') ? source.mediaId : 'tt0816692');
+    const existingVidSrc = availableStreams.find(
+      (s) => s.name?.includes('VidSrc Server 2') || s.providerName === 'VidSrc Mirror' || s.url?.includes('vidsrc')
+    );
+
+    const vidSrcUrl =
+      existingVidSrc?.url ||
+      (source.mediaType === 'episode'
+        ? `https://vidsrc.pm/embed/tv/${cleanImdb}/${source.seasonNumber || 1}/${source.episodeNumber || 1}?autoplay=1`
+        : `https://vidsrc.pm/embed/movie/${cleanImdb}?autoplay=1`);
+
+    setCurrentStreamUrl(vidSrcUrl);
+    setCurrentDriverType('embed');
+
+    if (engineRef.current) {
+      engineRef.current.loadMedia(
+        vidSrcUrl,
+        'embed',
+        engineState.currentTime,
+        undefined,
+        engineState.duration || source.durationSeconds || 7200
+      );
+    }
+  }, [hasFallenBackToVidSrc, availableStreams, source, engineState.currentTime, engineState.duration, triggerFeedback]);
+
+  useEffect(() => {
+    // If playing or already fallen back, clear watchdog
+    if (engineState.status === 'playing' || hasFallenBackToVidSrc) {
+      if (loadingWatchdogRef.current) {
+        clearTimeout(loadingWatchdogRef.current);
+        loadingWatchdogRef.current = null;
+      }
+      return;
+    }
+
+    const isDirectOrDebrid =
+      currentDriverType === 'direct' ||
+      currentStreamUrl.includes(':8081') ||
+      currentStreamUrl.includes('.mp4') ||
+      currentStreamUrl.includes('.mkv');
+    const isAlreadyVidSrc = currentStreamUrl.includes('vidsrc');
+
+    if (isDirectOrDebrid && !isAlreadyVidSrc) {
+      if (engineState.status === 'buffering') {
+        if (!loadingWatchdogRef.current) {
+          loadingWatchdogRef.current = setTimeout(() => {
+            triggerVidSrcFallback('Stream buffering exceeded 10 seconds timeout');
+          }, 10000);
+        }
+      } else if (engineState.status === 'error') {
+        triggerVidSrcFallback(`Playback error encountered: ${engineState.error || 'Connection failed'}`);
+      }
+    }
+
+    return () => {
+      if (loadingWatchdogRef.current) {
+        clearTimeout(loadingWatchdogRef.current);
+        loadingWatchdogRef.current = null;
+      }
+    };
+  }, [engineState.status, engineState.error, currentDriverType, currentStreamUrl, hasFallenBackToVidSrc, triggerVidSrcFallback]);
+
+
   // 2. Fetch Alternate Mirrors & Intro Timestamps in background
   useEffect(() => {
     const fetchExtraData = async () => {
@@ -772,6 +847,21 @@ export const VideoPlayerScreen: React.FC<VideoPlayerScreenProps> = ({
                 </div>
               )}
             </Focusable>
+
+            <Focusable
+              id="btn-fallback-vidsrc"
+              groupId="player-error-group"
+              indexInGroup={2}
+              className="tv-action-pill"
+              onSelect={() => triggerVidSrcFallback('Manual fallback requested from error dialog')}
+            >
+              {(isFocused) => (
+                <div className={`tv-btn-inner ${isFocused ? 'focused' : ''}`}>
+                  <Sparkles size={18} />
+                  <span>VidSrc Server 2</span>
+                </div>
+              )}
+            </Focusable>
           </div>
         </div>
       )}
@@ -1269,6 +1359,7 @@ export const VideoPlayerScreen: React.FC<VideoPlayerScreenProps> = ({
                       indexInGroup={idx}
                       className="tv-menu-source-card-focusable"
                       onSelect={() => {
+                        setHasFallenBackToVidSrc(false);
                         setCurrentStreamUrl(st.url);
                         const driver: DriverType =
                           st.streamType === 'youtube' ? 'youtube' : st.streamType === 'embed' ? 'embed' : 'direct';

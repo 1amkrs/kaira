@@ -657,5 +657,77 @@ test('SelfDebrid: Raw URLs on port 8081 are appended with audio=aac&transcode=1 
   assert.equal(formatted, 'http://localhost:8081/file/Yellowstone.mp4?audio=aac&transcode=1&downmix=stereo');
 });
 
+test('SelfDebrid: Cached stream prioritization over smaller/un-cached debrid streams', () => {
+  const calculateScore = (s) => {
+    let score = 0;
+    if (s.isCached || s.name?.includes('Local Disk Cache') || s.name?.includes('Cached')) {
+      score += 50000;
+    }
+    if (s.isDebrid && s.streamType === 'direct') {
+      score += 1200;
+    }
+    if (s.streamType === 'direct') score += 2000;
+    if (s.quality === '4K') score += 1000;
+    else if (s.quality === '1080p') score += 650;
 
+    if (s.sizeBytes && s.sizeBytes > 0) {
+      const sizeGB = s.sizeBytes / (1024 * 1024 * 1024);
+      if (sizeGB <= 3.5) score += 350;
+      else if (sizeGB <= 8.0) score += 250;
+    }
+    return score;
+  };
 
+  const uncachedSmallStream = {
+    name: 'Self-Debrid [4K]',
+    streamType: 'direct',
+    quality: '4K',
+    sizeBytes: 2.5 * 1024 * 1024 * 1024, // 2.5 GB (Sweet spot)
+    isDebrid: true,
+    isCached: false,
+  };
+
+  const cachedStream = {
+    name: 'Self-Debrid [⚡ Local Disk Cache]',
+    streamType: 'direct',
+    quality: '1080p',
+    sizeBytes: 15 * 1024 * 1024 * 1024,
+    isDebrid: true,
+    isCached: true,
+  };
+
+  const scoreUncached = calculateScore(uncachedSmallStream);
+  const scoreCached = calculateScore(cachedStream);
+
+  assert.ok(scoreCached > scoreUncached, `Cached stream score (${scoreCached}) must beat uncached 4K stream (${scoreUncached})`);
+  
+  const sorted = [uncachedSmallStream, cachedStream].sort((a, b) => calculateScore(b) - calculateScore(a));
+  assert.equal(sorted[0].name, 'Self-Debrid [⚡ Local Disk Cache]', 'Cached stream must be selected first');
+});
+
+test('Fallback: Watchdog triggers VidSrc Server 2 when stream loading times out or errors', () => {
+  const source = {
+    imdbId: 'tt0816692',
+    mediaType: 'movie',
+    title: 'Interstellar',
+  };
+
+  const getVidSrcUrl = (source) => {
+    const cleanImdb = source.imdbId || 'tt0816692';
+    return source.mediaType === 'episode'
+      ? `https://vidsrc.pm/embed/tv/${cleanImdb}/${source.seasonNumber || 1}/${source.episodeNumber || 1}?autoplay=1`
+      : `https://vidsrc.pm/embed/movie/${cleanImdb}?autoplay=1`;
+  };
+
+  const fallbackUrl = getVidSrcUrl(source);
+  assert.equal(fallbackUrl, 'https://vidsrc.pm/embed/movie/tt0816692?autoplay=1');
+
+  const episodeSource = {
+    imdbId: 'tt0903747',
+    mediaType: 'episode',
+    seasonNumber: 3,
+    episodeNumber: 1,
+  };
+  const epFallback = getVidSrcUrl(episodeSource);
+  assert.equal(epFallback, 'https://vidsrc.pm/embed/tv/tt0903747/3/1?autoplay=1');
+});

@@ -43,6 +43,7 @@ export interface AddonStream {
   audio?: string; // e.g. "Dolby Atmos", "5.1 Surround"
   providerName?: string;
   isDebrid?: boolean;
+  isCached?: boolean;
   behaviorHints?: {
     notWebReady?: boolean;
     bingeGroup?: string;
