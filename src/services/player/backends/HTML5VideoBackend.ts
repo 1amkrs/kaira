@@ -31,11 +31,13 @@ export class HTML5VideoBackend implements IPlayerBackend {
       video.style.objectFit = 'contain';
       video.style.backgroundColor = '#000000';
       video.playsInline = true;
+      video.crossOrigin = 'anonymous';
       video.autoplay = true;
       video.muted = false;
       video.volume = 1.0;
       container.appendChild(video);
     } else {
+      video.crossOrigin = 'anonymous';
       video.muted = false;
       video.volume = 1.0;
     }

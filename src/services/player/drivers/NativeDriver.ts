@@ -13,6 +13,8 @@ export class NativeDriver implements IPlaybackDriver {
   private hlsInstance: Hls | null = null;
   private callbacks: DriverCallbacks | null = null;
   private isDestroyed = false;
+  private currentUrl: string = '';
+  private streamStartTime: number = 0;
 
   private state: DriverState = {
     status: 'idle',
@@ -37,10 +39,13 @@ export class NativeDriver implements IPlaybackDriver {
       video.className = 'tv-native-video-el';
       video.style.cssText = 'width:100%;height:100%;object-fit:contain;background:#000;display:block;';
       video.playsInline = true;
+      video.crossOrigin = 'anonymous';
       video.autoplay = false; // we call play() ourselves after load
       video.preload = 'auto';
       video.controls = false;
       container.appendChild(video);
+    } else {
+      video.crossOrigin = 'anonymous';
     }
 
     // Always unmute and set full volume on init
@@ -96,7 +101,7 @@ export class NativeDriver implements IPlaybackDriver {
 
   private onTimeUpdate = (): void => {
     if (!this.videoElement || this.isDestroyed) return;
-    const cur = this.videoElement.currentTime || 0;
+    const cur = (this.videoElement.currentTime || 0) + this.streamStartTime;
     const dur = this.getValidDuration();
     this.state.currentTime = cur;
     this.callbacks?.onTimeUpdate(cur, dur);
@@ -107,7 +112,8 @@ export class NativeDriver implements IPlaybackDriver {
     const dur = this.videoElement.duration;
     if (isFinite(dur) && dur > 0) {
       this.state.duration = dur;
-      this.callbacks?.onTimeUpdate(this.videoElement.currentTime, dur);
+      const cur = (this.videoElement.currentTime || 0) + this.streamStartTime;
+      this.callbacks?.onTimeUpdate(cur, dur);
     }
   };
 
@@ -159,7 +165,8 @@ export class NativeDriver implements IPlaybackDriver {
     if (this.isDestroyed) return;
     this.callbacks?.onBuffering(false);
     if (this.videoElement) {
-      this.callbacks?.onTimeUpdate(this.videoElement.currentTime, this.getValidDuration());
+      const cur = (this.videoElement.currentTime || 0) + this.streamStartTime;
+      this.callbacks?.onTimeUpdate(cur, this.getValidDuration());
       if (this.wasPlayingBeforeSeek || this.state.status === 'playing') {
         if (this.videoElement.paused) {
           this.videoElement.play().catch(() => {});
@@ -221,6 +228,19 @@ export class NativeDriver implements IPlaybackDriver {
     if (!url || !url.trim()) {
       console.warn('[NativeDriver] loadSource called with empty URL');
       return;
+    }
+
+    this.currentUrl = url;
+    try {
+      const parsedUrl = new URL(url, window.location.href);
+      const startParam = parsedUrl.searchParams.get('start') || parsedUrl.searchParams.get('time') || parsedUrl.searchParams.get('t');
+      if (startParam) {
+        this.streamStartTime = parseFloat(startParam) || 0;
+      } else {
+        this.streamStartTime = 0;
+      }
+    } catch (_) {
+      this.streamStartTime = 0;
     }
 
     if (expectedDuration && isFinite(expectedDuration) && expectedDuration > 0) {
@@ -407,6 +427,55 @@ export class NativeDriver implements IPlaybackDriver {
     const dur = this.getValidDuration();
     const target = dur > 0 ? Math.max(0, Math.min(dur, seconds)) : Math.max(0, seconds);
 
+    const isTranscodeStream = Boolean(
+      this.currentUrl && (
+        this.currentUrl.includes(':8081') ||
+        this.currentUrl.includes('transcode=1') ||
+        this.currentUrl.includes('audio=aac')
+      )
+    );
+
+    if (isTranscodeStream) {
+      const relTarget = target - this.streamStartTime;
+      let isBuffered = false;
+      if (this.videoElement.buffered && relTarget >= 0) {
+        const b = this.videoElement.buffered;
+        for (let i = 0; i < b.length; i++) {
+          if (relTarget >= b.start(i) && relTarget <= b.end(i)) {
+            isBuffered = true;
+            break;
+          }
+        }
+      }
+
+      if (isBuffered) {
+        try {
+          this.videoElement.currentTime = relTarget;
+          if (this.wasPlayingBeforeSeek && this.videoElement.paused) {
+            this.videoElement.play().catch(() => {});
+          }
+        } catch (e) {
+          console.warn('[NativeDriver] buffered seek failed:', e);
+        }
+        this.state.currentTime = target;
+        this.callbacks?.onTimeUpdate(target, dur > 0 ? dur : this.state.duration);
+        return;
+      }
+
+      // Beyond current buffer: re-request stream starting from target second
+      this.streamStartTime = Math.floor(target);
+      try {
+        const urlObj = new URL(this.currentUrl, window.location.href);
+        urlObj.searchParams.set('start', String(this.streamStartTime));
+        this.loadSource(urlObj.toString(), 0, dur > 0 ? dur : this.state.duration);
+      } catch (_) {
+        this.videoElement.currentTime = target;
+      }
+      this.state.currentTime = target;
+      this.callbacks?.onTimeUpdate(target, dur > 0 ? dur : this.state.duration);
+      return;
+    }
+
     try {
       this.videoElement.currentTime = target;
       if (this.wasPlayingBeforeSeek && this.videoElement.paused) {
@@ -422,7 +491,7 @@ export class NativeDriver implements IPlaybackDriver {
 
   public seekBy(deltaSeconds: number): void {
     if (!this.videoElement || this.isDestroyed || !isFinite(deltaSeconds)) return;
-    const cur = isFinite(this.videoElement.currentTime) ? this.videoElement.currentTime : (this.state.currentTime || 0);
+    const cur = (this.videoElement.currentTime || 0) + this.streamStartTime;
     this.seekTo(cur + deltaSeconds);
   }
 
@@ -514,7 +583,7 @@ export class NativeDriver implements IPlaybackDriver {
         }
       }
       if (isFinite(this.videoElement.currentTime)) {
-        this.state.currentTime = this.videoElement.currentTime;
+        this.state.currentTime = this.videoElement.currentTime + this.streamStartTime;
       }
       const dur = this.getValidDuration();
       if (dur > 0) this.state.duration = dur;

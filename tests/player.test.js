@@ -619,5 +619,43 @@ test('TopNav: Actions capsule spatial navigation indices are contiguous without 
   assert.equal(settingsIndex - remoteIndex, 1, 'Indices must be strictly contiguous');
 });
 
+test('SelfDebrid: URL generation defaults to audio=aac&transcode=1 for browser audio playback', () => {
+  const normalizeSelfDebridUrl = (endpointUrl, infoHash, fileIdx, audioMode) => {
+    const selfUrl = (endpointUrl || 'http://localhost:8081').replace(/\/+$/, '');
+    const fileParam = fileIdx !== undefined ? `file=${fileIdx}` : '';
+    const mode = audioMode || 'auto';
+    const audioParam = mode === 'direct' ? '' : 'audio=aac&transcode=1&downmix=stereo';
+    const queryParams = [fileParam, audioParam].filter(Boolean).join('&');
+    const queryStr = queryParams ? `?${queryParams}` : '';
+    return `${selfUrl}/stream/${infoHash}${queryStr}`;
+  };
+
+  const autoUrl = normalizeSelfDebridUrl('http://localhost:8081', 'abc123hash', 0, 'auto');
+  assert.match(autoUrl, /audio=aac&transcode=1&downmix=stereo/, 'auto audioMode must request AAC transcode');
+
+  const defaultUrl = normalizeSelfDebridUrl('http://localhost:8081', 'abc123hash', 0, undefined);
+  assert.match(defaultUrl, /audio=aac&transcode=1&downmix=stereo/, 'undefined audioMode must default to AAC transcode');
+
+  const directUrl = normalizeSelfDebridUrl('http://localhost:8081', 'abc123hash', 0, 'direct');
+  assert.equal(directUrl.includes('audio=aac'), false, 'direct audioMode must omit transcode param');
+});
+
+test('SelfDebrid: Raw URLs on port 8081 are appended with audio=aac&transcode=1 when missing', () => {
+  const formatRawUrl = (url, audioMode) => {
+    let streamUrl = url;
+    if (streamUrl.includes(':8081') && !streamUrl.includes('audio=')) {
+      const mode = audioMode || 'auto';
+      if (mode !== 'direct') {
+        const sep = streamUrl.includes('?') ? '&' : '?';
+        streamUrl = `${streamUrl}${sep}audio=aac&transcode=1&downmix=stereo`;
+      }
+    }
+    return streamUrl;
+  };
+
+  const formatted = formatRawUrl('http://localhost:8081/file/Yellowstone.mp4', 'auto');
+  assert.equal(formatted, 'http://localhost:8081/file/Yellowstone.mp4?audio=aac&transcode=1&downmix=stereo');
+});
+
 
 

@@ -389,6 +389,13 @@ class AddonService {
 
     if (raw.url) {
       streamUrl = raw.url;
+      if (isSelfDebrid && streamUrl.includes(':8081') && !streamUrl.includes('audio=')) {
+        const audioMode = this.debridConfig.audioMode || 'auto';
+        if (audioMode !== 'direct') {
+          const sep = streamUrl.includes('?') ? '&' : '?';
+          streamUrl = `${streamUrl}${sep}audio=aac&transcode=1&downmix=stereo`;
+        }
+      }
       streamType = raw.url.includes('.mp4') || raw.url.includes('.mkv') || raw.url.includes('.m3u8') ? 'direct' : 'embed';
     } else if (raw.infoHash) {
       if (isSelfDebrid) {
@@ -396,7 +403,7 @@ class AddonService {
         // an0mal1a/self-debrid route is /stream/<torrent_hash>
         const fileParam = raw.fileIdx !== undefined ? `file=${raw.fileIdx}` : '';
         const audioMode = this.debridConfig.audioMode || 'auto';
-        const audioParam = audioMode === 'aac_transcode' ? 'audio=aac&transcode=1' : audioMode === 'stereo_downmix' ? 'downmix=stereo' : '';
+        const audioParam = audioMode === 'direct' ? '' : 'audio=aac&transcode=1&downmix=stereo';
         const queryParams = [fileParam, audioParam].filter(Boolean).join('&');
         const queryStr = queryParams ? `?${queryParams}` : '';
         
