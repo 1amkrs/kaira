@@ -12,6 +12,14 @@
   width: clamp(280px, 22.5vw, 420px);
 }
 
+/* Inside CSS Grid containers, allow grid tracks to drive card width */
+.tv-search-posters-grid .tv-show-card-wrapper,
+.tv-search-posters-grid .tv-show-card-wrapper.ratio-poster,
+.tv-search-posters-grid .tv-show-card-wrapper.ratio-16\:9 {
+  width: 100% !important;
+  max-width: 100%;
+}
+
 .tv-show-card {
   display: flex;
   flex-direction: column;
@@ -88,6 +96,23 @@
   padding: 2px 8px;
   border-radius: var(--radius-sm);
   border: 1px solid var(--border-subtle);
+}
+
+.tv-card-play-overlay {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 46px;
+  height: 46px;
+  border-radius: 50%;
+  background-color: var(--google-blue);
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 18px rgba(26, 115, 232, 0.5);
+  animation: tvPlayBtnPop var(--duration-exit) var(--easing-enter);
 }
 
 .tv-show-meta {

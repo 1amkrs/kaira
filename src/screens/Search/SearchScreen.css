@@ -321,14 +321,24 @@
 
 .tv-search-posters-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-  gap: var(--space-lg);
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  column-gap: clamp(20px, 1.8vw, 28px);
+  row-gap: clamp(28px, 2.5vh, 40px);
 }
 
 .tv-search-albums-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
-  gap: var(--space-lg);
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  column-gap: clamp(20px, 1.8vw, 28px);
+  row-gap: clamp(28px, 2.5vh, 40px);
+}
+
+/* Ensure cards adapt 100% to grid columns rather than overflowing with fixed clamp widths */
+.tv-search-posters-grid .tv-movie-card-wrapper,
+.tv-search-posters-grid .tv-show-card-wrapper,
+.tv-search-albums-grid .tv-album-card-wrapper {
+  width: 100% !important;
+  max-width: 100%;
 }
 
 .tv-search-tracks-list {
@@ -414,12 +424,14 @@
 
   .tv-search-posters-grid {
     grid-template-columns: repeat(2, 1fr);
-    gap: 10px;
+    column-gap: 14px;
+    row-gap: 20px;
   }
 
   .tv-search-albums-grid {
     grid-template-columns: repeat(2, 1fr);
-    gap: 10px;
+    column-gap: 14px;
+    row-gap: 20px;
   }
 }
 
@@ -439,7 +451,8 @@
   .tv-search-posters-grid,
   .tv-search-albums-grid {
     grid-template-columns: repeat(2, 1fr);
-    gap: 8px;
+    column-gap: 10px;
+    row-gap: 16px;
   }
 }
 

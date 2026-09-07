@@ -5,6 +5,12 @@
   text-align: left;
 }
 
+/* Inside CSS Grid containers, allow grid tracks to drive card width */
+.tv-search-albums-grid .tv-album-card-wrapper {
+  width: 100% !important;
+  max-width: 100%;
+}
+
 .tv-album-card {
   display: flex;
   flex-direction: column;

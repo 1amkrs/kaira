@@ -12,6 +12,14 @@
   width: clamp(280px, 22.5vw, 420px);
 }
 
+/* Inside CSS Grid containers, allow grid tracks to drive card width */
+.tv-search-posters-grid .tv-movie-card-wrapper,
+.tv-search-posters-grid .tv-movie-card-wrapper.ratio-poster,
+.tv-search-posters-grid .tv-movie-card-wrapper.ratio-16\:9 {
+  width: 100% !important;
+  max-width: 100%;
+}
+
 .tv-movie-card {
   display: flex;
   flex-direction: column;

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Tv } from 'lucide-react';
+import { Tv, Play } from 'lucide-react';
 import { Show } from '../../types/media';
 import { Focusable } from '../Focusable/Focusable';
 import './ShowCard.css';
@@ -60,6 +60,13 @@ export const ShowCard: React.FC<ShowCardProps> = ({
             {/* Network / Type badge */}
             {show.network && (
               <span className="tv-show-network-tag">{show.network}</span>
+            )}
+
+            {/* Play Overlay */}
+            {isFocused && (
+              <div className="tv-card-play-overlay">
+                <Play size={20} fill="currentColor" />
+              </div>
             )}
           </div>
 

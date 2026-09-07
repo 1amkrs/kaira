@@ -95,7 +95,7 @@
 
 .tv-rail-scroll-track {
   display: flex;
-  gap: clamp(16px, 1.4vw, 24px);
+  gap: clamp(20px, 1.8vw, 28px);
   padding: 16px var(--screen-padding-x) 32px var(--screen-padding-x);
   align-items: flex-start;
   overflow-x: auto;
