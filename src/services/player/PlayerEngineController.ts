@@ -108,7 +108,11 @@ export class PlayerEngineController {
         onTimeUpdate: (cur, dur) => {
           if (!isFinite(cur) || cur < 0) return;
           this.state.currentTime = cur;
-          if (isFinite(dur) && dur > 0) this.state.duration = dur;
+          if (isFinite(dur) && dur > 60) {
+            this.state.duration = dur;
+          } else if (isFinite(dur) && dur > 0 && (!this.state.duration || this.state.duration === 0)) {
+            this.state.duration = dur;
+          }
           this.subtitleEngine.updateTime(cur);
           this.notify();
         },

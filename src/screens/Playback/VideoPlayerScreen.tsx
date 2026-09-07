@@ -165,7 +165,15 @@ export const VideoPlayerScreen: React.FC<VideoPlayerScreenProps> = ({
     engineRef.current = engine;
 
     const unsub = engine.subscribe((s) => {
-      setEngineState(s);
+      setEngineState((prev) => {
+        const fallback = source.durationSeconds || (source.mediaType === 'episode' ? 2700 : 7200);
+        const resolvedDuration =
+          s.duration && s.duration > 60 ? s.duration : prev.duration > 60 ? prev.duration : fallback;
+        return {
+          ...s,
+          duration: resolvedDuration,
+        };
+      });
     });
 
     spatialNav.pushScope('video-player-screen');
@@ -201,6 +209,20 @@ export const VideoPlayerScreen: React.FC<VideoPlayerScreenProps> = ({
 
     if (source.subtitles && source.subtitles.length > 0) {
       setSelectedSubId(source.subtitles[0].id);
+    }
+
+    if (source.streamUrl.includes(':8081')) {
+      fetch(source.streamUrl, { method: 'HEAD' })
+        .then((res) => {
+          const h = res.headers.get('X-Media-Duration') || res.headers.get('Content-Duration');
+          if (h) {
+            const p = parseFloat(h);
+            if (isFinite(p) && p > 60) {
+              setEngineState((prev) => ({ ...prev, duration: p }));
+            }
+          }
+        })
+        .catch(() => {});
     }
   }, [source.streamUrl, source.streamType]);
 
@@ -720,7 +742,7 @@ export const VideoPlayerScreen: React.FC<VideoPlayerScreenProps> = ({
 
   const handleScrubberCommit = (pos: number) => {
     const dur =
-      engineState.duration > 0
+      engineState.duration > 60
         ? engineState.duration
         : source.durationSeconds || (source.mediaType === 'episode' ? 2700 : 7200);
     seekTo(pos * dur);
@@ -740,10 +762,13 @@ export const VideoPlayerScreen: React.FC<VideoPlayerScreenProps> = ({
   };
 
   const currentScrubFraction = isScrubbing && scrubPosition !== null ? scrubPosition : null;
+  const fallbackDur = source.durationSeconds || (source.mediaType === 'episode' ? 2700 : 7200);
   const currentEffectiveDur =
-    engineState.duration > 0
+    engineState.duration > 60
       ? engineState.duration
-      : source.durationSeconds || (source.mediaType === 'episode' ? 2700 : 7200);
+      : fallbackDur > 0
+      ? fallbackDur
+      : engineState.duration;
 
   const displayCurrentTime =
     currentScrubFraction !== null ? currentScrubFraction * currentEffectiveDur : engineState.currentTime;
@@ -763,8 +788,8 @@ export const VideoPlayerScreen: React.FC<VideoPlayerScreenProps> = ({
     nextEpisode !== null &&
     engineState.status === 'playing' &&
     !isMenuOpen &&
-    engineState.duration > 60 &&
-    engineState.currentTime >= engineState.duration - 25;
+    currentEffectiveDur > 60 &&
+    engineState.currentTime >= currentEffectiveDur - 25;
 
   return (
     <div

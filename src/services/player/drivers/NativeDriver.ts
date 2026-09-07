@@ -17,6 +17,7 @@ export class NativeDriver implements IPlaybackDriver {
   private streamStartTime: number = 0;
   private isTranscodeSeeking: boolean = false;
   private transcodeSeekTimer: any = null;
+  private expectedDuration: number = 0;
 
   private state: DriverState = {
     status: 'idle',
@@ -112,18 +113,36 @@ export class NativeDriver implements IPlaybackDriver {
   private onLoadedMetadata = (): void => {
     if (!this.videoElement || this.isDestroyed) return;
     const dur = this.videoElement.duration;
-    if (isFinite(dur) && dur > 0) {
+    const isTranscodeStream = Boolean(
+      this.currentUrl && (
+        this.currentUrl.includes(':8081') ||
+        this.currentUrl.includes('transcode=1') ||
+        this.currentUrl.includes('audio=aac')
+      )
+    );
+
+    if (!isTranscodeStream && isFinite(dur) && dur > 60) {
       this.state.duration = dur;
-      const cur = (this.videoElement.currentTime || 0) + this.streamStartTime;
-      this.callbacks?.onTimeUpdate(cur, dur);
     }
+    const finalDur = this.getValidDuration();
+    const cur = (this.videoElement.currentTime || 0) + this.streamStartTime;
+    this.callbacks?.onTimeUpdate(cur, finalDur);
   };
 
   private onDurationChange = (): void => {
     if (!this.videoElement || this.isDestroyed) return;
     const dur = this.videoElement.duration;
-    if (isFinite(dur) && dur > 0) {
+    const isTranscodeStream = Boolean(
+      this.currentUrl && (
+        this.currentUrl.includes(':8081') ||
+        this.currentUrl.includes('transcode=1') ||
+        this.currentUrl.includes('audio=aac')
+      )
+    );
+
+    if (!isTranscodeStream && isFinite(dur) && dur > 60) {
       this.state.duration = dur;
+      this.callbacks?.onTimeUpdate(this.state.currentTime, dur);
     }
   };
 
@@ -247,16 +266,22 @@ export class NativeDriver implements IPlaybackDriver {
       this.streamStartTime = 0;
     }
 
-    if (expectedDuration && isFinite(expectedDuration) && expectedDuration > 0) {
+    if (expectedDuration && isFinite(expectedDuration) && expectedDuration > 60) {
+      this.expectedDuration = expectedDuration;
       this.state.duration = expectedDuration;
-    } else if (url.includes(':8081')) {
+    } else {
+      this.expectedDuration = 0;
+    }
+
+    if (url.includes(':8081')) {
       // Background probe duration from server headers
       fetch(url, { method: 'HEAD' })
         .then((res) => {
           const headerDur = res.headers.get('X-Media-Duration') || res.headers.get('Content-Duration');
           if (headerDur) {
             const parsed = parseFloat(headerDur);
-            if (isFinite(parsed) && parsed > 0) {
+            if (isFinite(parsed) && parsed > 60) {
+              this.expectedDuration = parsed;
               this.state.duration = parsed;
               this.callbacks?.onTimeUpdate(this.state.currentTime, parsed);
             }
@@ -597,13 +622,31 @@ export class NativeDriver implements IPlaybackDriver {
   // ─── Helpers ──────────────────────────────────────────────────────────────
 
   private getValidDuration(): number {
-    if (!this.videoElement) return this.state.duration || 0;
-    const d = this.videoElement.duration;
-    if (isFinite(d) && d > 0) {
-      this.state.duration = d;
-      return d;
+    const isTranscodeStream = Boolean(
+      this.currentUrl && (
+        this.currentUrl.includes(':8081') ||
+        this.currentUrl.includes('transcode=1') ||
+        this.currentUrl.includes('audio=aac')
+      )
+    );
+
+    // In transcode streams (fragmented MP4 pipe), HTML5 video duration is only the buffered chunks (e.g. 9s)
+    // NEVER use HTML5 video duration for transcode streams when expectedDuration or a valid duration exists!
+    if (isTranscodeStream) {
+      if (this.expectedDuration > 60) return this.expectedDuration;
+      if (this.state.duration > 60) return this.state.duration;
+      return this.expectedDuration || this.state.duration || 0;
     }
-    return this.state.duration || 0;
+
+    if (this.videoElement) {
+      const d = this.videoElement.duration;
+      if (isFinite(d) && d > 60) {
+        this.state.duration = d;
+        return d;
+      }
+    }
+
+    return this.expectedDuration || this.state.duration || 0;
   }
 
   public getState(): DriverState {

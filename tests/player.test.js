@@ -840,3 +840,32 @@ test('Scrubber: Pointer move updates position preview without triggering seekTo 
   assert.equal(scrubPosition, null, 'Scrub preview resets after commit');
 });
 
+test('Duration: Fragment chunk buffer duration (e.g. 9s) never overwrites expected media duration', () => {
+  let stateDuration = 2407; // 40m 7s expected
+  const expectedDuration = 2407;
+
+  const onTimeUpdate = (reportedCur, reportedDur) => {
+    // Controller logic
+    if (Number.isFinite(reportedDur) && reportedDur > 60) {
+      stateDuration = reportedDur;
+    } else if (Number.isFinite(reportedDur) && reportedDur > 0 && (!stateDuration || stateDuration === 0)) {
+      stateDuration = reportedDur;
+    }
+  };
+
+  // Browser receives first few fragments and fires durationchange / timeupdate with 9s
+  const chunkBufferDur = 9.23;
+  onTimeUpdate(5.0, chunkBufferDur);
+
+  assert.equal(stateDuration, 2407, 'Chunk buffer duration (9.23s) must NOT overwrite real media duration (2407s)');
+
+  // Next chunk arrives at 10.5s
+  onTimeUpdate(6.0, 10.5);
+  assert.equal(stateDuration, 2407, 'Subsequent chunk buffer duration (10.5s) must NOT overwrite real media duration');
+
+  // Valid full duration update (e.g. from HEAD or metadata)
+  onTimeUpdate(6.0, 2406.68);
+  assert.equal(stateDuration, 2406.68, 'Full duration (>60s) updates successfully');
+});
+
+
