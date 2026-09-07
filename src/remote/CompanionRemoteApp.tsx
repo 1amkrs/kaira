@@ -4,8 +4,7 @@ import {
   Tv,
   LogOut,
   Home,
-  Layers,
-  MessageSquareQuote
+  Layers
 } from 'lucide-react';
 import { remoteClient, ConnectionStatus } from './remoteClient';
 import { TVStateSnapshot } from '../services/remote/remoteTypes';
@@ -135,16 +134,6 @@ export const CompanionRemoteApp: React.FC = () => {
           aria-label="Now Playing"
         >
           <Layers size={18} strokeWidth={2.2} />
-        </button>
-
-        <button
-          type="button"
-          className="ref-dock-tab"
-          onClick={handleSource}
-          title="Quick Menu"
-          aria-label="Quick Menu"
-        >
-          <MessageSquareQuote size={18} strokeWidth={2.2} />
         </button>
       </nav>
 

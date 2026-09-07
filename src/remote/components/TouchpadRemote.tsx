@@ -6,17 +6,11 @@ import {
   ChevronRight,
   Undo2,
   Home,
-  LogOut,
   Plus,
   Minus,
   VolumeX,
-  Settings,
-  Keyboard,
-  Mic,
   Play,
-  Pause,
-  Rewind,
-  FastForward
+  Pause
 } from 'lucide-react';
 import { remoteClient } from '../remoteClient';
 import { TVStateSnapshot } from '../../services/remote/remoteTypes';
@@ -29,6 +23,7 @@ export const TouchpadRemote: React.FC<TouchpadRemoteProps> = ({ tvState }) => {
   const [controlMode, setControlMode] = useState<'clickpad' | 'touchpad'>('clickpad');
   const [activeDir, setActiveDir] = useState<'up' | 'down' | 'left' | 'right' | null>(null);
   const [ripples, setRipples] = useState<Array<{ x: number; y: number; id: number }>>([]);
+  const isMediaPlaying = tvState?.nowPlaying?.isPlaying || false;
 
   // Touch Surface Tracking
   const touchStartRef = useRef<{ x: number; y: number; time: number } | null>(null);
@@ -63,9 +58,9 @@ export const TouchpadRemote: React.FC<TouchpadRemoteProps> = ({ tvState }) => {
     remoteClient.sendCommand('HOME');
   };
 
-  const handleInput = () => {
+  const handlePlayPause = () => {
     remoteClient.triggerHaptic(15);
-    remoteClient.sendCommand('QUICK_SETTINGS');
+    remoteClient.sendCommand('PLAY_PAUSE');
   };
 
   const handleVolumeDelta = (delta: number) => {
@@ -81,46 +76,6 @@ export const TouchpadRemote: React.FC<TouchpadRemoteProps> = ({ tvState }) => {
   const handleToggleMute = () => {
     remoteClient.triggerHaptic(15);
     remoteClient.sendCommand('MUTE_TOGGLE');
-  };
-
-  const handleSettings = () => {
-    remoteClient.triggerHaptic(15);
-    remoteClient.sendCommand('QUICK_SETTINGS');
-  };
-
-  const handleKeyboard = () => {
-    remoteClient.triggerHaptic(15);
-    remoteClient.sendCommand('SEARCH');
-  };
-
-  const handleNumericQuick = () => {
-    remoteClient.triggerHaptic(15);
-    remoteClient.sendCommand('OPEN_SLEEP_TIMER');
-  };
-
-  const handleVoice = () => {
-    remoteClient.triggerHaptic(15);
-    remoteClient.sendCommand('SEARCH');
-  };
-
-  const handlePlay = () => {
-    remoteClient.triggerHaptic(15);
-    remoteClient.sendCommand('PLAY');
-  };
-
-  const handlePause = () => {
-    remoteClient.triggerHaptic(15);
-    remoteClient.sendCommand('PAUSE');
-  };
-
-  const handleRewind = () => {
-    remoteClient.triggerHaptic(12);
-    remoteClient.sendCommand('SEEK_RELATIVE', { delta: -15 });
-  };
-
-  const handleFastForward = () => {
-    remoteClient.triggerHaptic(12);
-    remoteClient.sendCommand('SEEK_RELATIVE', { delta: 15 });
   };
 
   // Glass Touchpad Gestures
@@ -304,7 +259,7 @@ export const TouchpadRemote: React.FC<TouchpadRemoteProps> = ({ tvState }) => {
         </div>
       )}
 
-      {/* ─── 2. Middle Row: Back, Home, Source/Input ─── */}
+      {/* ─── 2. Middle Row: Back, Home, Play/Pause ─── */}
       <div className="ref-mid-row">
         <button
           type="button"
@@ -329,11 +284,15 @@ export const TouchpadRemote: React.FC<TouchpadRemoteProps> = ({ tvState }) => {
         <button
           type="button"
           className="ref-circle-btn"
-          onClick={handleInput}
-          title="Input / Menu"
-          aria-label="Input / Menu"
+          onClick={handlePlayPause}
+          title={isMediaPlaying ? 'Pause' : 'Play'}
+          aria-label={isMediaPlaying ? 'Pause' : 'Play'}
         >
-          <LogOut size={24} strokeWidth={2.4} style={{ transform: 'rotate(180deg)' }} />
+          {isMediaPlaying ? (
+            <Pause size={22} fill="currentColor" />
+          ) : (
+            <Play size={22} fill="currentColor" style={{ marginLeft: '2px' }} />
+          )}
         </button>
       </div>
 
@@ -391,95 +350,6 @@ export const TouchpadRemote: React.FC<TouchpadRemoteProps> = ({ tvState }) => {
             aria-label="Channel Down"
           >
             <ChevronDown size={26} strokeWidth={2.6} />
-          </button>
-        </div>
-      </div>
-
-      {/* ─── 4. Bottom Function Rows ─── */}
-      <div className="ref-func-grid">
-        {/* Utility Row: Settings, Keyboard, 123, Mic */}
-        <div className="ref-func-row">
-          <button
-            type="button"
-            className="ref-pill-btn"
-            onClick={handleSettings}
-            title="Settings"
-            aria-label="Settings"
-          >
-            <Settings size={20} strokeWidth={2.2} />
-          </button>
-
-          <button
-            type="button"
-            className="ref-pill-btn"
-            onClick={handleKeyboard}
-            title="Keyboard / Search"
-            aria-label="Keyboard"
-          >
-            <Keyboard size={20} strokeWidth={2.2} />
-          </button>
-
-          <button
-            type="button"
-            className="ref-pill-btn"
-            onClick={handleNumericQuick}
-            title="Quick 123"
-            aria-label="123"
-          >
-            123
-          </button>
-
-          <button
-            type="button"
-            className="ref-pill-btn"
-            onClick={handleVoice}
-            title="Voice Search"
-            aria-label="Voice Search"
-          >
-            <Mic size={20} strokeWidth={2.2} />
-          </button>
-        </div>
-
-        {/* Media Row: Play, Pause, Rewind, Fast Forward */}
-        <div className="ref-func-row">
-          <button
-            type="button"
-            className="ref-pill-btn"
-            onClick={handlePlay}
-            title="Play"
-            aria-label="Play"
-          >
-            <Play size={18} fill="currentColor" strokeWidth={0} />
-          </button>
-
-          <button
-            type="button"
-            className="ref-pill-btn"
-            onClick={handlePause}
-            title="Pause"
-            aria-label="Pause"
-          >
-            <Pause size={18} fill="currentColor" strokeWidth={0} />
-          </button>
-
-          <button
-            type="button"
-            className="ref-pill-btn"
-            onClick={handleRewind}
-            title="Rewind 15s"
-            aria-label="Rewind"
-          >
-            <Rewind size={20} fill="currentColor" strokeWidth={0} />
-          </button>
-
-          <button
-            type="button"
-            className="ref-pill-btn"
-            onClick={handleFastForward}
-            title="Fast Forward 15s"
-            aria-label="Fast Forward"
-          >
-            <FastForward size={20} fill="currentColor" strokeWidth={0} />
           </button>
         </div>
       </div>
