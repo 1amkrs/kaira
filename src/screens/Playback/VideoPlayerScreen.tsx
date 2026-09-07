@@ -102,6 +102,7 @@ export const VideoPlayerScreen: React.FC<VideoPlayerScreenProps> = ({
 
   // Scrubbing & Tooltip State
   const [isScrubbing, setIsScrubbing] = useState<boolean>(false);
+  const [scrubPosition, setScrubPosition] = useState<number | null>(null);
   const [hoverPosition, setHoverPosition] = useState<number | null>(null);
 
   // Audio Tracks State
@@ -707,10 +708,21 @@ export const VideoPlayerScreen: React.FC<VideoPlayerScreenProps> = ({
   }, [pingHud, isMenuOpen, onExit, handleTogglePlayPause, seekBy, triggerFeedback]);
 
   // 6. Scrubber Drag & Pointer Handlers
-  const handleScrubberPointer = (e: React.PointerEvent<HTMLDivElement>) => {
+  const handleScrubberMove = (e: React.PointerEvent<HTMLDivElement>) => {
     const rect = e.currentTarget.getBoundingClientRect();
+    if (rect.width <= 0) return;
     const pos = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
-    const dur = engineState.duration > 0 ? engineState.duration : source.durationSeconds || 7200;
+    setHoverPosition(pos);
+    if (isScrubbing) {
+      setScrubPosition(pos);
+    }
+  };
+
+  const handleScrubberCommit = (pos: number) => {
+    const dur =
+      engineState.duration > 0
+        ? engineState.duration
+        : source.durationSeconds || (source.mediaType === 'episode' ? 2700 : 7200);
     seekTo(pos * dur);
   };
 
@@ -727,8 +739,21 @@ export const VideoPlayerScreen: React.FC<VideoPlayerScreenProps> = ({
     return `${m}:${s < 10 ? '0' : ''}${s}`;
   };
 
+  const currentScrubFraction = isScrubbing && scrubPosition !== null ? scrubPosition : null;
+  const currentEffectiveDur =
+    engineState.duration > 0
+      ? engineState.duration
+      : source.durationSeconds || (source.mediaType === 'episode' ? 2700 : 7200);
+
+  const displayCurrentTime =
+    currentScrubFraction !== null ? currentScrubFraction * currentEffectiveDur : engineState.currentTime;
+
   const progressPct =
-    engineState.duration > 0 ? Math.min(100, (engineState.currentTime / engineState.duration) * 100) : 0;
+    currentScrubFraction !== null
+      ? currentScrubFraction * 100
+      : currentEffectiveDur > 0
+      ? Math.min(100, (engineState.currentTime / currentEffectiveDur) * 100)
+      : 0;
 
   const isInsideIntro =
     introSegment && engineState.currentTime >= introSegment.start && engineState.currentTime <= introSegment.end;
@@ -939,7 +964,7 @@ export const VideoPlayerScreen: React.FC<VideoPlayerScreenProps> = ({
           <div className="tv-hud-bottom">
           {/* Timeline Row */}
           <div className="tv-hud-timeline-row">
-            <span className="tv-hud-time">{formatTime(engineState.currentTime)}</span>
+            <span className="tv-hud-time">{formatTime(displayCurrentTime)}</span>
 
             <Focusable
               id="player-scrubber-bar"
@@ -955,16 +980,29 @@ export const VideoPlayerScreen: React.FC<VideoPlayerScreenProps> = ({
                   }`}
                   onPointerDown={(e) => {
                     setIsScrubbing(true);
-                    handleScrubberPointer(e);
-                  }}
-                  onPointerMove={(e) => {
-                    if (isScrubbing) handleScrubberPointer(e);
                     const rect = e.currentTarget.getBoundingClientRect();
-                    setHoverPosition(Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width)));
+                    if (rect.width > 0) {
+                      const pos = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+                      setScrubPosition(pos);
+                      setHoverPosition(pos);
+                    }
                   }}
-                  onPointerUp={() => setIsScrubbing(false)}
-                  onPointerLeave={() => {
+                  onPointerMove={handleScrubberMove}
+                  onPointerUp={(e) => {
+                    if (isScrubbing) {
+                      const rect = e.currentTarget.getBoundingClientRect();
+                      const pos = rect.width > 0 ? Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width)) : 0;
+                      handleScrubberCommit(scrubPosition !== null ? scrubPosition : pos);
+                    }
                     setIsScrubbing(false);
+                    setScrubPosition(null);
+                  }}
+                  onPointerLeave={() => {
+                    if (isScrubbing && scrubPosition !== null) {
+                      handleScrubberCommit(scrubPosition);
+                    }
+                    setIsScrubbing(false);
+                    setScrubPosition(null);
                     setHoverPosition(null);
                   }}
                 >
@@ -982,8 +1020,7 @@ export const VideoPlayerScreen: React.FC<VideoPlayerScreenProps> = ({
                         style={{ left: `${hoverPosition !== null ? hoverPosition * 100 : progressPct}%` }}
                       >
                         {formatTime(
-                          (hoverPosition !== null ? hoverPosition : progressPct / 100) *
-                            (engineState.duration > 0 ? engineState.duration : source.durationSeconds || 7200)
+                          (hoverPosition !== null ? hoverPosition : progressPct / 100) * currentEffectiveDur
                         )}
                       </div>
                     )}
@@ -993,7 +1030,7 @@ export const VideoPlayerScreen: React.FC<VideoPlayerScreenProps> = ({
             </Focusable>
 
             <span className="tv-hud-time">
-              {formatTime(engineState.duration || source.durationSeconds || (source.mediaType === 'episode' ? 2700 : 7200))}
+              {formatTime(currentEffectiveDur)}
             </span>
           </div>
 

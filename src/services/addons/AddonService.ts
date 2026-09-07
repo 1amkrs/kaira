@@ -281,6 +281,7 @@ class AddonService {
             providerName: 'Self-Debrid Local',
             isDebrid: true,
             isCached: true,
+            durationSeconds: c.duration ? Math.round(c.duration) : undefined,
           });
         }
       } catch (err) {

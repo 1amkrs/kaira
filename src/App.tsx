@@ -187,6 +187,9 @@ export const App: React.FC = () => {
         if (best) {
           source.streamUrl = best.url;
           source.streamType = best.streamType;
+          if (best.durationSeconds) {
+            source.durationSeconds = best.durationSeconds;
+          }
         }
       } catch (e) {}
     }
@@ -236,6 +239,9 @@ export const App: React.FC = () => {
         if (best) {
           source.streamUrl = best.url;
           source.streamType = best.streamType;
+          if (best.durationSeconds) {
+            source.durationSeconds = best.durationSeconds;
+          }
         }
       } catch (e) {}
     }

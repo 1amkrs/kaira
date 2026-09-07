@@ -44,6 +44,7 @@ export interface AddonStream {
   providerName?: string;
   isDebrid?: boolean;
   isCached?: boolean;
+  durationSeconds?: number;
   behaviorHints?: {
     notWebReady?: boolean;
     bingeGroup?: string;

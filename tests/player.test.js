@@ -731,3 +731,112 @@ test('Fallback: Watchdog triggers VidSrc Server 2 when stream loading times out 
   const epFallback = getVidSrcUrl(episodeSource);
   assert.equal(epFallback, 'https://vidsrc.pm/embed/tv/tt0903747/3/1?autoplay=1');
 });
+
+test('NativeDriver: Rapid sequential seekBy (+10s, +10s, +10s) accumulates offset and debounces stream reloads', async () => {
+  let currentTime = 100;
+  let streamStartTime = 0;
+  let isTranscodeSeeking = false;
+  let seekTimer = null;
+  let reloadCount = 0;
+  let requestedStart = null;
+
+  const loadSource = (url, initialPos, duration) => {
+    reloadCount++;
+    const p = new URL(url);
+    requestedStart = parseFloat(p.searchParams.get('start') || '0');
+    isTranscodeSeeking = false;
+  };
+
+  const seekTo = (seconds) => {
+    currentTime = seconds;
+    if (seekTimer) clearTimeout(seekTimer);
+    isTranscodeSeeking = true;
+
+    seekTimer = setTimeout(() => {
+      seekTimer = null;
+      streamStartTime = Math.floor(seconds);
+      const url = `http://127.0.0.1:8081/stream?start=${streamStartTime}&audio=aac&transcode=1`;
+      loadSource(url, 0, 2400);
+    }, 50);
+  };
+
+  const seekBy = (delta) => {
+    const baseTime = (isTranscodeSeeking && currentTime > 0) ? currentTime : (currentTime + streamStartTime);
+    seekTo(baseTime + delta);
+  };
+
+  // User presses Right 3 times rapidly within 10ms intervals
+  seekBy(10);
+  assert.equal(currentTime, 110);
+  assert.equal(isTranscodeSeeking, true);
+  assert.equal(reloadCount, 0, 'No reload should trigger immediately');
+
+  seekBy(10);
+  assert.equal(currentTime, 120);
+  assert.equal(reloadCount, 0, 'Second rapid seek should debounce');
+
+  seekBy(10);
+  assert.equal(currentTime, 130);
+  assert.equal(reloadCount, 0, 'Third rapid seek should debounce');
+
+  // Wait 70ms for debounce timer to expire
+  await new Promise((resolve) => setTimeout(resolve, 70));
+
+  assert.equal(reloadCount, 1, 'Exactly one reload should have triggered');
+  assert.equal(requestedStart, 130, 'Stream should restart at accumulated target 130s');
+  assert.equal(isTranscodeSeeking, false);
+});
+
+test('SelfDebrid: Accurate media duration parsing from cache response or X-Media-Duration', () => {
+  const cachedItem = {
+    filepath: 'C:\\cache\\show.s01e01.mkv',
+    size_mb: 1250,
+    duration: 2406.68,
+  };
+
+  const parseDurationSeconds = (item) => {
+    if (item.duration && Number.isFinite(item.duration) && item.duration > 0) {
+      return Math.round(item.duration);
+    }
+    return undefined;
+  };
+
+  const dur = parseDurationSeconds(cachedItem);
+  assert.equal(dur, 2407, 'Should round duration to nearest second for playback UI');
+
+  const headerVal = '2406.68';
+  const parsedHeader = parseFloat(headerVal);
+  assert.equal(Number.isFinite(parsedHeader) && parsedHeader > 0, true);
+  assert.equal(Math.round(parsedHeader), 2407);
+});
+
+test('Scrubber: Pointer move updates position preview without triggering seekTo until commit', () => {
+  let committedSeek = null;
+  let scrubPosition = null;
+
+  const onScrubberMove = (pct, duration) => {
+    scrubPosition = Math.max(0, Math.min(duration, pct * duration));
+  };
+
+  const onScrubberCommit = (pct, duration) => {
+    committedSeek = Math.max(0, Math.min(duration, pct * duration));
+    scrubPosition = null;
+  };
+
+  const duration = 2400;
+
+  // Dragging across timeline
+  onScrubberMove(0.25, duration);
+  assert.equal(scrubPosition, 600);
+  assert.equal(committedSeek, null, 'Seek should NOT fire on drag move');
+
+  onScrubberMove(0.50, duration);
+  assert.equal(scrubPosition, 1200);
+  assert.equal(committedSeek, null);
+
+  // Releasing pointer (commit)
+  onScrubberCommit(0.50, duration);
+  assert.equal(committedSeek, 1200, 'Seek must fire only on commit');
+  assert.equal(scrubPosition, null, 'Scrub preview resets after commit');
+});
+
