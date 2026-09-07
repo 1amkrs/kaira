@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { ArrowRight, Key } from 'lucide-react';
+import { ArrowRight, Key, Users, ArrowLeft, Lock } from 'lucide-react';
 import { profileService } from '../../services/profile/ProfileService';
+import { UserProfile } from '../../types/profile';
 import { renderAvatarIcon } from '../Profile/PinModal';
 import { spatialNav } from '../../services/spatialNav/spatialNavEngine';
 import './AerialScreensaver.css';
@@ -68,7 +69,9 @@ export const AerialScreensaver: React.FC<AerialScreensaverProps> = ({ isActive, 
   const [timeStr, setTimeStr] = useState<string>('');
   const [dateStr, setDateStr] = useState<string>('');
   const [videoFailed, setVideoFailed] = useState<boolean>(false);
-  const [activeProfile, setActiveProfile] = useState(() => profileService.getActiveProfile());
+  const [profiles, setProfiles] = useState<UserProfile[]>(() => profileService.getProfiles());
+  const [selectedProfile, setSelectedProfile] = useState<UserProfile>(() => profileService.getActiveProfile());
+  const [isUserPickerOpen, setIsUserPickerOpen] = useState<boolean>(false);
   const [password, setPassword] = useState<string>('');
   const [isShaking, setIsShaking] = useState<boolean>(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -83,11 +86,15 @@ export const AerialScreensaver: React.FC<AerialScreensaverProps> = ({ isActive, 
     };
   }, [isActive]);
 
-  // Sync active profile
+  // Sync profiles and active profile
   useEffect(() => {
     if (!isActive) return;
-    const unsubProfile = profileService.subscribe(() => {
-      setActiveProfile(profileService.getActiveProfile());
+    const unsubProfile = profileService.subscribe((state) => {
+      setProfiles(state.profiles);
+      const active = state.profiles.find((p) => p.id === state.activeProfileId);
+      if (active) {
+        setSelectedProfile((prev) => state.profiles.find((p) => p.id === prev.id) || active);
+      }
     });
     return unsubProfile;
   }, [isActive]);
@@ -98,6 +105,8 @@ export const AerialScreensaver: React.FC<AerialScreensaverProps> = ({ isActive, 
       setPassword('');
       setErrorMsg(null);
       setIsShaking(false);
+      setIsUserPickerOpen(false);
+      setSelectedProfile(profileService.getActiveProfile());
       const timer = setTimeout(() => {
         inputRef.current?.focus();
       }, 100);
@@ -136,6 +145,26 @@ export const AerialScreensaver: React.FC<AerialScreensaverProps> = ({ isActive, 
     return () => clearInterval(cycle);
   }, [isActive]);
 
+  // Handle switching to a specific user profile
+  const handleSelectUser = (prof: UserProfile) => {
+    setSelectedProfile(prof);
+    setPassword('');
+    setErrorMsg(null);
+    setIsShaking(false);
+    setIsUserPickerOpen(false);
+
+    if (!prof.pin) {
+      // Direct login for unpinned profiles
+      profileService.setActiveProfile(prof.id);
+      onWake();
+    } else {
+      // Focus password field for PIN-protected profiles
+      setTimeout(() => {
+        inputRef.current?.focus();
+      }, 100);
+    }
+  };
+
   // Password Unlock Submission Handler
   const handleUnlockSubmit = useCallback(
     (e?: React.FormEvent) => {
@@ -144,11 +173,11 @@ export const AerialScreensaver: React.FC<AerialScreensaverProps> = ({ isActive, 
         e.stopPropagation();
       }
 
-      const targetPin = activeProfile?.pin?.trim();
+      const targetPin = selectedProfile?.pin?.trim();
 
       if (targetPin) {
         if (password.trim() === targetPin) {
-          profileService.unlockProfileSession(activeProfile.id);
+          profileService.setActiveProfile(selectedProfile.id, password.trim());
           onWake();
         } else {
           setIsShaking(true);
@@ -160,11 +189,12 @@ export const AerialScreensaver: React.FC<AerialScreensaverProps> = ({ isActive, 
           }, 450);
         }
       } else {
-        // No PIN configured on profile: unlock directly
+        // No PIN configured on profile: log in directly
+        profileService.setActiveProfile(selectedProfile.id);
         onWake();
       }
     },
-    [activeProfile, password, onWake]
+    [selectedProfile, password, onWake]
   );
 
   // Global Keydown Handler: redirect keystrokes to password input & support Enter / Escape
@@ -175,14 +205,24 @@ export const AerialScreensaver: React.FC<AerialScreensaverProps> = ({ isActive, 
       if (e.key === 'Enter') {
         e.preventDefault();
         e.stopPropagation();
-        handleUnlockSubmit();
+        if (isUserPickerOpen) {
+          // If in user picker and pressing enter, select currently focused or selected profile
+          handleSelectUser(selectedProfile);
+        } else {
+          handleUnlockSubmit();
+        }
         return;
       }
 
       if (e.key === 'Escape') {
         e.preventDefault();
         e.stopPropagation();
-        if (!activeProfile?.pin) {
+        if (isUserPickerOpen) {
+          setIsUserPickerOpen(false);
+          setTimeout(() => inputRef.current?.focus(), 80);
+        } else if (profiles.length > 1) {
+          setIsUserPickerOpen(true);
+        } else if (!selectedProfile?.pin) {
           onWake();
         } else {
           setPassword('');
@@ -191,8 +231,8 @@ export const AerialScreensaver: React.FC<AerialScreensaverProps> = ({ isActive, 
         return;
       }
 
-      // If typing printable characters or backspace while input is not focused, focus it
-      if (document.activeElement !== inputRef.current) {
+      // If user picker is closed and typing printable characters, focus password input
+      if (!isUserPickerOpen && document.activeElement !== inputRef.current) {
         if (e.key.length === 1 && !e.ctrlKey && !e.altKey && !e.metaKey) {
           inputRef.current?.focus();
         }
@@ -203,16 +243,25 @@ export const AerialScreensaver: React.FC<AerialScreensaverProps> = ({ isActive, 
     return () => {
       window.removeEventListener('keydown', handleWindowKeyDown);
     };
-  }, [isActive, activeProfile, handleUnlockSubmit, onWake]);
+  }, [isActive, isUserPickerOpen, selectedProfile, profiles.length, handleUnlockSubmit, onWake]);
 
   // Backdrop click handler
   const handleBackdropClick = (e: React.MouseEvent) => {
-    // If clicked on input or button, let native action proceed
-    if ((e.target as HTMLElement).closest('.tv-macos-lock-input-pill') || (e.target as HTMLElement).closest('button')) {
+    if (
+      (e.target as HTMLElement).closest('.tv-macos-lock-input-pill') ||
+      (e.target as HTMLElement).closest('button') ||
+      (e.target as HTMLElement).closest('.tv-macos-user-card')
+    ) {
       return;
     }
 
-    if (!activeProfile?.pin) {
+    if (isUserPickerOpen) {
+      setIsUserPickerOpen(false);
+      setTimeout(() => inputRef.current?.focus(), 80);
+      return;
+    }
+
+    if (!selectedProfile?.pin) {
       onWake();
     } else {
       inputRef.current?.focus();
@@ -222,9 +271,9 @@ export const AerialScreensaver: React.FC<AerialScreensaverProps> = ({ isActive, 
   if (!isActive) return null;
 
   const currentShot = AERIAL_SHOTS[currentIndex];
-  const displayName = activeProfile?.name || 'Primary User';
-  const avatarColor = activeProfile?.avatarColor || 'linear-gradient(135deg, #e50914, #ff453a)';
-  const avatarIcon = activeProfile?.avatarIcon || 'user';
+  const displayName = selectedProfile?.name || 'Primary User';
+  const avatarColor = selectedProfile?.avatarColor || 'linear-gradient(135deg, #e50914, #ff453a)';
+  const avatarIcon = selectedProfile?.avatarIcon || 'user';
 
   return (
     <div
@@ -260,73 +309,138 @@ export const AerialScreensaver: React.FC<AerialScreensaverProps> = ({ isActive, 
 
       {/* macOS Lockscreen Shell (Distraction-Free Centered Layout) */}
       <div className="tv-macos-lock-content">
-        {/* Hero Clock & Date + User Auth Pod */}
+        {/* Hero Clock & Date */}
         <main className="tv-macos-lock-center">
           <div className="tv-macos-lock-clock-box">
             <div className="tv-macos-lock-date">{dateStr}</div>
             <h1 className="tv-macos-lock-time">{timeStr}</h1>
           </div>
 
-          <div className="tv-macos-lock-auth-pod">
-            <div
-              className="tv-macos-lock-avatar"
-              style={{ background: avatarColor }}
-              onClick={() => {
-                if (!activeProfile?.pin) {
-                  onWake();
-                } else {
-                  inputRef.current?.focus();
-                }
-              }}
-              title={displayName}
-            >
-              {renderAvatarIcon(avatarIcon, 38, '#ffffff')}
-            </div>
-            <div className="tv-macos-lock-username">{displayName}</div>
-
-            {/* Typable Frosted Password Form & Pill */}
-            <form onSubmit={handleUnlockSubmit} className="tv-macos-lock-form">
+          {!isUserPickerOpen ? (
+            /* 1. Selected User Login Card */
+            <div className="tv-macos-lock-auth-pod">
               <div
-                className={`tv-macos-lock-input-pill ${isShaking ? 'shake-anim' : ''}`}
-                onClick={() => inputRef.current?.focus()}
+                className="tv-macos-lock-avatar"
+                style={{ background: avatarColor }}
+                onClick={() => {
+                  if (profiles.length > 1) {
+                    setIsUserPickerOpen(true);
+                  } else if (!selectedProfile?.pin) {
+                    onWake();
+                  } else {
+                    inputRef.current?.focus();
+                  }
+                }}
+                title={profiles.length > 1 ? `Switch User (${displayName})` : displayName}
               >
-                <div className="tv-macos-lock-pill-icon">
-                  <Key size={14} />
-                </div>
-                <input
-                  ref={inputRef}
-                  type="password"
-                  value={password}
-                  onChange={(e) => {
-                    setPassword(e.target.value);
-                    setErrorMsg(null);
-                  }}
-                  placeholder={activeProfile?.pin ? 'Enter PIN or Password' : 'Enter Password'}
-                  className={`tv-macos-lock-input-field ${password ? 'has-text' : ''}`}
-                  autoComplete="off"
-                  spellCheck={false}
-                  autoFocus
-                />
-                <button
-                  type="submit"
-                  className={`tv-macos-lock-pill-btn ${password ? 'active' : ''}`}
-                  aria-label="Unlock"
+                {renderAvatarIcon(avatarIcon, 38, '#ffffff')}
+              </div>
+              <div className="tv-macos-lock-username">{displayName}</div>
+
+              {/* Typable Frosted Password Form & Pill */}
+              <form onSubmit={handleUnlockSubmit} className="tv-macos-lock-form">
+                <div
+                  className={`tv-macos-lock-input-pill ${isShaking ? 'shake-anim' : ''}`}
+                  onClick={() => inputRef.current?.focus()}
                 >
-                  <ArrowRight size={13} strokeWidth={2.5} />
+                  <div className="tv-macos-lock-pill-icon">
+                    <Key size={14} />
+                  </div>
+                  <input
+                    ref={inputRef}
+                    type="password"
+                    value={password}
+                    onChange={(e) => {
+                      setPassword(e.target.value);
+                      setErrorMsg(null);
+                    }}
+                    placeholder={selectedProfile?.pin ? 'Enter PIN or Password' : 'Enter Password'}
+                    className={`tv-macos-lock-input-field ${password ? 'has-text' : ''}`}
+                    autoComplete="off"
+                    spellCheck={false}
+                    autoFocus
+                  />
+                  <button
+                    type="submit"
+                    className={`tv-macos-lock-pill-btn ${password ? 'active' : ''}`}
+                    aria-label="Unlock"
+                  >
+                    <ArrowRight size={13} strokeWidth={2.5} />
+                  </button>
+                </div>
+
+                {errorMsg ? (
+                  <div className="tv-macos-lock-error-hint">{errorMsg}</div>
+                ) : (
+                  <div className="tv-macos-lock-wake-hint">
+                    {selectedProfile?.pin
+                      ? 'Enter password and press Return to unlock'
+                      : 'Press Return or click to unlock'}
+                  </div>
+                )}
+              </form>
+
+              {/* Switch User Button (visible when multiple profiles exist) */}
+              {profiles.length > 1 && (
+                <button
+                  type="button"
+                  className="tv-macos-switch-user-btn"
+                  onClick={() => setIsUserPickerOpen(true)}
+                  title="Select user login"
+                >
+                  <Users size={13} />
+                  <span>Switch User</span>
                 </button>
+              )}
+            </div>
+          ) : (
+            /* 2. Select User Login Picker (macOS Sonoma Multi-User Grid) */
+            <div className="tv-macos-lock-auth-pod tv-macos-user-picker-pod">
+              <div className="tv-macos-user-picker-title">Select User to Log In</div>
+              <div className="tv-macos-user-picker-grid">
+                {profiles.map((prof) => {
+                  const isSelected = prof.id === selectedProfile?.id;
+                  return (
+                    <button
+                      key={prof.id}
+                      type="button"
+                      className={`tv-macos-user-card ${isSelected ? 'selected' : ''}`}
+                      onClick={() => handleSelectUser(prof)}
+                      title={`Log in as ${prof.name}`}
+                    >
+                      <div className="tv-macos-user-card-avatar-wrapper">
+                        <div
+                          className="tv-macos-user-card-avatar"
+                          style={{ background: prof.avatarColor }}
+                        >
+                          {renderAvatarIcon(prof.avatarIcon || 'user', 32, '#ffffff')}
+                        </div>
+                        {prof.pin && (
+                          <div className="tv-macos-user-card-lock-badge" title="PIN Protected">
+                            <Lock size={9} />
+                          </div>
+                        )}
+                      </div>
+                      <span className="tv-macos-user-card-name">{prof.name}</span>
+                      <span className="tv-macos-user-card-badge">{prof.badge}</span>
+                    </button>
+                  );
+                })}
               </div>
 
-              {errorMsg ? (
-                <div className="tv-macos-lock-error-hint">{errorMsg}</div>
-              ) : (
-                <div className="tv-macos-lock-wake-hint">
-                  {activeProfile?.pin
-                    ? 'Enter password and press Return to unlock'
-                    : 'Press Return or click to unlock'}
-                </div>
-              )}
-            </form>
-          </div>
+              <button
+                type="button"
+                className="tv-macos-user-picker-back"
+                onClick={() => {
+                  setIsUserPickerOpen(false);
+                  setTimeout(() => inputRef.current?.focus(), 80);
+                }}
+              >
+                <ArrowLeft size={13} />
+                <span>Back</span>
+              </button>
+            </div>
+          )}
         </main>
       </div>
     </div>

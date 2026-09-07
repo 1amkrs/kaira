@@ -670,6 +670,75 @@ test('Screensaver: Typable password authentication verifies PIN and unlocks prof
   assert.equal(unlocked, true);
 });
 
+test('Screensaver: Select user login switches selected profile and authenticates corresponding credentials', () => {
+  const profiles = [
+    { id: 'prof-primary', name: 'Primary', pin: '1234' },
+    { id: 'prof-kids', name: 'Kids Profile', isKid: true },
+    { id: 'prof-guest', name: 'Guest Mode' }
+  ];
+
+  let currentActiveId = 'prof-primary';
+  let selectedProfile = profiles[0];
+  let isUserPickerOpen = false;
+  let isWoken = false;
+
+  const openUserPicker = () => {
+    isUserPickerOpen = true;
+  };
+
+  const selectUser = (prof) => {
+    selectedProfile = prof;
+    isUserPickerOpen = false;
+
+    if (!prof.pin) {
+      currentActiveId = prof.id;
+      isWoken = true;
+      return { directLogin: true };
+    }
+    return { directLogin: false, requiresPin: true };
+  };
+
+  const loginWithPin = (pin) => {
+    if (selectedProfile.pin === pin) {
+      currentActiveId = selectedProfile.id;
+      isWoken = true;
+      return true;
+    }
+    return false;
+  };
+
+  // 1. Initially primary user is selected
+  assert.equal(selectedProfile.id, 'prof-primary');
+
+  // 2. Open user picker
+  openUserPicker();
+  assert.equal(isUserPickerOpen, true);
+
+  // 3. Select unpinned kids profile -> directly logs in
+  const kidsRes = selectUser(profiles[1]);
+  assert.equal(kidsRes.directLogin, true);
+  assert.equal(currentActiveId, 'prof-kids');
+  assert.equal(isWoken, true);
+  assert.equal(isUserPickerOpen, false);
+
+  // 4. Select PIN-protected primary profile -> requires PIN
+  isWoken = false;
+  openUserPicker();
+  const primaryRes = selectUser(profiles[0]);
+  assert.equal(primaryRes.directLogin, false);
+  assert.equal(primaryRes.requiresPin, true);
+  assert.equal(isWoken, false);
+
+  // Incorrect PIN fails
+  assert.equal(loginWithPin('0000'), false);
+  assert.equal(isWoken, false);
+
+  // Correct PIN succeeds
+  assert.equal(loginWithPin('1234'), true);
+  assert.equal(currentActiveId, 'prof-primary');
+  assert.equal(isWoken, true);
+});
+
 test('TopNav: Actions capsule spatial navigation indices are contiguous without nav-sleep-btn', () => {
   const TABS = [{ id: 'for-you' }, { id: 'movies' }, { id: 'shows' }, { id: 'library' }];
   const hasRemoteModal = true;
