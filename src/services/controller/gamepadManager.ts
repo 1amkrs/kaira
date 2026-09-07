@@ -168,16 +168,25 @@ class GamepadManager {
         }
         break;
       case 'Escape':
-      case 'Backspace':
         e.preventDefault();
-        this.dispatchAction(`Keyboard: ${e.key}`, 'BACK', 'Navigate back / dismiss modal');
+        this.dispatchAction('Keyboard: Escape', 'BACK', 'Navigate back / dismiss modal');
         this.callbacks.onBack?.();
         break;
-      case 'm':
-      case 'M':
+      case 'Backspace':
+        // If inside an input or typing in PIN modal or Search overlay, let the component handle deletion
+        if (isInput || document.querySelector('.tv-pin-modal-backdrop') || document.querySelector('.tv-search-screen')) {
+          return;
+        }
+        e.preventDefault();
+        this.dispatchAction('Keyboard: Backspace', 'BACK', 'Navigate back / dismiss modal');
+        this.callbacks.onBack?.();
+        break;
+      case '`':
+      case '~':
+      case 'F2':
         if (!isInput) {
           e.preventDefault();
-          this.dispatchAction('Keyboard: M', 'MENU', 'Toggle Quick Settings modal');
+          this.dispatchAction(`Keyboard: ${e.key}`, 'MENU', 'Toggle Quick Settings modal');
           if (this.callbacks.onMenu) this.callbacks.onMenu();
           else this.callbacks.onSettings?.();
         }

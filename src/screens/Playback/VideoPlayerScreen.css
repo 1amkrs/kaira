@@ -1267,3 +1267,309 @@
   }
 }
 
+/* ==========================================================================
+   10. End-Screen Overlay & Play Next Episode UI (Strictly for TV Shows)
+   ========================================================================== */
+
+/* Floating Next Episode Prompt (During Outro / Credits) */
+.tv-player-floating-next-prompt {
+  position: absolute;
+  bottom: 120px;
+  right: var(--screen-padding-x, 48px);
+  z-index: 100;
+  pointer-events: auto;
+}
+
+.tv-floating-next-focusable {
+  border-radius: var(--radius-pill, 9999px);
+}
+
+.tv-floating-next-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 24px;
+  border-radius: var(--radius-pill, 9999px);
+  background: rgba(18, 18, 24, 0.94);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border: 1.5px solid rgba(138, 180, 248, 0.45);
+  color: #ffffff;
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.85), 0 0 20px rgba(138, 180, 248, 0.15);
+  transition: all var(--duration-base, 200ms) var(--easing-standard);
+  cursor: pointer;
+}
+
+.tv-floating-next-icon-wrap {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--google-blue, #8ab4f8);
+  color: #001d35;
+  flex-shrink: 0;
+}
+
+.tv-floating-next-text-col {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+}
+
+.tv-floating-next-action {
+  font-size: 14.5px;
+  font-weight: 700;
+  color: #ffffff;
+  letter-spacing: 0.2px;
+}
+
+.tv-floating-next-title {
+  font-size: 11.5px;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.75);
+  max-width: 240px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tv-floating-next-btn.focused {
+  background: var(--google-blue, #8ab4f8);
+  color: #001d35;
+  border-color: #ffffff;
+  transform: scale(1.06);
+  box-shadow: 0 14px 44px rgba(138, 180, 248, 0.5);
+}
+
+.tv-floating-next-btn.focused .tv-floating-next-icon-wrap {
+  background: #001d35;
+  color: #ffffff;
+}
+
+.tv-floating-next-btn.focused .tv-floating-next-action,
+.tv-floating-next-btn.focused .tv-floating-next-title {
+  color: #001d35;
+}
+
+/* Full End-Screen Overlay when Playback Finishes */
+.tv-player-end-screen-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1050;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  user-select: none;
+}
+
+.tv-end-screen-backdrop {
+  position: absolute;
+  inset: 0;
+  background-size: cover;
+  background-position: center;
+  filter: blur(36px) brightness(0.28);
+  transform: scale(1.12);
+  transition: background-image 0.5s ease-in-out;
+}
+
+.tv-end-screen-scrim {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at center, rgba(10, 12, 18, 0.72) 0%, rgba(4, 5, 8, 0.96) 100%);
+}
+
+.tv-end-screen-card {
+  position: relative;
+  z-index: 2;
+  max-width: 780px;
+  width: 90vw;
+  background: rgba(22, 24, 32, 0.88);
+  backdrop-filter: blur(40px);
+  -webkit-backdrop-filter: blur(40px);
+  border: 1.5px solid rgba(255, 255, 255, 0.16);
+  border-radius: 24px;
+  padding: 36px 42px;
+  box-shadow: 0 28px 72px rgba(0, 0, 0, 0.9), 0 0 36px rgba(138, 180, 248, 0.1);
+  display: flex;
+  flex-direction: column;
+}
+
+.tv-end-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  padding: 5px 14px;
+  border-radius: var(--radius-pill, 9999px);
+  background: rgba(138, 180, 248, 0.2);
+  color: var(--google-blue, #8ab4f8);
+  border: 1px solid rgba(138, 180, 248, 0.4);
+  align-self: flex-start;
+}
+
+.tv-end-badge.series-end {
+  background: rgba(74, 222, 128, 0.2);
+  color: #4ade80;
+  border-color: rgba(74, 222, 128, 0.4);
+}
+
+.tv-end-badge-icon {
+  color: currentColor;
+}
+
+.tv-end-episode-info {
+  display: flex;
+  gap: 26px;
+  margin-top: 22px;
+  align-items: center;
+}
+
+.tv-end-thumb-container {
+  position: relative;
+  width: 220px;
+  aspect-ratio: 16 / 9;
+  flex-shrink: 0;
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.65);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: #111;
+}
+
+.tv-end-thumb-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.tv-end-thumb-runtime {
+  position: absolute;
+  bottom: 8px;
+  right: 8px;
+  background: rgba(0, 0, 0, 0.85);
+  backdrop-filter: blur(8px);
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #ffffff;
+}
+
+.tv-end-text-col {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.tv-end-sub-label {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--google-blue, #8ab4f8);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.tv-end-ep-title {
+  font-size: 26px;
+  font-weight: 700;
+  color: #ffffff;
+  line-height: 1.25;
+  margin: 0;
+  word-break: break-word;
+}
+
+.tv-end-ep-desc {
+  font-size: 14px;
+  color: rgba(255, 255, 255, 0.72);
+  line-height: 1.5;
+  margin: 4px 0 0 0;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.tv-end-actions-row {
+  display: flex;
+  gap: 14px;
+  margin-top: 32px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.tv-end-action-focusable {
+  border-radius: var(--radius-pill, 9999px);
+}
+
+.tv-end-primary-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 34px;
+  border-radius: var(--radius-pill, 9999px);
+  background: var(--google-blue, #8ab4f8);
+  color: #001d35;
+  font-size: 16px;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: 0 8px 24px rgba(138, 180, 248, 0.35);
+  transition: all var(--duration-base, 200ms) var(--easing-standard);
+}
+
+.tv-end-primary-btn.focused {
+  transform: scale(1.06);
+  background: #ffffff;
+  color: #000000;
+  box-shadow: 0 12px 36px rgba(255, 255, 255, 0.5), 0 0 28px rgba(138, 180, 248, 0.6);
+}
+
+.tv-end-secondary-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 26px;
+  border-radius: var(--radius-pill, 9999px);
+  background: rgba(255, 255, 255, 0.08);
+  color: #ffffff;
+  font-size: 15px;
+  font-weight: 600;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  cursor: pointer;
+  transition: all var(--duration-base, 200ms) var(--easing-standard);
+}
+
+.tv-end-secondary-btn.focused {
+  transform: scale(1.06);
+  background: rgba(255, 255, 255, 0.22);
+  border-color: #ffffff;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6);
+}
+
+@media (max-width: 640px) {
+  .tv-end-screen-card {
+    padding: 24px 20px;
+  }
+
+  .tv-end-episode-info {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .tv-end-thumb-container {
+    width: 100%;
+    max-width: 280px;
+  }
+
+  .tv-end-ep-title {
+    font-size: 20px;
+  }
+}
+

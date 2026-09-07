@@ -53,3 +53,14 @@
   }
 }
 
+@media (max-width: 768px) {
+  .tv-app-footer {
+    padding: 32px var(--screen-padding-x) 40px;
+  }
+
+  .tv-footer-text {
+    font-size: clamp(1.3rem, 5vw, 2rem);
+    gap: 8px;
+  }
+}
+

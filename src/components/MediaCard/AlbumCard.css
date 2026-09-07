@@ -68,3 +68,36 @@
 .tv-album-dot {
   color: var(--text-tertiary);
 }
+
+/* ==========================================================================
+   Mobile Responsive Album Card (Screens <= 768px down to 350px)
+   ========================================================================== */
+
+@media (max-width: 768px) {
+  .tv-album-card-wrapper {
+    width: 130px;
+  }
+
+  .tv-album-title {
+    font-size: 13px;
+  }
+
+  .tv-album-subrow {
+    font-size: 11px;
+  }
+}
+
+@media (max-width: 420px) {
+  .tv-album-card-wrapper {
+    width: 115px;
+  }
+
+  .tv-album-title {
+    font-size: 12px;
+  }
+
+  .tv-album-subrow {
+    font-size: 10px;
+  }
+}
+

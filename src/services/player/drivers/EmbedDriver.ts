@@ -129,8 +129,21 @@ export class EmbedDriver implements IPlaybackDriver {
       if (this.isDestroyed) return;
       if (this.state.status === 'playing') {
         const dur = this.state.duration > 0 ? this.state.duration : 7200;
-        this.state.currentTime = Math.min(dur, this.state.currentTime + 0.5 * (this.state.playbackSpeed || 1));
-        this.callbacks?.onTimeUpdate(this.state.currentTime, dur);
+        const nextTime = this.state.currentTime + 0.5 * (this.state.playbackSpeed || 1);
+        if (nextTime >= dur) {
+          this.state.currentTime = dur;
+          this.state.status = 'ended';
+          if (this.tickerTimer) {
+            clearInterval(this.tickerTimer);
+            this.tickerTimer = null;
+          }
+          this.callbacks?.onTimeUpdate(dur, dur);
+          this.callbacks?.onStatusChange('ended');
+          this.callbacks?.onEnded();
+        } else {
+          this.state.currentTime = nextTime;
+          this.callbacks?.onTimeUpdate(this.state.currentTime, dur);
+        }
       }
       if (typeof window !== 'undefined' && (window as any).electronAPI?.controlMedia) {
         (window as any).electronAPI.controlMedia('sync', 0);

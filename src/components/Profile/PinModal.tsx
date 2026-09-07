@@ -117,8 +117,11 @@ export const PinModal: React.FC<PinModalProps> = ({
       if (e.key >= '0' && e.key <= '9') {
         handleDigit(e.key);
       } else if (e.key === 'Backspace') {
+        e.preventDefault();
+        e.stopImmediatePropagation();
         handleBackspace();
       } else if (e.key === 'Escape') {
+        e.preventDefault();
         onCancel();
       }
     };

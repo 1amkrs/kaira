@@ -326,3 +326,58 @@
   box-shadow: 0 0 16px rgba(255, 255, 255, 0.3);
 }
 
+@media (max-width: 768px) {
+  .tv-pin-modal-backdrop {
+    padding: 16px;
+  }
+
+  .tv-pin-modal-panel {
+    min-width: 0;
+    width: min(94vw, 440px);
+    padding: 28px 16px 20px;
+    gap: 16px;
+  }
+
+  .tv-pin-header {
+    top: 14px;
+    right: 14px;
+  }
+
+  .tv-pin-cancel-btn {
+    height: 36px;
+    padding: 0 14px;
+    font-size: 12px;
+  }
+
+  .tv-pin-avatar {
+    width: 60px;
+    height: 60px;
+  }
+
+  .tv-pin-title {
+    font-size: 18px;
+  }
+
+  .tv-pin-dots-container {
+    gap: 14px;
+  }
+
+  .tv-pin-dot {
+    width: 14px;
+    height: 14px;
+  }
+
+  .tv-pin-numpad-row {
+    gap: 10px;
+  }
+
+  .tv-pin-key-btn {
+    width: clamp(64px, 24vw, 78px);
+    height: 52px;
+  }
+
+  .key-num-text {
+    font-size: 20px;
+  }
+}
+

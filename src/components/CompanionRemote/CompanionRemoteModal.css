@@ -258,3 +258,37 @@
   box-shadow: 0 0 20px rgba(138, 180, 248, 0.6);
   border-color: #8ab4f8;
 }
+
+@media (max-width: 768px) {
+  .tv-remote-modal-card {
+    padding: 24px 18px;
+    gap: 20px;
+    max-height: 90vh;
+    overflow-y: auto;
+  }
+
+  .tv-remote-body-grid {
+    grid-template-columns: 1fr;
+    gap: 20px;
+  }
+
+  .tv-qr-card-wrap {
+    width: fit-content;
+    margin: 0 auto;
+  }
+
+  .tv-qr-svg-container {
+    width: clamp(160px, 45vw, 200px);
+    height: clamp(160px, 45vw, 200px);
+  }
+
+  .tv-remote-modal-footer {
+    flex-direction: column;
+    width: 100%;
+  }
+
+  .tv-modal-btn {
+    width: 100%;
+    justify-content: center;
+  }
+}

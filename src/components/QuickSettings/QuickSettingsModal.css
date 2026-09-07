@@ -233,3 +233,27 @@
     transform: translateX(0);
   }
 }
+
+@media (max-width: 480px) {
+  .tv-quick-settings-drawer {
+    width: 100vw;
+    min-width: 0;
+  }
+
+  .tv-qs-header {
+    padding: 20px 16px 16px;
+  }
+
+  .tv-qs-body {
+    padding: 16px;
+    gap: 14px;
+  }
+
+  .tv-qs-card {
+    padding: 14px 16px;
+  }
+
+  .tv-qs-stepper-row {
+    flex-wrap: wrap;
+  }
+}

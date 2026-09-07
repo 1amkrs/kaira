@@ -61,3 +61,28 @@
   color: var(--text-primary);
   font-weight: 600;
 }
+
+/* ==========================================================================
+   Mobile Responsive App Icon (Screens <= 768px down to 350px)
+   ========================================================================== */
+
+@media (max-width: 768px) {
+  .tv-app-tile-wrapper {
+    width: 105px;
+  }
+
+  .tv-app-tile-label {
+    font-size: 11px;
+  }
+}
+
+@media (max-width: 420px) {
+  .tv-app-tile-wrapper {
+    width: 90px;
+  }
+
+  .tv-app-tile-label {
+    font-size: 10px;
+  }
+}
+

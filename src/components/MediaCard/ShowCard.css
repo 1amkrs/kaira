@@ -113,3 +113,59 @@
 .tv-show-dot {
   color: var(--text-tertiary);
 }
+
+/* ==========================================================================
+   Mobile Responsive Show Card (Screens <= 768px down to 350px)
+   ========================================================================== */
+
+@media (max-width: 768px) {
+  .tv-show-card-wrapper.ratio-poster {
+    width: 130px;
+  }
+
+  .tv-show-card-wrapper.ratio-16\:9 {
+    width: 190px;
+  }
+
+  .tv-show-title {
+    font-size: 13px;
+  }
+
+  .tv-show-subrow {
+    font-size: 11px;
+  }
+
+  .tv-show-rating-badge,
+  .tv-show-network-tag {
+    top: 6px;
+    font-size: 10px;
+    padding: 2px 5px;
+  }
+
+  .tv-show-network-tag {
+    left: 6px;
+  }
+
+  .tv-show-rating-badge {
+    right: 6px;
+  }
+}
+
+@media (max-width: 420px) {
+  .tv-show-card-wrapper.ratio-poster {
+    width: 115px;
+  }
+
+  .tv-show-card-wrapper.ratio-16\:9 {
+    width: 165px;
+  }
+
+  .tv-show-title {
+    font-size: 12px;
+  }
+
+  .tv-show-subrow {
+    font-size: 10px;
+  }
+}
+

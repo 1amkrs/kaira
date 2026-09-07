@@ -32,11 +32,13 @@ export interface MediaProvider {
   getMalayalamMovies(): Promise<Movie[]>;
   getHindiMovies(): Promise<Movie[]>;
   getTamilMovies(): Promise<Movie[]>;
+  getTop10Daily(): Promise<Movie[]>;
 
   // TV Shows
   getShows(): Promise<Show[]>;
   getShow(id: string): Promise<Show | null>;
   getEpisodes(showId: string, seasonNumber?: number): Promise<Episode[]>;
+  getNextEpisode(showId: string, seasonNumber: number, episodeNumber: number): Promise<Episode | null>;
 
   // Music
   getMusic(): Promise<{

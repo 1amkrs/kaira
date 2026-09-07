@@ -147,7 +147,7 @@ export const GamesScreen: React.FC<GamesScreenProps> = () => {
                 name: launcher.name,
                 category: 'gaming',
                 iconType: 'svg',
-                launchType: launcher.target.startsWith('http') ? 'web' : 'executable',
+                launchType: launcher.target.startsWith('http') ? 'web' : launcher.target.includes('://') ? 'uri' : 'executable',
                 target: launcher.target,
               })}
             >

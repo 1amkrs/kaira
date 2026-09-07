@@ -103,7 +103,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
       const [recs, feat, top10, hwMovs, regMovs, shows, albs] = await Promise.all([
         mediaProvider.getPersonalizedRecommendations(),
         mediaProvider.getFeaturedMovie(),
-        (mediaProvider as any).getTop10Daily(),
+        mediaProvider.getTop10Daily(),
         mediaProvider.getHollywoodMovies(),
         mediaProvider.getRegionalMovies('all'),
         mediaProvider.getShows(),

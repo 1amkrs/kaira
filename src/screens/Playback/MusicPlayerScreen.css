@@ -388,3 +388,116 @@
 .no-lyrics-icon {
   opacity: 0.5;
 }
+
+/* ==========================================================================
+   Mobile Responsive Music Player (Screens <= 768px down to 350px)
+   ========================================================================== */
+
+@media (max-width: 768px) {
+  .tv-music-player-container {
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .tv-music-player-header {
+    padding: 16px var(--screen-padding-x) 8px;
+    gap: 8px;
+  }
+
+  .tv-music-header-center {
+    display: none;
+  }
+
+  .tv-music-lyrics-pill {
+    padding: 6px 12px;
+    font-size: 12px;
+    gap: 5px;
+  }
+
+  .tv-music-showcase-split {
+    flex-direction: column;
+    padding: 10px var(--screen-padding-x) 36px;
+    gap: 20px;
+    align-items: center;
+    overflow: visible;
+  }
+
+  .tv-music-left-pane {
+    max-width: 100%;
+    width: 100%;
+  }
+
+  .tv-music-art-large {
+    width: 180px;
+    height: 180px;
+    margin-bottom: 14px;
+    border-radius: var(--radius-md);
+  }
+
+  .tv-music-title {
+    font-size: 19px;
+  }
+
+  .tv-music-artist {
+    font-size: 13px;
+  }
+
+  .tv-music-timeline-box {
+    margin-bottom: 14px;
+  }
+
+  .tv-music-controls-row {
+    gap: 18px;
+  }
+
+  .tv-music-btn {
+    width: 46px;
+    height: 46px;
+  }
+
+  .tv-music-btn.primary {
+    width: 58px;
+    height: 58px;
+  }
+
+  .tv-music-lyrics-pane {
+    width: 100%;
+    max-height: 220px;
+    padding: 0;
+  }
+
+  .tv-music-lyrics-scroller {
+    padding: 20px 8px 80px;
+    gap: 14px;
+  }
+
+  .tv-lyric-line {
+    font-size: 16px;
+  }
+
+  .tv-lyric-line.active {
+    font-size: 19px;
+  }
+}
+
+@media (max-width: 420px) {
+  .tv-music-art-large {
+    width: 150px;
+    height: 150px;
+  }
+
+  .tv-music-title {
+    font-size: 17px;
+  }
+
+  .tv-music-btn {
+    width: 40px;
+    height: 40px;
+  }
+
+  .tv-music-btn.primary {
+    width: 52px;
+    height: 52px;
+  }
+}
+

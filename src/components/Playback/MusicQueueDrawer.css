@@ -211,3 +211,32 @@
   transform: scale(1.15);
   box-shadow: 0 0 12px rgba(242, 139, 130, 0.5);
 }
+
+/* ==========================================================================
+   Mobile Responsive Music Queue Drawer (Screens <= 768px down to 350px)
+   ========================================================================== */
+
+@media (max-width: 768px) {
+  .tv-queue-drawer-panel {
+    width: min(100vw, 380px);
+    padding: 20px 16px;
+  }
+
+  .tv-queue-header {
+    padding-bottom: 14px;
+    margin-bottom: 14px;
+  }
+
+  .tv-queue-title {
+    font-size: 1.15rem;
+  }
+}
+
+@media (max-width: 420px) {
+  .tv-queue-drawer-panel {
+    width: 100vw;
+    border-left: none;
+    padding: 16px 12px;
+  }
+}
+

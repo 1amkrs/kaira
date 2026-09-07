@@ -217,41 +217,52 @@
     padding: 16px var(--screen-padding-x) 0 var(--screen-padding-x);
   }
 
-  .tv-album-hero-content {
+  .tv-album-header-block {
     flex-direction: column;
     align-items: center;
     text-align: center;
     gap: 16px;
     padding: 16px var(--screen-padding-x) 0 var(--screen-padding-x);
+    margin-bottom: 24px;
   }
 
-  .tv-album-cover-art {
-    width: 140px;
-    height: 140px;
+  .tv-album-art-large-box {
+    width: 150px;
+    height: 150px;
+    border-radius: var(--radius-md);
   }
 
-  .tv-album-hero-info {
+  .tv-album-info-col {
     align-items: center;
+    width: 100%;
   }
 
-  .tv-album-title {
+  .tv-album-details-title {
     font-size: clamp(1.4rem, 5.5vw, 2rem);
-    margin-bottom: 6px;
+    margin-bottom: 4px;
+    text-align: center;
+  }
+
+  .tv-album-artist-name {
+    font-size: 1rem;
+    text-align: center;
   }
 
   .tv-album-meta-row {
     justify-content: center;
     gap: 8px;
-    margin-bottom: 12px;
+    margin-top: 4px;
+    font-size: 12px;
   }
 
   .tv-album-actions-row {
     justify-content: center;
-    gap: 8px;
-    margin-bottom: 24px;
+    gap: 10px;
+    margin-top: 14px;
+    width: 100%;
   }
 
-  .tv-album-actions-row .tv-btn-primary,
+  .tv-album-actions-row .tv-details-play-btn,
   .tv-album-actions-row .tv-details-fav-btn {
     height: 44px;
     padding: 0 18px;
@@ -264,19 +275,28 @@
 }
 
 @media (max-width: 420px) {
-  .tv-album-cover-art {
+  .tv-album-art-large-box {
     width: 120px;
     height: 120px;
   }
 
-  .tv-album-title {
-    font-size: 1.3rem;
+  .tv-album-details-title {
+    font-size: 1.25rem;
   }
 
-  .tv-album-actions-row .tv-btn-primary,
+  .tv-album-actions-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+
+  .tv-album-actions-row .tv-details-play-btn,
   .tv-album-actions-row .tv-details-fav-btn {
-    padding: 0 14px;
+    width: 100%;
+    padding: 0 10px;
     font-size: 12px;
+    justify-content: center;
   }
 }
+
 

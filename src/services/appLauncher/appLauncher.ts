@@ -104,11 +104,11 @@ class AppLauncherService {
 
     // 2. Web / Browser fallback
     try {
-      if (launchType === 'web' || target.startsWith('http')) {
+      if (launchType === 'web' || target.startsWith('http://') || target.startsWith('https://')) {
         window.open(target, '_blank');
         return true;
-      } else if (launchType === 'uri') {
-        // Trigger URI protocol in Windows
+      } else if (launchType === 'uri' || target.includes('://')) {
+        // Trigger URI protocol in Windows (e.g. steam://)
         const link = document.createElement('a');
         link.href = target;
         link.style.display = 'none';

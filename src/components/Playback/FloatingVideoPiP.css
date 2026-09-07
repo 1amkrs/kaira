@@ -106,3 +106,44 @@
   background: var(--accent-red);
   color: #ffffff;
 }
+
+/* ==========================================================================
+   Mobile Responsive Floating PiP (Screens <= 768px down to 350px)
+   ========================================================================== */
+
+@media (max-width: 768px) {
+  .tv-pip-container {
+    bottom: calc(86px + env(safe-area-inset-bottom, 0px));
+    right: 12px;
+    width: clamp(160px, 46vw, 220px);
+    border-radius: var(--radius-sm);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.9);
+  }
+
+  .tv-pip-overlay {
+    opacity: 1; /* Always interactive on touch */
+    padding: 6px 8px;
+  }
+
+  .tv-pip-title {
+    font-size: 10px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 80px;
+  }
+
+  .tv-pip-btn {
+    width: 26px;
+    height: 26px;
+  }
+}
+
+@media (max-width: 420px) {
+  .tv-pip-container {
+    width: clamp(140px, 44vw, 180px);
+    bottom: calc(82px + env(safe-area-inset-bottom, 0px));
+    right: 8px;
+  }
+}
+

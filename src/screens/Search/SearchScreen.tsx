@@ -116,6 +116,7 @@ export const SearchScreen: React.FC<SearchScreenProps> = ({
 
       if (e.key === 'Backspace') {
         e.preventDefault();
+        e.stopImmediatePropagation();
         setSearchQuery((prev) => prev.slice(0, -1));
         return;
       }

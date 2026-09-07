@@ -103,3 +103,23 @@
   color: rgba(255, 255, 255, 0.6);
   text-shadow: 0 1px 4px rgba(0, 0, 0, 0.8);
 }
+
+@media (max-width: 768px) {
+  .tv-screensaver-container {
+    padding: 24px var(--screen-padding-x);
+  }
+
+  .tv-screensaver-time {
+    font-size: clamp(2.4rem, 9vw, 3.5rem);
+  }
+
+  .tv-screensaver-location-pill,
+  .tv-screensaver-ambient-pill {
+    padding: 6px 14px;
+    font-size: 12px;
+  }
+
+  .tv-screensaver-hint {
+    display: none;
+  }
+}

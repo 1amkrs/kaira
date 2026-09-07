@@ -108,6 +108,29 @@ a {
   overflow: hidden;
 }
 
+/* ─── Screen Page Header (Apps, Library, etc.) ─────────────────────────── */
+.tv-screen-page-header {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 0 var(--screen-padding-x);
+  margin-bottom: var(--space-xl);
+}
+
+.tv-screen-page-title {
+  font-size: var(--font-title-lg);
+  font-weight: 700;
+  color: var(--text-primary);
+  letter-spacing: -0.3px;
+  margin: 0;
+}
+
+.tv-screen-page-subtitle {
+  font-size: var(--font-body);
+  color: var(--text-secondary);
+  margin: 0;
+}
+
 /* ─── Skeleton / Shimmer ─────────────────────────────────────────────────── */
 /* Used by skeleton placeholder cards on all content rails */
 @keyframes shimmer {
@@ -312,8 +335,20 @@ a {
     --space-2xl: 36px;
   }
 
+  .tv-screen-page-header {
+    margin-bottom: var(--space-md);
+  }
+
+  .tv-screen-page-title {
+    font-size: 1.25rem;
+  }
+
+  .tv-screen-page-subtitle {
+    font-size: 12px;
+  }
+
   .tv-screen-bottom-spacer {
-    height: 96px;
+    height: 120px;
   }
 
   .tv-main-viewport {

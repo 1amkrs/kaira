@@ -313,6 +313,19 @@ class LiveMediaProviderService implements MediaProvider {
     }
 
     const cleanId = id.replace(/^show-/, '');
+    if (this.showDetailsCache.has(cleanId)) {
+      return this.showDetailsCache.get(cleanId)!;
+    }
+    if (this.showDetailsCache.has(`show-${cleanId}`)) {
+      return this.showDetailsCache.get(`show-${cleanId}`)!;
+    }
+
+    const inList = this.showsCache.find((s) => s.id === id || s.id === cleanId || s.id === `show-${cleanId}` || s.imdbId === cleanId);
+    if (inList) {
+      this.showDetailsCache.set(id, inList);
+      this.showDetailsCache.set(cleanId, inList);
+      return inList;
+    }
 
     // 1. If it's an IMDb ID (e.g. tt4574334 for Stranger Things, tt11280740 for Severance, tt12637874 for Fallout)
     if (cleanId.startsWith('tt')) {
@@ -549,6 +562,34 @@ class LiveMediaProviderService implements MediaProvider {
     }
 
     return [];
+  }
+
+  public async getNextEpisode(showId: string, seasonNumber: number, episodeNumber: number): Promise<Episode | null> {
+    if (!showId) return null;
+    try {
+      // 1. Fetch current season's episodes
+      const currentSeasonEps = await this.getEpisodes(showId, seasonNumber);
+      if (currentSeasonEps && currentSeasonEps.length > 0) {
+        const sorted = [...currentSeasonEps].sort((a, b) => a.number - b.number);
+        const nextInSeason = sorted.find((ep) => ep.number > episodeNumber);
+        if (nextInSeason) {
+          return nextInSeason;
+        }
+      }
+
+      // 2. If no subsequent episode in current season, attempt next season
+      const nextSeasonEps = await this.getEpisodes(showId, seasonNumber + 1);
+      if (nextSeasonEps && nextSeasonEps.length > 0) {
+        const sortedNext = [...nextSeasonEps].sort((a, b) => a.number - b.number);
+        if (sortedNext.length > 0 && sortedNext[0].number !== undefined) {
+          return sortedNext[0];
+        }
+      }
+    } catch (e) {
+      console.warn('[LiveMediaProvider] Failed to resolve next episode', e);
+    }
+
+    return null;
   }
 
   // --- MUSIC (Audius Protocol + iTunes Live API) ---
@@ -978,15 +1019,21 @@ class LiveMediaProviderService implements MediaProvider {
   }
 
   public async toggleFavorite(id: string, type: 'movie' | 'show' | 'album'): Promise<boolean> {
+    let isFav = false;
     if (this.favorites.has(id)) {
       this.favorites.delete(id);
       this.saveFavorites();
-      return false;
+      isFav = false;
     } else {
       this.favorites.add(id);
       this.saveFavorites();
-      return true;
+      isFav = true;
     }
+
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('tv:favorites-changed', { detail: { id, isFavorite: isFav } }));
+    }
+    return isFav;
   }
 
   // --- PERSONALIZED RECOMMENDATIONS (GENRE-BASED WATCH HISTORY) ---

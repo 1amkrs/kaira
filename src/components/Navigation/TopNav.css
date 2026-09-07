@@ -249,6 +249,47 @@
   display: none;
 }
 
+/* Tablet & Compact Desktop Navigation (769px – 1080px) */
+@media (min-width: 769px) and (max-width: 1080px) {
+  .tv-gtv-left-cluster {
+    gap: 8px;
+  }
+
+  .tv-gtv-avatar-btn {
+    width: 38px;
+    height: 38px;
+  }
+
+  .tv-gtv-nav-capsule {
+    padding: 4px 6px;
+    gap: 2px;
+  }
+
+  .tv-gtv-search-btn {
+    width: 34px;
+    height: 34px;
+  }
+
+  .tv-gtv-tab-pill {
+    padding: 7px 12px;
+    font-size: 13px;
+  }
+
+  .tv-gtv-actions-capsule {
+    padding: 4px 6px;
+    gap: 2px;
+  }
+
+  .tv-gtv-action-btn {
+    width: 34px;
+    height: 34px;
+  }
+
+  .tv-gtv-time {
+    font-size: 13px;
+  }
+}
+
 @media (max-width: 768px) {
   /* Hide Desktop Top Navigation */
   .tv-desktop-nav {
@@ -256,69 +297,6 @@
   }
 
   /* Mobile Top Bar */
-  .tv-mobile-top-bar {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    height: 56px;
-    padding: 0 16px;
-    background: rgba(13, 14, 18, 0.82);
-    backdrop-filter: blur(20px);
-    -webkit-backdrop-filter: blur(20px);
-    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-    z-index: 1000;
-    box-sizing: border-box;
-  }
-
-  .tv-mobile-top-left {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    min-width: 0;
-  }
-
-  .tv-mobile-avatar-btn {
-    position: relative;
-    width: 36px;
-    height: 36px;
-    border-radius: 50%;
-    background: rgba(255, 255, 255, 0.1);
-    border: 1.5px solid rgba(255, 255, 255, 0.2);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    cursor: pointer;
-    padding: 0;
-    flex-shrink: 0;
-  }
-
-  .tv-mobile-avatar-fallback {
-    width: 100%;
-    height: 100%;
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-  }
-
-  .tv-mobile-avatar-lock {
-    position: absolute;
-    bottom: -1px;
-    right: -1px;
-    width: 12px;
-    height: 12px;
-    border-radius: 50%;
-    background: #ea4335;
-    border: 1px solid #0f0f14;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-  }
-
   .tv-mobile-top-bar {
     display: flex;
     align-items: center;

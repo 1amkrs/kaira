@@ -13,6 +13,7 @@ import './ShowDetailsScreen.css';
 
 interface ShowDetailsScreenProps {
   show: Show;
+  initialSeason?: number;
   onPlayEpisode: (episode: Episode, customStreamUrl?: string, streamType?: AddonStream['streamType']) => void;
   onSelectSimilar?: (show: Show) => void;
   onBack: () => void;
@@ -21,13 +22,14 @@ interface ShowDetailsScreenProps {
 
 export const ShowDetailsScreen: React.FC<ShowDetailsScreenProps> = ({
   show,
+  initialSeason,
   onPlayEpisode,
   onSelectSimilar,
   onBack,
   isPlayerActive = false,
 }) => {
   const [detailedShow, setDetailedShow] = useState<Show>(show);
-  const [selectedSeason, setSelectedSeason] = useState<number>(1);
+  const [selectedSeason, setSelectedSeason] = useState<number>(initialSeason || 1);
   const [episodes, setEpisodes] = useState<Episode[]>([]);
   const [isLoadingEpisodes, setIsLoadingEpisodes] = useState<boolean>(true);
   const [isFavorite, setIsFavorite] = useState<boolean>(!!show.isFavorite);
@@ -48,11 +50,16 @@ export const ShowDetailsScreen: React.FC<ShowDetailsScreenProps> = ({
     setDetailedShow(show);
     setIsTrailerReady(false);
     setIsLogoError(false);
+    if (initialSeason) {
+      setSelectedSeason(initialSeason);
+    }
 
     mediaProvider.getShow(show.id).then((res) => {
       if (res) {
         setDetailedShow(res);
-        if (res.seasons && res.seasons.length > 0 && !res.seasons.some((s) => s.number === selectedSeason)) {
+        if (initialSeason && res.seasons && res.seasons.some((s) => s.number === initialSeason)) {
+          setSelectedSeason(initialSeason);
+        } else if (res.seasons && res.seasons.length > 0 && !res.seasons.some((s) => s.number === selectedSeason)) {
           setSelectedSeason(res.seasons[0].number);
         }
       }

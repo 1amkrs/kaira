@@ -131,3 +131,51 @@
 .tv-movie-dot {
   color: var(--text-tertiary);
 }
+
+/* ==========================================================================
+   Mobile Responsive Movie Card (Screens <= 768px down to 350px)
+   ========================================================================== */
+
+@media (max-width: 768px) {
+  .tv-movie-card-wrapper.ratio-poster {
+    width: 130px;
+  }
+
+  .tv-movie-card-wrapper.ratio-16\:9 {
+    width: 190px;
+  }
+
+  .tv-movie-title {
+    font-size: 13px;
+  }
+
+  .tv-movie-subrow {
+    font-size: 11px;
+  }
+
+  .tv-movie-rating-badge {
+    top: 6px;
+    right: 6px;
+    font-size: 10px;
+    padding: 2px 5px;
+  }
+}
+
+@media (max-width: 420px) {
+  .tv-movie-card-wrapper.ratio-poster {
+    width: 115px;
+  }
+
+  .tv-movie-card-wrapper.ratio-16\:9 {
+    width: 165px;
+  }
+
+  .tv-movie-title {
+    font-size: 12px;
+  }
+
+  .tv-movie-subrow {
+    font-size: 10px;
+  }
+}
+

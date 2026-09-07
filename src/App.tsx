@@ -52,6 +52,7 @@ export const App: React.FC = () => {
   // Detail view state stack
   const [selectedMovie, setSelectedMovie] = useState<Movie | null>(null);
   const [selectedShow, setSelectedShow] = useState<Show | null>(null);
+  const [selectedShowSeason, setSelectedShowSeason] = useState<number>(1);
   const [selectedAlbum, setSelectedAlbum] = useState<Album | null>(null);
 
   // Fullscreen & PiP player states
@@ -87,7 +88,19 @@ export const App: React.FC = () => {
   }, [activeProfile.id]);
 
   const handleTabPrev = useCallback(() => {
-    if (activeModal || activeVideoSource || isMusicPlayerOpen || selectedMovie || selectedShow || selectedAlbum) return;
+    if (
+      activeModal ||
+      isQuickSettingsOpen ||
+      isProfileModalOpen ||
+      isSleepModalOpen ||
+      isRemoteModalOpen ||
+      isScreensaverActive ||
+      activeVideoSource ||
+      isMusicPlayerOpen ||
+      selectedMovie ||
+      selectedShow ||
+      selectedAlbum
+    ) return;
     setTabDirection('backward');
     setCurrentTab((prev) => {
       const idx = TABS.indexOf(prev);
@@ -96,10 +109,35 @@ export const App: React.FC = () => {
       profileService.setLastTab(activeProfile.id, nextTab);
       return nextTab;
     });
-  }, [activeModal, activeVideoSource, isMusicPlayerOpen, selectedMovie, selectedShow, selectedAlbum, activeProfile.id]);
+  }, [
+    activeModal,
+    isQuickSettingsOpen,
+    isProfileModalOpen,
+    isSleepModalOpen,
+    isRemoteModalOpen,
+    isScreensaverActive,
+    activeVideoSource,
+    isMusicPlayerOpen,
+    selectedMovie,
+    selectedShow,
+    selectedAlbum,
+    activeProfile.id,
+  ]);
 
   const handleTabNext = useCallback(() => {
-    if (activeModal || activeVideoSource || isMusicPlayerOpen || selectedMovie || selectedShow || selectedAlbum) return;
+    if (
+      activeModal ||
+      isQuickSettingsOpen ||
+      isProfileModalOpen ||
+      isSleepModalOpen ||
+      isRemoteModalOpen ||
+      isScreensaverActive ||
+      activeVideoSource ||
+      isMusicPlayerOpen ||
+      selectedMovie ||
+      selectedShow ||
+      selectedAlbum
+    ) return;
     setTabDirection('forward');
     setCurrentTab((prev) => {
       const idx = TABS.indexOf(prev);
@@ -108,7 +146,20 @@ export const App: React.FC = () => {
       profileService.setLastTab(activeProfile.id, nextTab);
       return nextTab;
     });
-  }, [activeModal, activeVideoSource, isMusicPlayerOpen, selectedMovie, selectedShow, selectedAlbum, activeProfile.id]);
+  }, [
+    activeModal,
+    isQuickSettingsOpen,
+    isProfileModalOpen,
+    isSleepModalOpen,
+    isRemoteModalOpen,
+    isScreensaverActive,
+    activeVideoSource,
+    isMusicPlayerOpen,
+    selectedMovie,
+    selectedShow,
+    selectedAlbum,
+    activeProfile.id,
+  ]);
 
   const handleOpenSearch = useCallback(() => {
     setActiveModal((prev) => (prev === 'search' ? null : 'search'));
@@ -157,6 +208,18 @@ export const App: React.FC = () => {
   }, [activeProfile.id]);
 
   const handlePlayEpisode = useCallback(async (episode: Episode, customStreamUrl?: string, streamType?: 'direct' | 'embed' | 'youtube' | 'torrent') => {
+    // Eagerly ensure selectedShow is set to this TV show so it sits directly underneath the player
+    setSelectedShowSeason(episode.seasonNumber || 1);
+    if (!selectedShow || (selectedShow.id !== episode.showId && selectedShow.imdbId !== episode.showId)) {
+      mediaProvider.getShow(episode.showId).then((s) => {
+        if (s) {
+          setSelectedMovie(null);
+          setSelectedAlbum(null);
+          setSelectedShow(s);
+        }
+      }).catch(() => {});
+    }
+
     const source = await mediaProvider.getPlaybackSource(episode);
     if (customStreamUrl) {
       source.streamUrl = customStreamUrl;
@@ -257,11 +320,93 @@ export const App: React.FC = () => {
 
 
   const handleSelectContinueItem = useCallback(async (item: ContinueWatchingItem) => {
+    if (item.type === 'episode' || 'seasonNumber' in item.media) {
+      const ep = item.media as Episode;
+      const showId = ep.showId || (item as any).showId;
+      if (showId) {
+        setSelectedShowSeason(ep.seasonNumber || (item as any).seasonNumber || 1);
+        mediaProvider.getShow(showId).then((s) => {
+          if (s) {
+            setSelectedMovie(null);
+            setSelectedAlbum(null);
+            setSelectedShow(s);
+          }
+        }).catch(() => {});
+      }
+    }
     const source = await mediaProvider.getPlaybackSource(item.media);
     source.initialPosition = item.lastPlayedPosition;
     await playbackService.play(source);
     setActiveVideoSource(source);
   }, []);
+
+  const handleExitVideoPlayer = useCallback(async () => {
+    playbackService.stop();
+    const current = activeVideoSource;
+
+    if (current && current.mediaType === 'episode') {
+      const showId = current.showId || current.imdbId;
+      if (showId) {
+        setSelectedShowSeason(current.seasonNumber || 1);
+        if (!selectedShow || (selectedShow.id !== showId && selectedShow.imdbId !== showId)) {
+          try {
+            const showObj = await mediaProvider.getShow(showId);
+            setSelectedMovie(null);
+            setSelectedAlbum(null);
+            if (showObj) {
+              setSelectedShow(showObj);
+            } else {
+              setSelectedShow({
+                id: showId,
+                imdbId: current.imdbId || (showId.startsWith('tt') ? showId : undefined),
+                title: current.title,
+                description: current.subtitle || '',
+                poster: current.artwork || '',
+                backdrop: current.backdrop || current.artwork || '',
+                year: 2024,
+                rating: '8.5',
+                genres: ['Drama'],
+                seasonsCount: current.seasonNumber || 1,
+              });
+            }
+          } catch (e) {
+            console.warn('[App] Could not load show on exit:', e);
+          }
+        }
+      }
+    }
+
+    setActiveVideoSource(null);
+  }, [activeVideoSource, selectedShow]);
+
+  const handleMinimizeToPiP = useCallback(async () => {
+    const current = activeVideoSource;
+    if (!current) return;
+
+    if (current.mediaType === 'episode') {
+      const showId = current.showId || current.imdbId;
+      if (showId) {
+        setSelectedShowSeason(current.seasonNumber || 1);
+        if (!selectedShow || (selectedShow.id !== showId && selectedShow.imdbId !== showId)) {
+          try {
+            const showObj = await mediaProvider.getShow(showId);
+            setSelectedMovie(null);
+            setSelectedAlbum(null);
+            if (showObj) {
+              setSelectedShow(showObj);
+            }
+          } catch (e) {}
+        }
+      }
+    }
+
+    const cur = playbackService.getState().currentTime;
+    setPipVideoSource({
+      ...current,
+      initialPosition: cur || current.initialPosition,
+    });
+    setActiveVideoSource(null);
+  }, [activeVideoSource, selectedShow]);
 
   const handleSelectApp = useCallback((app: AppItem) => {
     appLauncher.launchApp(app);
@@ -323,6 +468,21 @@ export const App: React.FC = () => {
     } else if (isProfileModalOpen) {
       setIsProfileModalOpen(false);
     } else if (activeVideoSource) {
+      if (activeVideoSource.mediaType === 'episode') {
+        const showId = activeVideoSource.showId || activeVideoSource.imdbId;
+        if (showId) {
+          setSelectedShowSeason(activeVideoSource.seasonNumber || 1);
+          if (!selectedShow || (selectedShow.id !== showId && selectedShow.imdbId !== showId)) {
+            mediaProvider.getShow(showId).then((s) => {
+              if (s) {
+                setSelectedMovie(null);
+                setSelectedAlbum(null);
+                setSelectedShow(s);
+              }
+            }).catch(() => {});
+          }
+        }
+      }
       const curPos = playbackService.getState().currentTime;
       setPipVideoSource({
         ...activeVideoSource,
@@ -530,8 +690,12 @@ export const App: React.FC = () => {
         ) : selectedShow ? (
           <ShowDetailsScreen
             show={selectedShow}
+            initialSeason={selectedShowSeason}
             onPlayEpisode={handlePlayEpisode}
-            onSelectSimilar={(s) => setSelectedShow(s)}
+            onSelectSimilar={(s) => {
+              setSelectedShowSeason(1);
+              setSelectedShow(s);
+            }}
             onBack={() => setSelectedShow(null)}
             isPlayerActive={Boolean(activeVideoSource)}
           />
@@ -547,7 +711,10 @@ export const App: React.FC = () => {
               <HomeScreen
                 onSelectMovie={(m) => setSelectedMovie(m)}
                 onPlayMovie={handlePlayMovie}
-                onSelectShow={(s) => setSelectedShow(s)}
+                onSelectShow={(s) => {
+                  setSelectedShowSeason(1);
+                  setSelectedShow(s);
+                }}
                 onSelectAlbum={(a) => setSelectedAlbum(a)}
                 onSelectContinueItem={handleSelectContinueItem}
               />
@@ -560,8 +727,13 @@ export const App: React.FC = () => {
             )}
             {currentTab === 'shows' && (
               <ShowsScreen
-                onSelectShow={(s) => setSelectedShow(s)}
+                onSelectShow={(s) => {
+                  setSelectedShowSeason(1);
+                  setSelectedShow(s);
+                }}
                 onPlayShow={async (s) => {
+                  setSelectedShow(s);
+                  setSelectedShowSeason(1);
                   const eps = await mediaProvider.getEpisodes(s.id, 1);
                   if (eps && eps.length > 0) {
                     handlePlayEpisode(eps[0]);
@@ -580,6 +752,15 @@ export const App: React.FC = () => {
             )}
             {currentTab === 'library' && (
               <LibraryScreen
+                onSelectMovie={(m) => setSelectedMovie(m)}
+                onPlayMovie={handlePlayMovie}
+                onSelectShow={(s) => {
+                  setSelectedMovie(null);
+                  setSelectedAlbum(null);
+                  setSelectedShow(s);
+                  setSelectedShowSeason(1);
+                }}
+                onSelectContinueItem={handleSelectContinueItem}
                 onSelectMedia={handleSelectMedia}
               />
             )}
@@ -616,18 +797,12 @@ export const App: React.FC = () => {
       {/* Fullscreen Video Player */}
       {activeVideoSource && (
         <VideoPlayerScreen
+          key={activeVideoSource.id}
           source={activeVideoSource}
-          onMinimizeToPiP={() => {
-            const cur = playbackService.getState().currentTime;
-            setPipVideoSource({
-              ...activeVideoSource,
-              initialPosition: cur || activeVideoSource.initialPosition,
-            });
-            setActiveVideoSource(null);
-          }}
-          onExit={() => {
-            playbackService.stop();
-            setActiveVideoSource(null);
+          onMinimizeToPiP={handleMinimizeToPiP}
+          onExit={handleExitVideoPlayer}
+          onPlayNextEpisode={(nextEp) => {
+            handlePlayEpisode(nextEp);
           }}
         />
       )}

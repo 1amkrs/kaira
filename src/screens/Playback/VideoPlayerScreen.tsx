@@ -18,15 +18,18 @@ import {
   Minimize2,
   RefreshCw,
   Zap,
+  Sparkles,
+  Loader2,
 } from 'lucide-react';
 import { PlayerEngineController, PlayerEngineState } from '../../services/player/PlayerEngineController';
 import { DriverType } from '../../services/player/types';
 import { addonService } from '../../services/addons/AddonService';
 import { introService } from '../../services/playback/IntroService';
 import { continueWatchingService } from '../../services/playback/ContinueWatchingService';
+import { mediaProvider } from '../../services/media/LiveMediaProvider';
 import { spatialNav } from '../../services/spatialNav/spatialNavEngine';
 import { gamepadManager } from '../../services/controller/gamepadManager';
-import { PlaybackSource } from '../../types/media';
+import { PlaybackSource, Episode } from '../../types/media';
 import { AddonStream, SubtitleTrack } from '../../types/addons';
 import { Focusable } from '../../components/Focusable/Focusable';
 import './VideoPlayerScreen.css';
@@ -36,12 +39,14 @@ interface VideoPlayerScreenProps {
   source: PlaybackSource;
   onExit: () => void;
   onMinimizeToPiP?: () => void;
+  onPlayNextEpisode?: (nextEpisode: Episode) => void;
 }
 
 export const VideoPlayerScreen: React.FC<VideoPlayerScreenProps> = ({
   source,
   onExit,
   onMinimizeToPiP,
+  onPlayNextEpisode,
 }) => {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const engineRef = useRef<PlayerEngineController | null>(null);
@@ -84,6 +89,10 @@ export const VideoPlayerScreen: React.FC<VideoPlayerScreenProps> = ({
   );
   const [autoSkipIntro, setAutoSkipIntro] = useState<boolean>(() => introService.isAutoSkipEnabled());
   const [hasAutoSkipped, setHasAutoSkipped] = useState<boolean>(false);
+
+  // Next Episode State (Strictly for TV Shows)
+  const [nextEpisode, setNextEpisode] = useState<Episode | null>(null);
+  const [isLoadingNext, setIsLoadingNext] = useState<boolean>(false);
 
   // Scrubbing & Tooltip State
   const [isScrubbing, setIsScrubbing] = useState<boolean>(false);
@@ -232,6 +241,34 @@ export const VideoPlayerScreen: React.FC<VideoPlayerScreenProps> = ({
     fetchExtraData();
   }, [source.id]);
 
+  // 2a-2. Pre-fetch Next Episode Metadata (Strictly for TV Shows)
+  useEffect(() => {
+    let isCancelled = false;
+    if (source.mediaType === 'episode' && (source.showId || source.imdbId)) {
+      const showId = source.showId || source.imdbId || '';
+      const seasonNum = source.seasonNumber || 1;
+      const epNum = source.episodeNumber || 1;
+
+      mediaProvider
+        .getNextEpisode(showId, seasonNum, epNum)
+        .then((nextEp) => {
+          if (!isCancelled) {
+            setNextEpisode(nextEp);
+          }
+        })
+        .catch((err) => {
+          console.warn('[VideoPlayerScreen] Error fetching next episode:', err);
+          if (!isCancelled) setNextEpisode(null);
+        });
+    } else {
+      setNextEpisode(null);
+    }
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [source.id, source.mediaType, source.showId, source.imdbId, source.seasonNumber, source.episodeNumber]);
+
   // 2b. Progress Saver — persist watch position to ContinueWatchingService
   // Runs every 5 seconds while playing; also flushes on unmount (exit/back) and on completion.
   const engineStateRef = useRef(engineState);
@@ -322,6 +359,48 @@ export const VideoPlayerScreen: React.FC<VideoPlayerScreenProps> = ({
     triggerFeedback('Intro Skipped');
   }, [introSegment, seekTo, triggerFeedback]);
 
+  const handlePlayNextEpisode = useCallback(async () => {
+    if (!nextEpisode) return;
+    setIsLoadingNext(true);
+    triggerFeedback(`Starting S${nextEpisode.seasonNumber} E${nextEpisode.number}...`);
+
+    if (onPlayNextEpisode) {
+      onPlayNextEpisode(nextEpisode);
+      return;
+    }
+
+    // Fallback: standalone engine reload if callback is omitted
+    try {
+      const nextSource = await mediaProvider.getPlaybackSource(nextEpisode);
+      if (engineRef.current) {
+        const driverType: DriverType =
+          nextSource.streamType === 'youtube' ? 'youtube' : nextSource.streamType === 'embed' ? 'embed' : 'direct';
+        setCurrentStreamUrl(nextSource.streamUrl);
+        setCurrentDriverType(driverType);
+        engineRef.current.loadMedia(
+          nextSource.streamUrl,
+          driverType,
+          0,
+          nextSource.subtitles && nextSource.subtitles.length > 0 ? nextSource.subtitles[0].url : undefined,
+          nextSource.durationSeconds || 2700
+        );
+        setNextEpisode(null);
+      }
+    } catch (err) {
+      console.error('[VideoPlayerScreen] Error starting next episode:', err);
+    } finally {
+      setIsLoadingNext(false);
+    }
+  }, [nextEpisode, onPlayNextEpisode, triggerFeedback]);
+
+  const handleReplayCurrent = useCallback(() => {
+    if (!engineRef.current) return;
+    seekTo(0);
+    engineRef.current.play();
+    triggerFeedback('Replaying Media');
+    pingHud();
+  }, [seekTo, triggerFeedback, pingHud]);
+
   // 4. Intro Auto-Skip Monitor
   useEffect(() => {
     if (!introSegment || hasAutoSkipped || !autoSkipIntro) return;
@@ -331,6 +410,17 @@ export const VideoPlayerScreen: React.FC<VideoPlayerScreenProps> = ({
       handleSkipIntro();
     }
   }, [engineState.currentTime, introSegment, hasAutoSkipped, autoSkipIntro, handleSkipIntro]);
+
+  // 4b. Auto-focus Next Episode button when playback ends
+  useEffect(() => {
+    if (engineState.status === 'ended') {
+      if (source.mediaType === 'episode' && nextEpisode) {
+        spatialNav.setFocus('player-next-episode-btn');
+      } else {
+        spatialNav.setFocus('player-replay-btn');
+      }
+    }
+  }, [engineState.status, source.mediaType, nextEpisode]);
 
   // 5. Remote Controller & Physical Keyboard Mapping
   useEffect(() => {
@@ -371,18 +461,19 @@ export const VideoPlayerScreen: React.FC<VideoPlayerScreenProps> = ({
         return;
       }
 
-      // Left / Right Arrow: Always seek ±10s unless settings menu is open
-      if (e.key === 'ArrowLeft' && !isMenuOpen) {
-        e.preventDefault();
-        seekBy(-10);
-        triggerFeedback('⏪ -10s');
-        return;
-      }
-      if (e.key === 'ArrowRight' && !isMenuOpen) {
-        e.preventDefault();
-        seekBy(10);
-        triggerFeedback('⏩ +10s');
-        return;
+      // Left / Right Arrow: Seek ±10s when HUD is hidden OR focus is explicitly on the timeline scrubber
+      const focusedId = spatialNav.getFocusedId();
+      const isScrubberFocused = focusedId === 'player-scrubber-bar';
+
+      if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight') && !isMenuOpen) {
+        if (!isHudVisible || isScrubberFocused) {
+          e.preventDefault();
+          const delta = e.key === 'ArrowLeft' ? -10 : 10;
+          seekBy(delta);
+          triggerFeedback(delta > 0 ? '⏩ +10s' : '⏪ -10s');
+          return;
+        }
+        // When HUD is visible and scrubber is not focused, allow spatialNav to navigate between buttons
       }
 
       // 'I' key: Skip intro immediately
@@ -391,6 +482,13 @@ export const VideoPlayerScreen: React.FC<VideoPlayerScreenProps> = ({
         if (introSegment) {
           handleSkipIntro();
         }
+        return;
+      }
+
+      // 'N' key: Skip to Next Episode (Strictly for TV Shows)
+      if ((e.key === 'n' || e.key === 'N') && !isMenuOpen && source.mediaType === 'episode' && nextEpisode) {
+        e.preventDefault();
+        handlePlayNextEpisode();
         return;
       }
 
@@ -409,8 +507,8 @@ export const VideoPlayerScreen: React.FC<VideoPlayerScreenProps> = ({
         return;
       }
 
-      // Volume Keys: + / - / VolumeUp / VolumeDown / M / ArrowUp / ArrowDown (when not in modal)
-      if (e.key === '+' || e.key === '=' || e.key === 'VolumeUp' || (e.key === 'ArrowUp' && !isMenuOpen)) {
+      // Volume Keys: + / - / VolumeUp / VolumeDown / M / ArrowUp / ArrowDown (only when HUD is hidden)
+      if (e.key === '+' || e.key === '=' || e.key === 'VolumeUp' || (e.key === 'ArrowUp' && !isMenuOpen && !isHudVisible)) {
         e.preventDefault();
         const next = engineRef.current ? engineRef.current.adjustVolume(0.05) : 1;
         setVolumeToast({ level: Math.round(next * 100), muted: next === 0 });
@@ -419,7 +517,7 @@ export const VideoPlayerScreen: React.FC<VideoPlayerScreenProps> = ({
         triggerFeedback(`Volume: ${Math.round(next * 100)}%`);
         return;
       }
-      if (e.key === '-' || e.key === '_' || e.key === 'VolumeDown' || (e.key === 'ArrowDown' && !isMenuOpen)) {
+      if (e.key === '-' || e.key === '_' || e.key === 'VolumeDown' || (e.key === 'ArrowDown' && !isMenuOpen && !isHudVisible)) {
         e.preventDefault();
         const next = engineRef.current ? engineRef.current.adjustVolume(-0.05) : 0;
         setVolumeToast({ level: Math.round(next * 100), muted: next === 0 });
@@ -450,7 +548,7 @@ export const VideoPlayerScreen: React.FC<VideoPlayerScreenProps> = ({
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [pingHud, isHudVisible, isMenuOpen, onExit, handleTogglePlayPause, seekBy, introSegment, handleSkipIntro, triggerFeedback]);
+  }, [pingHud, isHudVisible, isMenuOpen, onExit, handleTogglePlayPause, seekBy, introSegment, handleSkipIntro, triggerFeedback, handlePlayNextEpisode, source.mediaType, nextEpisode]);
 
   // 5b. Gamepad Action Handling
   useEffect(() => {
@@ -546,6 +644,14 @@ export const VideoPlayerScreen: React.FC<VideoPlayerScreenProps> = ({
 
   const isInsideIntro =
     introSegment && engineState.currentTime >= introSegment.start && engineState.currentTime <= introSegment.end;
+
+  const isOutroOrNearEnd =
+    source.mediaType === 'episode' &&
+    nextEpisode !== null &&
+    engineState.status === 'playing' &&
+    !isMenuOpen &&
+    engineState.duration > 60 &&
+    engineState.currentTime >= engineState.duration - 25;
 
   return (
     <div
@@ -973,6 +1079,43 @@ export const VideoPlayerScreen: React.FC<VideoPlayerScreenProps> = ({
                   <span className="tv-skip-intro-title">Skip Intro</span>
                   <span className="tv-skip-intro-sub">
                     {Math.max(0, Math.ceil((introSegment?.end || 0) - engineState.currentTime))}s (Press I or Enter)
+                  </span>
+                </div>
+              </div>
+            )}
+          </Focusable>
+        </div>
+      )}
+
+      {/* 7b. Floating Play Next Episode Prompt (During Credits / Outro, Strictly for TV Shows) */}
+      {isOutroOrNearEnd && nextEpisode && (
+        <div className="tv-player-floating-next-prompt animate-pop">
+          <Focusable
+            id="player-floating-next-btn"
+            groupId="player-floating-next"
+            indexInGroup={0}
+            className="tv-floating-next-focusable"
+            onSelect={handlePlayNextEpisode}
+          >
+            {(isFocused) => (
+              <div
+                className={`tv-floating-next-btn ${isFocused ? 'focused' : ''}`}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handlePlayNextEpisode();
+                }}
+              >
+                <div className="tv-floating-next-icon-wrap">
+                  {isLoadingNext ? (
+                    <Loader2 size={18} className="spin-animate" />
+                  ) : (
+                    <Play size={18} fill="currentColor" />
+                  )}
+                </div>
+                <div className="tv-floating-next-text-col">
+                  <span className="tv-floating-next-action">Play Next Episode</span>
+                  <span className="tv-floating-next-title">
+                    S{nextEpisode.seasonNumber} E{nextEpisode.number}: {nextEpisode.title}
                   </span>
                 </div>
               </div>
@@ -1446,6 +1589,242 @@ export const VideoPlayerScreen: React.FC<VideoPlayerScreenProps> = ({
                 </div>
               )}
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* 8.5. End-Screen Overlay (Displayed when playback ends) */}
+      {engineState.status === 'ended' && !isMenuOpen && (
+        <div className="tv-player-end-screen-overlay animate-scale-up" role="dialog" aria-label="Playback Ended">
+          {/* Cinematic Background Backdrop */}
+          <div
+            className="tv-end-screen-backdrop"
+            style={{
+              backgroundImage:
+                source.mediaType === 'episode' && nextEpisode?.thumbnail
+                  ? `url(${nextEpisode.thumbnail})`
+                  : source.backdrop || source.artwork
+                  ? `url(${source.backdrop || source.artwork})`
+                  : undefined,
+            }}
+          />
+          <div className="tv-end-screen-scrim" />
+
+          <div className="tv-end-screen-card">
+            {source.mediaType === 'episode' && nextEpisode ? (
+              <>
+                <div className="tv-end-badge">
+                  <Sparkles size={14} className="tv-end-badge-icon" />
+                  <span>UP NEXT</span>
+                </div>
+
+                <div className="tv-end-episode-info">
+                  <div className="tv-end-thumb-container">
+                    <img
+                      src={nextEpisode.thumbnail || source.artwork || source.backdrop || ''}
+                      alt={nextEpisode.title}
+                      className="tv-end-thumb-img"
+                    />
+                    {nextEpisode.runtime && (
+                      <div className="tv-end-thumb-runtime">{nextEpisode.runtime}</div>
+                    )}
+                  </div>
+
+                  <div className="tv-end-text-col">
+                    <span className="tv-end-sub-label">
+                      Season {nextEpisode.seasonNumber} • Episode {nextEpisode.number}
+                    </span>
+                    <h2 className="tv-end-ep-title">{nextEpisode.title}</h2>
+                    {nextEpisode.description && (
+                      <p className="tv-end-ep-desc">{nextEpisode.description}</p>
+                    )}
+                  </div>
+                </div>
+
+                <div className="tv-end-actions-row">
+                  <Focusable
+                    id="player-next-episode-btn"
+                    groupId="player-end-screen-group"
+                    indexInGroup={0}
+                    autoFocus={true}
+                    className="tv-end-action-focusable"
+                    onSelect={handlePlayNextEpisode}
+                  >
+                    {(isFocused) => (
+                      <div
+                        className={`tv-end-primary-btn ${isFocused ? 'focused' : ''}`}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handlePlayNextEpisode();
+                        }}
+                      >
+                        {isLoadingNext ? (
+                          <Loader2 size={22} className="spin-animate" />
+                        ) : (
+                          <Play size={22} fill="currentColor" />
+                        )}
+                        <span>Play Next Episode</span>
+                      </div>
+                    )}
+                  </Focusable>
+
+                  <Focusable
+                    id="player-replay-btn"
+                    groupId="player-end-screen-group"
+                    indexInGroup={1}
+                    className="tv-end-action-focusable"
+                    onSelect={handleReplayCurrent}
+                  >
+                    {(isFocused) => (
+                      <div
+                        className={`tv-end-secondary-btn ${isFocused ? 'focused' : ''}`}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleReplayCurrent();
+                        }}
+                      >
+                        <RotateCcw size={18} />
+                        <span>Replay Episode</span>
+                      </div>
+                    )}
+                  </Focusable>
+
+                  <Focusable
+                    id="player-exit-btn"
+                    groupId="player-end-screen-group"
+                    indexInGroup={2}
+                    className="tv-end-action-focusable"
+                    onSelect={onExit}
+                  >
+                    {(isFocused) => (
+                      <div
+                        className={`tv-end-secondary-btn ${isFocused ? 'focused' : ''}`}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onExit();
+                        }}
+                      >
+                        <ArrowLeft size={18} />
+                        <span>Back</span>
+                      </div>
+                    )}
+                  </Focusable>
+                </div>
+              </>
+            ) : source.mediaType === 'episode' && !nextEpisode ? (
+              <>
+                <div className="tv-end-badge series-end">
+                  <Check size={14} />
+                  <span>SEASON / SERIES COMPLETE</span>
+                </div>
+                <h2 className="tv-end-ep-title" style={{ marginTop: '12px' }}>
+                  {source.title}
+                </h2>
+                <p className="tv-end-ep-desc">
+                  You've watched the latest available episode of this show.
+                </p>
+                <div className="tv-end-actions-row" style={{ marginTop: '24px' }}>
+                  <Focusable
+                    id="player-replay-btn"
+                    groupId="player-end-screen-group"
+                    indexInGroup={0}
+                    autoFocus={true}
+                    className="tv-end-action-focusable"
+                    onSelect={handleReplayCurrent}
+                  >
+                    {(isFocused) => (
+                      <div
+                        className={`tv-end-primary-btn ${isFocused ? 'focused' : ''}`}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleReplayCurrent();
+                        }}
+                      >
+                        <RotateCcw size={20} />
+                        <span>Replay Episode</span>
+                      </div>
+                    )}
+                  </Focusable>
+
+                  <Focusable
+                    id="player-exit-btn"
+                    groupId="player-end-screen-group"
+                    indexInGroup={1}
+                    className="tv-end-action-focusable"
+                    onSelect={onExit}
+                  >
+                    {(isFocused) => (
+                      <div
+                        className={`tv-end-secondary-btn ${isFocused ? 'focused' : ''}`}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onExit();
+                        }}
+                      >
+                        <ArrowLeft size={18} />
+                        <span>Back</span>
+                      </div>
+                    )}
+                  </Focusable>
+                </div>
+              </>
+            ) : (
+              /* Strictly for Movies: NO "Play Next Episode" button */
+              <>
+                <div className="tv-end-badge">
+                  <Check size={14} />
+                  <span>COMPLETED</span>
+                </div>
+                <h2 className="tv-end-ep-title" style={{ marginTop: '12px' }}>
+                  {source.title}
+                </h2>
+                {source.subtitle && <p className="tv-end-ep-desc">{source.subtitle}</p>}
+                <div className="tv-end-actions-row" style={{ marginTop: '24px' }}>
+                  <Focusable
+                    id="player-replay-btn"
+                    groupId="player-end-screen-group"
+                    indexInGroup={0}
+                    autoFocus={true}
+                    className="tv-end-action-focusable"
+                    onSelect={handleReplayCurrent}
+                  >
+                    {(isFocused) => (
+                      <div
+                        className={`tv-end-primary-btn ${isFocused ? 'focused' : ''}`}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleReplayCurrent();
+                        }}
+                      >
+                        <RotateCcw size={20} />
+                        <span>Replay Movie</span>
+                      </div>
+                    )}
+                  </Focusable>
+
+                  <Focusable
+                    id="player-exit-btn"
+                    groupId="player-end-screen-group"
+                    indexInGroup={1}
+                    className="tv-end-action-focusable"
+                    onSelect={onExit}
+                  >
+                    {(isFocused) => (
+                      <div
+                        className={`tv-end-secondary-btn ${isFocused ? 'focused' : ''}`}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onExit();
+                        }}
+                      >
+                        <ArrowLeft size={18} />
+                        <span>Back</span>
+                      </div>
+                    )}
+                  </Focusable>
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}

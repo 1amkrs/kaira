@@ -102,3 +102,46 @@
   overflow: hidden;
   height: 2.8em;
 }
+
+/* ==========================================================================
+   Mobile Responsive Episode Card (Screens <= 768px down to 350px)
+   ========================================================================== */
+
+@media (max-width: 768px) {
+  .tv-episode-card-wrapper {
+    width: 200px;
+  }
+
+  .tv-episode-title {
+    font-size: 13px;
+  }
+
+  .tv-episode-desc {
+    font-size: 11px;
+    height: 2.6em;
+  }
+
+  .tv-episode-code-badge {
+    font-size: 10px;
+    padding: 2px 5px;
+    top: 6px;
+    left: 6px;
+  }
+
+  .tv-episode-runtime-tag {
+    font-size: 10px;
+    bottom: 6px;
+    right: 6px;
+  }
+}
+
+@media (max-width: 420px) {
+  .tv-episode-card-wrapper {
+    width: 165px;
+  }
+
+  .tv-episode-title {
+    font-size: 12px;
+  }
+}
+

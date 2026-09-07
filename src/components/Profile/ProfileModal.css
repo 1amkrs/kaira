@@ -258,3 +258,44 @@
   transform: scale(1.08);
   box-shadow: 0 8px 24px rgba(138, 180, 248, 0.35);
 }
+
+@media (max-width: 768px) {
+  .tv-profile-minimal-stage {
+    padding: 0 16px;
+    gap: 28px;
+  }
+
+  .tv-profile-minimal-title {
+    font-size: 24px;
+  }
+
+  .tv-profile-minimal-hint {
+    font-size: 13px;
+  }
+
+  .tv-profile-minimal-row {
+    gap: 18px;
+  }
+
+  .tv-profile-avatar-disc {
+    width: 76px;
+    height: 76px;
+  }
+
+  .tv-profile-avatar-label {
+    font-size: 14px;
+    max-width: 90px;
+  }
+
+  .tv-profile-minimal-footer {
+    flex-direction: column;
+    gap: 10px;
+    width: 100%;
+    max-width: 280px;
+  }
+
+  .tv-profile-pill-btn {
+    width: 100%;
+    justify-content: center;
+  }
+}

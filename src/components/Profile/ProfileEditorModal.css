@@ -747,3 +747,51 @@
   transform: scale(1.04);
   box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.8), 0 8px 24px rgba(234, 67, 53, 0.6);
 }
+
+@media (max-width: 768px) {
+  .tv-profile-editor-backdrop {
+    padding: 12px;
+  }
+
+  .tv-profile-editor-panel {
+    min-width: 0;
+    width: 100%;
+    max-height: 94vh;
+    padding: 20px 16px;
+    gap: 18px;
+  }
+
+  .tv-editor-type-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .tv-pin-inputs-row {
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .tv-editor-footer {
+    flex-direction: column-reverse;
+    gap: 12px;
+    align-items: stretch;
+  }
+
+  .tv-editor-footer-right {
+    margin-left: 0;
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .tv-editor-preview-card {
+    padding: 14px 16px;
+    gap: 14px;
+  }
+
+  .tv-btn-primary,
+  .tv-btn-secondary,
+  .tv-btn-danger {
+    height: 44px;
+    font-size: 14px;
+    padding: 0 18px;
+  }
+}

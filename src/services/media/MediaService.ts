@@ -27,6 +27,10 @@ export class MediaService {
     return await mediaProvider.getEpisodes(showId, seasonNumber);
   }
 
+  public async getNextEpisode(showId: string, seasonNumber: number, episodeNumber: number): Promise<Episode | null> {
+    return await mediaProvider.getNextEpisode(showId, seasonNumber, episodeNumber);
+  }
+
   public async getMusic(): Promise<{ recentlyPlayed: Album[]; albums: Album[]; topTracks: Track[] }> {
     return await mediaProvider.getMusic();
   }

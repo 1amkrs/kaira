@@ -33,6 +33,17 @@ export const FloatingVideoPiP: React.FC<FloatingVideoPiPProps> = ({
   const ytId = isYouTube ? extractYtId(source.streamUrl) || source.ytTrailerId : null;
 
   const iframeRef = React.useRef<HTMLIFrameElement | null>(null);
+  const videoRef = React.useRef<HTMLVideoElement | null>(null);
+
+  // Synchronize native video element state with isPlaying prop
+  React.useEffect(() => {
+    if (!videoRef.current) return;
+    if (isPlaying && videoRef.current.paused) {
+      videoRef.current.play().catch(() => {});
+    } else if (!isPlaying && !videoRef.current.paused) {
+      videoRef.current.pause();
+    }
+  }, [isPlaying]);
 
   const handleTogglePlay = () => {
     if (isYouTube && iframeRef.current?.contentWindow) {
@@ -40,6 +51,12 @@ export const FloatingVideoPiP: React.FC<FloatingVideoPiPProps> = ({
       try {
         iframeRef.current.contentWindow.postMessage(JSON.stringify({ event: 'command', func }), '*');
       } catch (e) {}
+    } else if (videoRef.current) {
+      if (videoRef.current.paused) {
+        videoRef.current.play().catch(() => {});
+      } else {
+        videoRef.current.pause();
+      }
     }
     onTogglePlayPause();
   };
@@ -59,6 +76,7 @@ export const FloatingVideoPiP: React.FC<FloatingVideoPiPProps> = ({
         ) : (
           <video
             ref={(el) => {
+              videoRef.current = el;
               if (el && source.initialPosition && Math.abs(el.currentTime - source.initialPosition) > 2) {
                 el.currentTime = source.initialPosition;
               }
@@ -68,6 +86,16 @@ export const FloatingVideoPiP: React.FC<FloatingVideoPiPProps> = ({
             autoPlay
             playsInline
             muted={false}
+            onPlay={() => {
+              if (playbackService.getState().status !== 'playing') {
+                playbackService.setStatus('playing');
+              }
+            }}
+            onPause={() => {
+              if (playbackService.getState().status === 'playing') {
+                playbackService.setStatus('paused');
+              }
+            }}
             onTimeUpdate={(e) => {
               const cur = e.currentTarget.currentTime;
               const dur = e.currentTarget.duration;
