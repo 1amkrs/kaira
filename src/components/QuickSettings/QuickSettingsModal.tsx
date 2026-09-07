@@ -23,6 +23,7 @@ import { ambientService } from '../../services/ambient/ambientService';
 import { networkService } from '../../services/network/NetworkService';
 import { systemService } from '../../services/system/SystemService';
 import { remoteService } from '../../services/remote/RemoteService';
+import { sleepTimerService } from '../../services/sleep/sleepTimerService';
 import { AmbientState, DisplaySettings } from '../../types';
 import './QuickSettingsModal.css';
 
@@ -301,7 +302,10 @@ export const QuickSettingsModal: React.FC<QuickSettingsModalProps> = ({ onClose,
                 groupId="qs-power"
                 indexInGroup={0}
                 className="tv-qs-step-btn"
-                onSelect={() => displayService.triggerPowerAction('sleep')}
+                onSelect={() => {
+                  onClose();
+                  sleepTimerService.sleepNow();
+                }}
               >
                 {(isFocused) => (
                   <div className={`tv-qs-btn-inner ${isFocused ? 'focused' : ''}`}>

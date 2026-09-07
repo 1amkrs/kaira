@@ -1,0 +1,87 @@
+.tv-standby-container {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100vh;
+  background-color: #000000;
+  z-index: 99999;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  user-select: none;
+  cursor: none;
+  animation: tvStandbyFadeIn 0.8s ease forwards;
+}
+
+@keyframes tvStandbyFadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.tv-standby-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  color: rgba(255, 255, 255, 0.45);
+}
+
+.tv-standby-led-box {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 24px;
+  animation: tvStandbyPulse 4s ease-in-out infinite;
+}
+
+@keyframes tvStandbyPulse {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(138, 180, 248, 0);
+    border-color: rgba(255, 255, 255, 0.08);
+    transform: scale(1);
+  }
+  50% {
+    box-shadow: 0 0 24px 6px rgba(138, 180, 248, 0.2);
+    border-color: rgba(138, 180, 248, 0.4);
+    transform: scale(1.05);
+  }
+}
+
+.tv-standby-icon {
+  color: rgba(138, 180, 248, 0.6);
+}
+
+.tv-standby-clock {
+  font-size: 3.5rem;
+  font-weight: 200;
+  letter-spacing: -0.02em;
+  color: rgba(255, 255, 255, 0.6);
+  margin-bottom: 8px;
+  font-variant-numeric: tabular-nums;
+}
+
+.tv-standby-title {
+  font-size: 1.15rem;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.4);
+  margin-bottom: 12px;
+}
+
+.tv-standby-hint {
+  font-size: 0.9rem;
+  font-weight: 400;
+  color: rgba(255, 255, 255, 0.25);
+  letter-spacing: 0.02em;
+}

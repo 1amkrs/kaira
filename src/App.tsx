@@ -18,11 +18,14 @@ import { MusicPlayerScreen } from './screens/Playback/MusicPlayerScreen';
 import { MiniPlayer } from './components/Playback/MiniPlayer';
 import { FloatingVideoPiP } from './components/Playback/FloatingVideoPiP';
 import { AerialScreensaver } from './components/Screensaver/AerialScreensaver';
+import { StandbyScreen } from './components/SleepTimer/StandbyScreen';
 import { ProfileModal, UserProfile } from './components/Profile/ProfileModal';
 import { SleepTimerModal } from './components/SleepTimer/SleepTimerModal';
 import { QuickSettingsModal } from './components/QuickSettings/QuickSettingsModal';
 import { CompanionRemoteModal } from './components/CompanionRemote/CompanionRemoteModal';
 import { sleepTimerService } from './services/sleep/sleepTimerService';
+import { screensaverService } from './services/screensaver/screensaverService';
+import { displayService } from './services/display/displayService';
 import { profileService } from './services/profile/ProfileService';
 import { remoteService } from './services/remote/RemoteService';
 import { SplashScreen } from './components/Splash/SplashScreen';
@@ -35,7 +38,7 @@ import { MediaItem } from './types';
 import { Loader2, Gamepad, Volume2, VolumeX, Smartphone } from 'lucide-react';
 import './App.css';
 
-const TABS: NavigationTab[] = ['for-you', 'movies', 'shows', 'music', 'games', 'library'];
+const TABS: NavigationTab[] = ['for-you', 'movies', 'shows', 'music', 'library'];
 
 export const App: React.FC = () => {
   const [showSplash, setShowSplash] = useState<boolean>(true);
@@ -60,9 +63,9 @@ export const App: React.FC = () => {
   const [pipVideoSource, setPipVideoSource] = useState<PlaybackSource | null>(null);
   const [isMusicPlayerOpen, setIsMusicPlayerOpen] = useState<boolean>(false);
 
-  // 4K Aerial Screensaver state & timer
-  const [isScreensaverActive, setIsScreensaverActive] = useState<boolean>(false);
-  const screensaverTimerRef = useRef<NodeJS.Timeout | null>(null);
+  // 4K Aerial Screensaver & Deep Standby states
+  const [isScreensaverActive, setIsScreensaverActive] = useState<boolean>(() => screensaverService.getState().isActive);
+  const [isStandbyActive, setIsStandbyActive] = useState<boolean>(() => sleepTimerService.getState().isStandby);
 
   // HUD Toasts & Overlays
   const [launchToast, setLaunchToast] = useState<LaunchFeedback | null>(null);
@@ -95,6 +98,7 @@ export const App: React.FC = () => {
       isSleepModalOpen ||
       isRemoteModalOpen ||
       isScreensaverActive ||
+      isStandbyActive ||
       activeVideoSource ||
       isMusicPlayerOpen ||
       selectedMovie ||
@@ -116,6 +120,7 @@ export const App: React.FC = () => {
     isSleepModalOpen,
     isRemoteModalOpen,
     isScreensaverActive,
+    isStandbyActive,
     activeVideoSource,
     isMusicPlayerOpen,
     selectedMovie,
@@ -132,6 +137,7 @@ export const App: React.FC = () => {
       isSleepModalOpen ||
       isRemoteModalOpen ||
       isScreensaverActive ||
+      isStandbyActive ||
       activeVideoSource ||
       isMusicPlayerOpen ||
       selectedMovie ||
@@ -153,6 +159,7 @@ export const App: React.FC = () => {
     isSleepModalOpen,
     isRemoteModalOpen,
     isScreensaverActive,
+    isStandbyActive,
     activeVideoSource,
     isMusicPlayerOpen,
     selectedMovie,
@@ -428,39 +435,38 @@ export const App: React.FC = () => {
     }
   }, []);
 
-  // --- SCREENSAVER IDLE TIMER (3 MINUTES) ---
+  // --- SCREENSAVER & STANDBY SUBSCRIPTIONS ---
   useEffect(() => {
-    const resetIdleTimer = () => {
-      if (isScreensaverActive) {
-        setIsScreensaverActive(false);
-      }
-      if (screensaverTimerRef.current) {
-        clearTimeout(screensaverTimerRef.current);
-      }
-      // Only start screensaver if full video player is not actively playing AND music is not open/playing
-      const isAudioPlaying = playbackService.getState().status === 'playing';
-      if (!activeVideoSource && !isMusicPlayerOpen && !isAudioPlaying) {
-        screensaverTimerRef.current = setTimeout(() => {
-          setIsScreensaverActive(true);
-        }, 180000); // 3 minutes
-      }
-    };
-
-    window.addEventListener('keydown', resetIdleTimer);
-    window.addEventListener('pointerdown', resetIdleTimer);
-    resetIdleTimer();
+    const unsubScreensaver = screensaverService.subscribe((s) => {
+      setIsScreensaverActive(s.isActive);
+    });
+    const unsubSleep = sleepTimerService.subscribe((s) => {
+      setIsStandbyActive(s.isStandby);
+    });
+    screensaverService.startMonitoring();
 
     return () => {
-      window.removeEventListener('keydown', resetIdleTimer);
-      window.removeEventListener('pointerdown', resetIdleTimer);
-      if (screensaverTimerRef.current) clearTimeout(screensaverTimerRef.current);
+      unsubScreensaver();
+      unsubSleep();
+      screensaverService.stopMonitoring();
     };
-  }, [isScreensaverActive, activeVideoSource, isMusicPlayerOpen]);
+  }, []);
+
+  // Synchronize media playback status with screensaver service
+  useEffect(() => {
+    screensaverService.setMediaPlayingChecker(() => {
+      const isFullVideoPlaying = Boolean(activeVideoSource);
+      const isAudioPlaying = playbackService.getState().status === 'playing';
+      return isFullVideoPlaying || (isMusicPlayerOpen && isAudioPlaying);
+    });
+  }, [activeVideoSource, isMusicPlayerOpen]);
 
   // --- CONTROLLER BACK NAVIGATION STACK ---
   const handleBack = useCallback(() => {
-    if (isScreensaverActive) {
-      setIsScreensaverActive(false);
+    if (isStandbyActive) {
+      sleepTimerService.wakeFromStandby();
+    } else if (isScreensaverActive) {
+      screensaverService.wake();
     } else if (isRemoteModalOpen) {
       setIsRemoteModalOpen(false);
     } else if (isQuickSettingsOpen) {
@@ -524,7 +530,14 @@ export const App: React.FC = () => {
   // Controller & System Subscriptions
   useEffect(() => {
     sleepTimerService.setOnSleepCallback(() => {
-      setIsScreensaverActive(true);
+      if (activeVideoSource) {
+        setActiveVideoSource(null);
+      }
+      displayService.triggerPowerAction('sleep');
+    });
+
+    const unsubGamepadActions = gamepadManager.subscribeAction(() => {
+      screensaverService.reportActivity();
     });
 
     const cleanup = gamepadManager.init({
@@ -550,14 +563,14 @@ export const App: React.FC = () => {
         playbackService.setVolume(next);
         setVolumeToast({ level: Math.round(next * 100), muted: false });
         if (volumeToastTimerRef.current) clearTimeout(volumeToastTimerRef.current);
-        volumeToastTimerRef.current = setTimeout(() => setVolumeToast(null), 1800);
+        volumeToastTimerRef.current = setTimeout(() => setVolumeToast(null), 2500);
       } else if (e.key === '-' || e.key === '_' || e.key === 'VolumeDown') {
         const curVol = playbackService.getState().volume;
         const next = Math.max(0, curVol - 0.05);
         playbackService.setVolume(next);
-        setVolumeToast({ level: Math.round(next * 100), muted: next === 0 });
+        setVolumeToast({ level: Math.round(next * 100), muted: false });
         if (volumeToastTimerRef.current) clearTimeout(volumeToastTimerRef.current);
-        volumeToastTimerRef.current = setTimeout(() => setVolumeToast(null), 1800);
+        volumeToastTimerRef.current = setTimeout(() => setVolumeToast(null), 2500);
       } else if (e.key === 'm' || e.key === 'M' || e.key === 'VolumeMute') {
         const curVol = playbackService.getState().volume;
         const next = curVol > 0 ? 0 : 0.75;
@@ -595,7 +608,7 @@ export const App: React.FC = () => {
       onOpenSleepTimer: () => setIsSleepModalOpen(true),
       onOpenRemoteModal: () => setIsRemoteModalOpen(true),
       onBack: handleBack,
-      onTriggerScreensaver: () => setIsScreensaverActive(true),
+      onTriggerScreensaver: () => screensaverService.trigger(),
     });
 
     const handleMouseMove = () => {
@@ -612,6 +625,7 @@ export const App: React.FC = () => {
 
     return () => {
       cleanup();
+      unsubGamepadActions();
       unsubRemote();
       window.removeEventListener('keydown', handleVolumeKeys);
       window.removeEventListener('mousemove', handleMouseMove);
@@ -619,7 +633,7 @@ export const App: React.FC = () => {
       unsubProfile();
     };
 
-  }, [handleBack, handleOpenSearch, handleOpenSettings, handleSelectTab, handleTabPrev, handleTabNext, isDetailOpen]);
+  }, [handleBack, handleOpenSearch, handleOpenSettings, handleSelectTab, handleTabPrev, handleTabNext]);
 
   // Sync TV UI state with companion remote
   useEffect(() => {
@@ -652,7 +666,7 @@ export const App: React.FC = () => {
       onOpenSleepTimer: () => setIsSleepModalOpen(true),
       onOpenRemoteModal: () => setIsRemoteModalOpen(true),
       onBack: handleBack,
-      onTriggerScreensaver: () => setIsScreensaverActive(true),
+      onTriggerScreensaver: () => screensaverService.trigger(),
     });
   }, [handleBack, handleOpenSearch, handleOpenSettings, handleSelectTab, handleTabPrev, handleTabNext]);
 
@@ -666,7 +680,6 @@ export const App: React.FC = () => {
           onOpenSearch={handleOpenSearch}
           onOpenSettings={handleOpenSettings}
           onOpenProfile={() => setIsProfileModalOpen(true)}
-          onOpenSleepTimer={() => setIsSleepModalOpen(true)}
           onOpenRemoteModal={() => setIsRemoteModalOpen(true)}
           activeProfile={activeProfile}
           activeProfileName={activeProfile.name}
@@ -870,10 +883,16 @@ export const App: React.FC = () => {
         <CompanionRemoteModal onClose={() => setIsRemoteModalOpen(false)} />
       )}
 
+      {/* Deep Standby / Sleep Screen */}
+      <StandbyScreen
+        isActive={isStandbyActive}
+        onWake={() => sleepTimerService.wakeFromStandby()}
+      />
+
       {/* 4K Aerial Screensaver with Ambient Clock & Weather */}
       <AerialScreensaver
-        isActive={isScreensaverActive}
-        onWake={() => setIsScreensaverActive(false)}
+        isActive={isScreensaverActive && !isStandbyActive}
+        onWake={() => screensaverService.wake()}
       />
 
       {/* Gamepad Connection HUD Notification */}

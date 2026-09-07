@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Moon, Clock, X, Check, Power } from 'lucide-react';
 import { Focusable } from '../Focusable/Focusable';
+import { spatialNav } from '../../services/spatialNav/spatialNavEngine';
 import { sleepTimerService, SleepTimerState } from '../../services/sleep/sleepTimerService';
 import './SleepTimerModal.css';
 
@@ -19,6 +20,13 @@ const PRESETS = [
 
 export const SleepTimerModal: React.FC<SleepTimerModalProps> = ({ onClose }) => {
   const [sleepState, setSleepState] = useState<SleepTimerState>(() => sleepTimerService.getState());
+
+  useEffect(() => {
+    spatialNav.pushScope('sleep-timer-modal');
+    return () => {
+      spatialNav.popScope('sleep-timer-modal');
+    };
+  }, []);
 
   useEffect(() => {
     return sleepTimerService.subscribe(setSleepState);
@@ -126,14 +134,14 @@ export const SleepTimerModal: React.FC<SleepTimerModalProps> = ({ onClose }) => 
             indexInGroup={0}
             className="tv-sleep-instant-focusable"
             onSelect={() => {
-              sleepTimerService.start(1); // 1 minute quick sleep
               onClose();
+              sleepTimerService.sleepNow();
             }}
           >
             {(isFocused) => (
               <div className={`tv-sleep-instant-btn ${isFocused ? 'focused' : ''}`}>
                 <Power size={18} />
-                <span>Sleep Now (1 min)</span>
+                <span>Sleep TV Now (Standby)</span>
               </div>
             )}
           </Focusable>

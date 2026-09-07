@@ -8,6 +8,7 @@ import { appLauncher } from '../appLauncher/appLauncher';
 import { networkService } from '../network/NetworkService';
 import { systemService } from '../system/SystemService';
 import { soundEffectsService } from '../audio/soundEffectsService';
+import { screensaverService } from '../screensaver/screensaverService';
 import {
   RemoteCommand,
   RemoteCommandType,
@@ -368,6 +369,7 @@ class RemoteService {
 
   public handleCommand(command: RemoteCommand): { success: boolean; error?: string } {
     console.log(`[RemoteService] 📱 Executing Command: ${command.type}`, command.payload);
+    screensaverService.reportActivity();
 
     try {
       switch (command.type) {
@@ -532,7 +534,7 @@ class RemoteService {
   }
 
   private navigateTab(direction: number): void {
-    const tabs: NavigationTab[] = ['for-you', 'movies', 'shows', 'music', 'games', 'library'];
+    const tabs: NavigationTab[] = ['for-you', 'movies', 'shows', 'music', 'library'];
     const curIdx = tabs.indexOf(this.activeTab);
     const nextIdx = (curIdx + direction + tabs.length) % tabs.length;
     this.callbacks.onSetTab?.(tabs[nextIdx]);

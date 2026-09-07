@@ -1,4 +1,5 @@
 import { IPlayerBackend, BackendCallbacks, BackendState, BackendType } from './IPlayerBackend';
+import { buildEmbedSeekUrl } from '../drivers/EmbedDriver';
 
 export class EmbedBackend implements IPlayerBackend {
   public readonly type: BackendType = 'embed';
@@ -8,6 +9,8 @@ export class EmbedBackend implements IPlayerBackend {
   private callbacks: BackendCallbacks | null = null;
   private isDestroyed = false;
   private tickerTimer: NodeJS.Timeout | null = null;
+  private currentSourceUrl = '';
+  private seekLockUntil = 0;
 
   private state: BackendState = {
     status: 'idle',
@@ -29,9 +32,10 @@ export class EmbedBackend implements IPlayerBackend {
 
   private handlePostMessage = (event: MessageEvent): void => {
     if (this.isDestroyed || !event.data) return;
+    if (Date.now() < this.seekLockUntil) return;
     try {
       const data = typeof event.data === 'string' ? JSON.parse(event.data) : event.data;
-      if (data.type === 'PLAYER_EVENT' || data.event === 'timeupdate' || data.type === 'TVOS_TIMEUPDATE') {
+      if (data.type === 'PLAYER_EVENT' || data.event === 'timeupdate' || data.type === 'TVOS_TIMEUPDATE' || data.event === 'seeked' || data.type === 'seeked') {
         const cur = Number(data.currentTime !== undefined ? data.currentTime : (data.time !== undefined ? data.time : data.progress));
         const dur = Number(data.duration !== undefined ? data.duration : data.total);
         if (!isNaN(cur) && cur >= 0) {
@@ -69,6 +73,8 @@ export class EmbedBackend implements IPlayerBackend {
   public async loadSource(url: string, initialPosition = 0, expectedDuration?: number): Promise<void> {
     if (!this.container || this.isDestroyed) return;
 
+    this.currentSourceUrl = url;
+
     if (expectedDuration && expectedDuration > 0) {
       this.state.duration = expectedDuration;
     }
@@ -78,10 +84,12 @@ export class EmbedBackend implements IPlayerBackend {
     this.callbacks?.onBuffering(true);
     this.callbacks?.onTimeUpdate(initialPosition, this.state.duration);
 
+    const loadUrl = initialPosition > 0 ? buildEmbedSeekUrl(url, initialPosition) : url;
+
     this.container.innerHTML = '';
     const iframe = document.createElement('iframe');
     iframe.className = 'tv-embed-viewport-iframe';
-    iframe.src = url;
+    iframe.src = loadUrl;
     iframe.style.width = '100%';
     iframe.style.height = '100%';
     iframe.style.border = 'none';
@@ -164,8 +172,32 @@ export class EmbedBackend implements IPlayerBackend {
   public seekTo(seconds: number): void {
     if (this.isDestroyed) return;
     const target = Math.max(0, Math.min(this.state.duration, seconds));
+    const previousTime = this.state.currentTime;
     this.state.currentTime = target;
+
+    this.seekLockUntil = Date.now() + 2200;
+
     this.sendPostMessage({ command: 'seek', action: 'seek', value: target, time: target });
+    this.sendPostMessage({ event: 'command', func: 'seekTo', args: [target, true] });
+    this.sendPostMessage({ type: 'seek', value: target });
+    this.sendPostMessage({ type: 'setCurrentTime', time: target });
+    this.sendPostMessage({ method: 'setCurrentTime', value: target });
+    this.sendPostMessage({ action: 'seekTo', time: target });
+    this.sendPostMessage({ context: 'player.js', version: '0.0.11', event: 'command', method: 'setCurrentTime', value: target });
+    this.sendPostMessage({ type: 'TVOS_SEEK', time: target });
+
+    if (typeof window !== 'undefined' && (window as any).electronAPI?.controlMedia) {
+      (window as any).electronAPI.controlMedia('seek', target);
+    }
+
+    const isElectron = typeof window !== 'undefined' && Boolean((window as any).electronAPI);
+    if (!isElectron && Math.abs(target - previousTime) >= 2 && this.iframe && this.currentSourceUrl) {
+      const seekUrl = buildEmbedSeekUrl(this.currentSourceUrl, target);
+      if (this.iframe.src !== seekUrl) {
+        this.iframe.src = seekUrl;
+      }
+    }
+
     this.callbacks?.onTimeUpdate(target, this.state.duration);
   }
 

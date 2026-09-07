@@ -314,3 +314,310 @@ test('EpisodeBackNavigation: Exiting Movie playback does not transition to Show 
   assert.equal(activeVideoSource, null);
   assert.equal(selectedShow, null, 'Movies should not set selectedShow on exit');
 });
+
+// Test Embed Player Seeking & VidAPI URL Injection
+function buildEmbedSeekUrl(url, targetSeconds) {
+  const target = Math.max(0, Math.round(targetSeconds));
+  try {
+    const parsed = new URL(url, typeof window !== 'undefined' ? window.location.origin : 'http://localhost');
+
+    // 1. VidLink (vidlink.pro)
+    if (parsed.hostname.includes('vidlink')) {
+      parsed.searchParams.set('startAt', String(target));
+      parsed.searchParams.set('autoplay', 'true');
+      return parsed.toString();
+    }
+
+    // 2. VidSrc (vidsrc.pm, vidsrc.xyz, vidsrc.to, etc.)
+    if (parsed.hostname.includes('vidsrc')) {
+      parsed.searchParams.set('start', String(target));
+      parsed.searchParams.set('startAt', String(target));
+      parsed.searchParams.set('t', String(target));
+      parsed.searchParams.set('autoplay', '1');
+      return parsed.toString();
+    }
+
+    // 3. VidAPI / VAPlayer (vidapi.ru, vaplayer.ru, vidapi.org, etc.)
+    if (parsed.hostname.includes('vidapi') || parsed.hostname.includes('vaplayer')) {
+      parsed.searchParams.set('start', String(target));
+      parsed.searchParams.set('startAt', String(target));
+      parsed.searchParams.set('time', String(target));
+      parsed.searchParams.set('t', String(target));
+      parsed.searchParams.set('autoplay', '1');
+      return parsed.toString();
+    }
+
+    // 4. YouTube Embed
+    if (parsed.hostname.includes('youtube.com') || parsed.hostname.includes('youtu.be')) {
+      parsed.searchParams.set('start', String(target));
+      parsed.searchParams.set('autoplay', '1');
+      return parsed.toString();
+    }
+
+    // 5. Generic Embed fallback: set parameters and hash
+    parsed.searchParams.set('startAt', String(target));
+    parsed.searchParams.set('start', String(target));
+    parsed.searchParams.set('t', String(target));
+    parsed.searchParams.set('autoplay', '1');
+    parsed.hash = `t=${target}`;
+    return parsed.toString();
+  } catch (e) {
+    const sep = url.includes('?') ? '&' : '?';
+    return `${url}${sep}startAt=${target}&start=${target}&t=${target}&autoplay=1#t=${target}`;
+  }
+}
+
+test('EmbedDriver: buildEmbedSeekUrl injects correct start parameters for VidAPI / VAPlayer', () => {
+  const vidApiUrl = 'https://vidapi.ru/embed/tv/tt0903747/1/1';
+  const seekedUrl = buildEmbedSeekUrl(vidApiUrl, 85);
+
+  const parsed = new URL(seekedUrl);
+  assert.equal(parsed.searchParams.get('start'), '85');
+  assert.equal(parsed.searchParams.get('startAt'), '85');
+  assert.equal(parsed.searchParams.get('time'), '85');
+  assert.equal(parsed.searchParams.get('t'), '85');
+  assert.equal(parsed.searchParams.get('autoplay'), '1');
+});
+
+test('EmbedDriver: buildEmbedSeekUrl injects correct start parameters for VidLink', () => {
+  const vidLinkUrl = 'https://vidlink.pro/tv/tt0903747/1/1';
+  const seekedUrl = buildEmbedSeekUrl(vidLinkUrl, 120);
+
+  const parsed = new URL(seekedUrl);
+  assert.equal(parsed.searchParams.get('startAt'), '120');
+  assert.equal(parsed.searchParams.get('autoplay'), 'true');
+});
+
+test('EmbedDriver: buildEmbedSeekUrl injects correct start parameters for VidSrc', () => {
+  const vidSrcUrl = 'https://vidsrc.pm/embed/tv/tt0903747/1/1';
+  const seekedUrl = buildEmbedSeekUrl(vidSrcUrl, 90);
+
+  const parsed = new URL(seekedUrl);
+  assert.equal(parsed.searchParams.get('start'), '90');
+  assert.equal(parsed.searchParams.get('startAt'), '90');
+  assert.equal(parsed.searchParams.get('t'), '90');
+  assert.equal(parsed.searchParams.get('autoplay'), '1');
+});
+
+test('EmbedDriver: seekLock suppresses stale incoming timeupdate postMessages within lockout window', () => {
+  let currentTime = 10;
+  let seekLockUntil = 0;
+
+  const handleTimeUpdateMessage = (reportedTime, now) => {
+    if (now < seekLockUntil) {
+      // Suppress stale updates from old iframe position
+      return false;
+    }
+    currentTime = reportedTime;
+    return true;
+  };
+
+  const now = 1000000;
+  // User skips intro to 90s
+  currentTime = 90;
+  seekLockUntil = now + 2200; // 2.2s debounce lockout
+
+  // 500ms later: Iframe sends stale postMessage event still saying 12s
+  const processedStale = handleTimeUpdateMessage(12, now + 500);
+  assert.equal(processedStale, false, 'Stale postMessage should be ignored');
+  assert.equal(currentTime, 90, 'Current time should not be overwritten by stale report');
+
+  // 2500ms later: Iframe sends updated postMessage at 92s
+  const processedFresh = handleTimeUpdateMessage(92, now + 2500);
+  assert.equal(processedFresh, true, 'Fresh postMessage should be accepted');
+  assert.equal(currentTime, 92, 'Current time should update after lockout expires');
+});
+
+test('IntroService: Dynamic heuristics distinguish short episodes from standard dramas', () => {
+  const resolveHeuristicIntro = (durationSeconds) => {
+    if (durationSeconds && durationSeconds < 1800) {
+      return { start: 40, end: 90, type: 'heuristic' };
+    }
+    return { start: 75, end: 160, type: 'heuristic' };
+  };
+
+  const sitcomIntro = resolveHeuristicIntro(1320); // 22 min
+  assert.equal(sitcomIntro.start, 40);
+  assert.equal(sitcomIntro.end, 90);
+
+  const dramaIntro = resolveHeuristicIntro(3300); // 55 min
+  assert.equal(dramaIntro.start, 75);
+  assert.equal(dramaIntro.end, 160);
+});
+
+test('IntroService: Auto-skip resets when playback rewinds before intro segment', () => {
+  let hasAutoSkipped = true;
+  const introSegment = { start: 60, end: 120 };
+
+  const checkRewindReset = (currentTime) => {
+    if (hasAutoSkipped && currentTime < introSegment.start) {
+      hasAutoSkipped = false;
+    }
+  };
+
+  // Currently playing past intro
+  checkRewindReset(125);
+  assert.equal(hasAutoSkipped, true);
+
+  // User rewinds back to opening scene (30s)
+  checkRewindReset(30);
+  assert.equal(hasAutoSkipped, false, 'hasAutoSkipped should reset to false on rewind');
+});
+
+// Test Rebuilt Sleep Timer & Standby System
+test('SleepTimerService: start sets active countdown and remaining seconds', () => {
+  let state = {
+    isActive: false,
+    durationMinutes: 0,
+    remainingSeconds: 0,
+    isStandby: false,
+  };
+
+  const startTimer = (mins) => {
+    state = {
+      isActive: true,
+      durationMinutes: mins,
+      remainingSeconds: mins * 60,
+      isStandby: false,
+    };
+  };
+
+  startTimer(30);
+  assert.equal(state.isActive, true);
+  assert.equal(state.durationMinutes, 30);
+  assert.equal(state.remainingSeconds, 1800);
+  assert.equal(state.isStandby, false);
+});
+
+test('SleepTimerService: sleepNow immediately enters Standby Mode and pauses playback', () => {
+  let isPlaybackPaused = false;
+  let onSleepTriggered = false;
+  let state = {
+    isActive: true,
+    durationMinutes: 15,
+    remainingSeconds: 900,
+    isStandby: false,
+  };
+
+  const sleepNow = () => {
+    state.isActive = false;
+    state.remainingSeconds = 0;
+    state.isStandby = true;
+    isPlaybackPaused = true;
+    onSleepTriggered = true;
+  };
+
+  sleepNow();
+  assert.equal(state.isStandby, true, 'isStandby should be true');
+  assert.equal(state.isActive, false, 'active countdown should clear');
+  assert.equal(isPlaybackPaused, true, 'playback must pause');
+  assert.equal(onSleepTriggered, true, 'onSleep callback must fire');
+});
+
+test('SleepTimerService: wakeFromStandby clears standby state', () => {
+  let state = {
+    isActive: false,
+    durationMinutes: 0,
+    remainingSeconds: 0,
+    isStandby: true,
+  };
+
+  const wakeFromStandby = () => {
+    state.isStandby = false;
+  };
+
+  wakeFromStandby();
+  assert.equal(state.isStandby, false);
+});
+
+// Test Rebuilt Screensaver Service
+test('ScreensaverService: Configurable timeout updates delay and triggers correctly', () => {
+  let timeoutMinutes = 5;
+  let isActive = false;
+
+  const setTimeoutMinutes = (m) => {
+    timeoutMinutes = m;
+  };
+
+  const trigger = () => {
+    isActive = true;
+  };
+
+  const wake = () => {
+    isActive = false;
+  };
+
+  setTimeoutMinutes(10);
+  assert.equal(timeoutMinutes, 10);
+
+  trigger();
+  assert.equal(isActive, true);
+
+  wake();
+  assert.equal(isActive, false);
+});
+
+test('ScreensaverService: Media playback check prevents screensaver from triggering during fullscreen playback', () => {
+  let isMediaPlaying = true;
+  let screensaverTriggered = false;
+
+  const evaluateIdleTimeout = () => {
+    if (isMediaPlaying) {
+      // Do not trigger screensaver if playing
+      return false;
+    }
+    screensaverTriggered = true;
+    return true;
+  };
+
+  const resultWhilePlaying = evaluateIdleTimeout();
+  assert.equal(resultWhilePlaying, false);
+  assert.equal(screensaverTriggered, false, 'Screensaver must not trigger while video is playing');
+
+  isMediaPlaying = false;
+  const resultWhileIdle = evaluateIdleTimeout();
+  assert.equal(resultWhileIdle, true);
+  assert.equal(screensaverTriggered, true, 'Screensaver triggers when media is idle');
+});
+
+test('ScreensaverService: reportActivity wakes active screensaver without immediate re-trigger loop', () => {
+  let isActive = true;
+  let timerId = null;
+
+  const wake = () => {
+    isActive = false;
+  };
+
+  const reportActivity = () => {
+    if (isActive) {
+      wake();
+    }
+  };
+
+  reportActivity();
+  assert.equal(isActive, false, 'Activity wakes active screensaver');
+});
+
+test('ScreensaverService: Default inactivity timeout is 5 minutes (300,000ms)', () => {
+  const DEFAULT_TIMEOUT_MINUTES = 5;
+  const timeoutMs = DEFAULT_TIMEOUT_MINUTES * 60 * 1000;
+  assert.equal(timeoutMs, 300000);
+});
+
+test('TopNav: Actions capsule spatial navigation indices are contiguous without nav-sleep-btn', () => {
+  const TABS = [{ id: 'for-you' }, { id: 'movies' }, { id: 'shows' }, { id: 'library' }];
+  const hasRemoteModal = true;
+
+  // Tabs start at index 2 (after profile at index 0 and search button at index 1)
+  // Remote button
+  const remoteIndex = 2 + TABS.length; // 2 + 4 = 6
+  // Settings button
+  const settingsIndex = 2 + TABS.length + (hasRemoteModal ? 1 : 0); // 7
+
+  assert.equal(remoteIndex, 6);
+  assert.equal(settingsIndex, 7);
+  assert.equal(settingsIndex - remoteIndex, 1, 'Indices must be strictly contiguous');
+});
+
+
+

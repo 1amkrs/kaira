@@ -5,6 +5,7 @@ export interface SleepTimerState {
   durationMinutes: number;
   endsAt: number | null;
   remainingSeconds: number;
+  isStandby: boolean;
 }
 
 class SleepTimerService {
@@ -15,13 +16,14 @@ class SleepTimerService {
     durationMinutes: 0,
     endsAt: null,
     remainingSeconds: 0,
+    isStandby: false,
   };
   private listeners: Set<(state: SleepTimerState) => void> = new Set();
   private onSleepCallback: (() => void) | null = null;
 
   public subscribe(listener: (state: SleepTimerState) => void): () => void {
     this.listeners.add(listener);
-    listener(this.state);
+    listener(this.getState());
     return () => {
       this.listeners.delete(listener);
     };
@@ -44,6 +46,7 @@ class SleepTimerService {
     const endsAt = Date.now() + durationMs;
 
     this.state = {
+      ...this.state,
       isActive: true,
       durationMinutes: minutes,
       endsAt,
@@ -59,9 +62,41 @@ class SleepTimerService {
       this.notify();
 
       if (remaining <= 0) {
-        this.triggerSleep();
+        this.sleepNow();
       }
     }, 1000);
+  }
+
+  public sleepNow(): void {
+    this.cancel();
+
+    // Pause all audio/video playback
+    try {
+      playbackService.pause();
+    } catch (e) {}
+
+    this.state = {
+      ...this.state,
+      isStandby: true,
+    };
+    this.notify();
+
+    if (this.onSleepCallback) {
+      try {
+        this.onSleepCallback();
+      } catch (err) {
+        console.error('[SleepTimerService] onSleepCallback error:', err);
+      }
+    }
+  }
+
+  public wakeFromStandby(): void {
+    if (!this.state.isStandby) return;
+    this.state = {
+      ...this.state,
+      isStandby: false,
+    };
+    this.notify();
   }
 
   public cancel(): void {
@@ -75,6 +110,7 @@ class SleepTimerService {
     }
 
     this.state = {
+      ...this.state,
       isActive: false,
       durationMinutes: 0,
       endsAt: null,
@@ -85,19 +121,6 @@ class SleepTimerService {
 
   public getState(): SleepTimerState {
     return { ...this.state };
-  }
-
-  private triggerSleep(): void {
-    this.cancel();
-
-    // Pause audio/video playback
-    try {
-      playbackService.pause();
-    } catch (e) {}
-
-    if (this.onSleepCallback) {
-      this.onSleepCallback();
-    }
   }
 }
 

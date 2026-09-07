@@ -39,6 +39,8 @@ import { displayService } from '../../services/display/displayService';
 import { addonService } from '../../services/addons/AddonService';
 import { ublockService, UBlockState } from '../../services/adblock/adblockService';
 import { profileService } from '../../services/profile/ProfileService';
+import { screensaverService, ScreensaverState } from '../../services/screensaver/screensaverService';
+import { sleepTimerService } from '../../services/sleep/sleepTimerService';
 import { UserProfile, CreateProfileDTO, UpdateProfileDTO, ProfileServiceState } from '../../types/profile';
 import { PinModal, renderAvatarIcon } from '../../components/Profile/PinModal';
 import { ProfileEditorModal } from '../../components/Profile/ProfileEditorModal';
@@ -69,6 +71,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onClose }) => {
   const [clientCount, setClientCount] = useState<number>(() => remoteService.getConnectedClients());
   const [lastAction, setLastAction] = useState<GamepadActionDiagnostic | null>(null);
   const [actionLog, setActionLog] = useState<GamepadActionDiagnostic[]>([]);
+  const [screensaverState, setScreensaverState] = useState<ScreensaverState>(() => screensaverService.getState());
 
   // Profile Management state
   const [profileState, setProfileState] = useState<ProfileServiceState>(() => profileService.getState());
@@ -95,6 +98,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onClose }) => {
     const unsubProfile = profileService.subscribe(setProfileState);
     const unsubDiag = systemService.subscribe(setDiagnostics);
     const unsubRemote = remoteService.subscribeClientCount(setClientCount);
+    const unsubScreensaver = screensaverService.subscribe(setScreensaverState);
     const unsubGamepad = gamepadManager.subscribeAction((diag) => {
       setLastAction(diag);
       setActionLog((prev) => [diag, ...prev].slice(0, 6));
@@ -106,6 +110,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onClose }) => {
       unsubProfile();
       unsubDiag();
       unsubRemote();
+      unsubScreensaver();
       unsubGamepad();
     };
   }, []);
@@ -1634,17 +1639,75 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onClose }) => {
 
               {/* Power & System Actions */}
               <h4 className="tv-subgroup-title" style={{ marginTop: '28px' }}>Power & Appliance Controls</h4>
+
+              {/* Screensaver Idle Timeout */}
+              <div className="tv-setting-row-card">
+                <div className="tv-row-text">
+                  <span className="tv-row-title">Screensaver Idle Timeout</span>
+                  <span className="tv-row-desc">Automatically launch 4K aerial views when inactive</span>
+                </div>
+                <div className="tv-row-stepper" style={{ display: 'flex', gap: '8px' }}>
+                  {[
+                    { label: '2m', value: 2 },
+                    { label: '5m', value: 5 },
+                    { label: '10m', value: 10 },
+                    { label: '15m', value: 15 },
+                    { label: 'Never', value: 0 },
+                  ].map((opt, optIdx) => {
+                    const isSelected = screensaverState.timeoutMinutes === opt.value;
+                    return (
+                      <Focusable
+                        key={opt.value}
+                        id={`screensaver-timeout-${opt.value}`}
+                        groupId="screensaver-timeout-group"
+                        indexInGroup={optIdx}
+                        className="tv-stepper-btn-focusable"
+                        onSelect={() => screensaverService.setTimeoutMinutes(opt.value)}
+                      >
+                        {(isFocused) => (
+                          <div className={`tv-stepper-btn ${isSelected ? 'active' : ''} ${isFocused ? 'focused' : ''}`}>
+                            <span>{opt.label}</span>
+                          </div>
+                        )}
+                      </Focusable>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Preview Screensaver Button */}
+              <div className="tv-setting-row-card">
+                <div className="tv-row-text">
+                  <span className="tv-row-title">Preview 4K Screensaver</span>
+                  <span className="tv-row-desc">Immediately launch aerial views with ambient clock and weather</span>
+                </div>
+                <Focusable
+                  id="screensaver-preview-btn"
+                  groupId="system-power-actions"
+                  indexInGroup={0}
+                  className="tv-power-btn-focusable"
+                  onSelect={() => screensaverService.trigger()}
+                >
+                  {(isFocused) => (
+                    <div className={`tv-power-btn ${isFocused ? 'focused' : ''}`}>
+                      <Sparkles size={16} />
+                      <span>Preview</span>
+                    </div>
+                  )}
+                </Focusable>
+              </div>
+
               <div className="tv-setting-row-card">
                 <div className="tv-row-text">
                   <span className="tv-row-title">Sleep TV Appliance</span>
-                  <span className="tv-row-desc">Enter low-power standby mode and signal TV HDMI standby</span>
+                  <span className="tv-row-desc">Enter low-power standby mode and pause all media</span>
                 </div>
                 <Focusable
                   id="power-sleep-btn"
                   groupId="system-power-actions"
-                  indexInGroup={0}
+                  indexInGroup={1}
                   className="tv-power-btn-focusable"
-                  onSelect={() => displayService.triggerPowerAction('sleep')}
+                  onSelect={() => sleepTimerService.sleepNow()}
                 >
                   {(isFocused) => (
                     <div className={`tv-power-btn ${isFocused ? 'focused' : ''}`}>
@@ -1663,7 +1726,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onClose }) => {
                 <Focusable
                   id="power-restart-btn"
                   groupId="system-power-actions"
-                  indexInGroup={1}
+                  indexInGroup={2}
                   className="tv-power-btn-focusable"
                   onSelect={() => displayService.triggerPowerAction('restart')}
                 >
@@ -1684,7 +1747,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onClose }) => {
                 <Focusable
                   id="power-shutdown-btn"
                   groupId="system-power-actions"
-                  indexInGroup={2}
+                  indexInGroup={3}
                   className="tv-power-btn-focusable danger"
                   onSelect={() => displayService.triggerPowerAction('shutdown')}
                 >

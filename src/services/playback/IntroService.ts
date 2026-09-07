@@ -19,6 +19,7 @@ const VERIFIED_SERIES_INTROS: Record<string, { start: number; end: number }> = {
   'tt3581920': { start: 110, end: 185 },  // The Last of Us (Cordyceps Titles)
   'tt11126994': { start: 125, end: 215 }, // Arcane (Enemy Title Sequence)
   'tt0903747': { start: 180, end: 200 },  // Breaking Bad (Title Card)
+  'tt3032476': { start: 120, end: 140 },  // Better Call Saul
   'tt0944947': { start: 70, end: 168 },   // Game of Thrones (Main Theme)
   'tt2442560': { start: 90, end: 150 },   // Peaky Blinders (Red Right Hand)
   'tt1475582': { start: 120, end: 175 },  // Sherlock (Main Theme)
@@ -37,6 +38,20 @@ const VERIFIED_SERIES_INTROS: Record<string, { start: number; end: number }> = {
   'tt0979432': { start: 70, end: 145 },   // Dexter
   'tt0455275': { start: 60, end: 125 },   // Prison Break
   'tt0411008': { start: 50, end: 85 },    // Lost
+  'tt0108778': { start: 45, end: 95 },    // Friends
+  'tt0386676': { start: 60, end: 95 },    // The Office US
+  'tt10986410': { start: 60, end: 90 },   // Ted Lasso
+  'tt2306299': { start: 80, end: 145 },   // Vikings
+  'tt8111088': { start: 60, end: 110 },   // The Mandalorian
+  'tt9140554': { start: 60, end: 115 },   // Loki
+  'tt6741278': { start: 120, end: 170 },  // Invincible
+  'tt2707408': { start: 90, end: 175 },   // Narcos
+  'tt4236770': { start: 80, end: 160 },   // Yellowstone
+  'tt8707010': { start: 50, end: 85 },    // Chernobyl
+  'tt2085059': { start: 50, end: 80 },    // Black Mirror
+  'tt4786824': { start: 85, end: 175 },   // The Crown
+  'tt8772296': { start: 60, end: 120 },   // Euphoria
+  'tt2356777': { start: 90, end: 185 },   // True Detective
 };
 
 class IntroService {
@@ -65,7 +80,7 @@ class IntroService {
       return seg;
     }
 
-    const cleanImdb = source.imdbId?.replace(/^show-/, '');
+    const cleanImdb = source.imdbId?.replace(/^show-/, '') || source.mediaId?.replace(/^show-/, '');
 
     // 2. Verified Curated Timestamps Database
     if (cleanImdb && VERIFIED_SERIES_INTROS[cleanImdb]) {
@@ -81,10 +96,64 @@ class IntroService {
       return seg;
     }
 
-    // 3. Live AniSkip / IntroDB External API for Anime & Series
+    // 3. Live IntroDB External API for TV Shows
+    if (cleanImdb && cleanImdb.startsWith('tt')) {
+      const season = source.seasonNumber || 1;
+      const episode = source.episodeNumber || 1;
+      try {
+        const res = await fetch(`https://api.introdb.app/segments?imdb_id=${cleanImdb}&season=${season}&episode=${episode}`, {
+          headers: { Accept: 'application/json' },
+          signal: AbortSignal.timeout(3000),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (data?.intro && typeof data.intro.start_sec === 'number' && typeof data.intro.end_sec === 'number') {
+            const seg: IntroSegment = {
+              start: Math.round(data.intro.start_sec),
+              end: Math.round(data.intro.end_sec),
+              type: 'intro',
+              confidence: data.intro.confidence || 0.95,
+              source: 'api',
+            };
+            this.cache.set(key, seg);
+            return seg;
+          }
+        }
+      } catch (e) {
+        // Continue to intro endpoint fallback
+      }
+
+      try {
+        const resIntro = await fetch(`https://api.introdb.app/intro?imdb_id=${cleanImdb}&season=${season}&episode=${episode}`, {
+          headers: { Accept: 'application/json' },
+          signal: AbortSignal.timeout(3000),
+        });
+        if (resIntro.ok) {
+          const dataIntro = await resIntro.json();
+          if (typeof dataIntro.start_sec === 'number' && typeof dataIntro.end_sec === 'number') {
+            const seg: IntroSegment = {
+              start: Math.round(dataIntro.start_sec),
+              end: Math.round(dataIntro.end_sec),
+              type: 'intro',
+              confidence: dataIntro.confidence || 0.9,
+              source: 'api',
+            };
+            this.cache.set(key, seg);
+            return seg;
+          }
+        }
+      } catch (e) {
+        // Fall through
+      }
+    }
+
+    // 4. Live AniSkip External API for Anime
     if (cleanImdb) {
       try {
-        const res = await fetch(`https://api.aniskip.com/v2/skip-times/${cleanImdb}/${source.episodeNumber || 1}?types[]=op`);
+        const epLen = Math.round(source.durationSeconds || 1440);
+        const res = await fetch(`https://api.aniskip.com/v2/skip-times/${cleanImdb}/${source.episodeNumber || 1}?types[]=op&episodeLength=${epLen}`, {
+          signal: AbortSignal.timeout(3000),
+        });
         const data = await res.json();
         if (data && data.found && Array.isArray(data.results) && data.results.length > 0) {
           const op = data.results[0];
@@ -105,17 +174,17 @@ class IntroService {
       }
     }
 
-    // 4. Intelligent TV Series Intro Heuristic
-    // If it's a TV episode and duration is > 10 minutes (600s), generate an intro segment
+    // 5. Intelligent TV Series Intro Dynamic Heuristic
     if (source.mediaType === 'episode' || source.showId || source.seasonNumber) {
       const dur = source.durationSeconds || 2700;
-      if (dur >= 600) {
-        // Standard TV intro is between 60s and 145s (85s long)
+      if (dur >= 300) {
+        // Sitcoms / animation (< 30 min) vs Standard Drama (>= 30 min)
+        const isShortFormat = dur < 1800;
         const seg: IntroSegment = {
-          start: 60,
-          end: 145,
+          start: isShortFormat ? 40 : 75,
+          end: isShortFormat ? 90 : 160,
           type: 'intro',
-          confidence: 0.85,
+          confidence: 0.82,
           source: 'heuristic',
         };
         this.cache.set(key, seg);

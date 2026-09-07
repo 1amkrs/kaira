@@ -90,6 +90,12 @@ export const VideoPlayerScreen: React.FC<VideoPlayerScreenProps> = ({
   const [autoSkipIntro, setAutoSkipIntro] = useState<boolean>(() => introService.isAutoSkipEnabled());
   const [hasAutoSkipped, setHasAutoSkipped] = useState<boolean>(false);
 
+  // Reset intro skip state when source changes
+  useEffect(() => {
+    setHasAutoSkipped(false);
+    setIntroSegment(source.intro || null);
+  }, [source.id]);
+
   // Next Episode State (Strictly for TV Shows)
   const [nextEpisode, setNextEpisode] = useState<Episode | null>(null);
   const [isLoadingNext, setIsLoadingNext] = useState<boolean>(false);
@@ -229,8 +235,8 @@ export const VideoPlayerScreen: React.FC<VideoPlayerScreenProps> = ({
         console.warn('[VideoPlayerScreen] Background stream query notice:', e);
       }
 
-      // Check intro timestamps
-      if (!source.intro && source.mediaType === 'episode') {
+      // Check intro timestamps (via IntroDB, verified series list, or heuristics)
+      if (!source.intro && (source.mediaType === 'episode' || Boolean(source.showId || source.seasonNumber))) {
         const intro = await introService.getIntroTimestamps(source);
         if (intro) {
           setIntroSegment(intro);
@@ -239,7 +245,7 @@ export const VideoPlayerScreen: React.FC<VideoPlayerScreenProps> = ({
     };
 
     fetchExtraData();
-  }, [source.id]);
+  }, [source.id, source.showId, source.imdbId, source.seasonNumber, source.episodeNumber]);
 
   // 2a-2. Pre-fetch Next Episode Metadata (Strictly for TV Shows)
   useEffect(() => {
@@ -355,6 +361,7 @@ export const VideoPlayerScreen: React.FC<VideoPlayerScreenProps> = ({
 
   const handleSkipIntro = useCallback(() => {
     if (!introSegment || !engineRef.current) return;
+    setHasAutoSkipped(true);
     seekTo(introSegment.end);
     triggerFeedback('Intro Skipped');
   }, [introSegment, seekTo, triggerFeedback]);
@@ -401,9 +408,15 @@ export const VideoPlayerScreen: React.FC<VideoPlayerScreenProps> = ({
     pingHud();
   }, [seekTo, triggerFeedback, pingHud]);
 
-  // 4. Intro Auto-Skip Monitor
+  // 4. Intro Auto-Skip Monitor & Reset
   useEffect(() => {
-    if (!introSegment || hasAutoSkipped || !autoSkipIntro) return;
+    if (!introSegment) return;
+    // Reset auto-skip lock if playback is rewound prior to intro start
+    if (hasAutoSkipped && engineState.currentTime < introSegment.start) {
+      setHasAutoSkipped(false);
+      return;
+    }
+    if (hasAutoSkipped || !autoSkipIntro) return;
     const { start, end } = introSegment;
     if (engineState.currentTime >= start && engineState.currentTime < end - 1) {
       setHasAutoSkipped(true);

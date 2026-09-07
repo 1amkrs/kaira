@@ -24,6 +24,12 @@
   animation: tvKenBurns 40s ease-in-out infinite alternate;
 }
 
+.tv-screensaver-photo-fallback {
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+}
+
 @keyframes tvKenBurns {
   0% {
     transform: scale(1.02) translate(0, 0);

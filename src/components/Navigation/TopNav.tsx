@@ -1,10 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { Search, Settings, Lock, Moon, Home, Film, Tv, Music, Gamepad2, Bookmark, Smartphone, Library as LibraryIcon } from 'lucide-react';
+import { Search, Settings, Lock, Home, Film, Tv, Music, Bookmark, Smartphone, Library as LibraryIcon } from 'lucide-react';
 import { NavigationTab, ScreenId } from '../../types';
 import { UserProfile } from '../../types/profile';
 import { Focusable } from '../Focusable/Focusable';
 import { renderAvatarIcon } from '../Profile/PinModal';
-import { sleepTimerService, SleepTimerState } from '../../services/sleep/sleepTimerService';
 import { remoteService } from '../../services/remote/RemoteService';
 import './TopNav.css';
 
@@ -14,7 +13,6 @@ interface TopNavProps {
   onOpenSearch: () => void;
   onOpenSettings: () => void;
   onOpenProfile?: () => void;
-  onOpenSleepTimer?: () => void;
   onOpenRemoteModal?: () => void;
   activeProfile?: UserProfile;
   activeProfileName?: string;
@@ -25,7 +23,6 @@ const TABS: { id: NavigationTab; label: string; icon: React.FC<{ size?: number; 
   { id: 'movies', label: 'Movies', icon: Film },
   { id: 'shows', label: 'Shows', icon: Tv },
   { id: 'music', label: 'Music', icon: Music },
-  { id: 'games', label: 'Games', icon: Gamepad2 },
   { id: 'library', label: 'Library', icon: Bookmark },
 ];
 
@@ -35,17 +32,14 @@ export const TopNav: React.FC<TopNavProps> = ({
   onOpenSearch,
   onOpenSettings,
   onOpenProfile,
-  onOpenSleepTimer,
   activeProfile,
   activeProfileName = 'Primary',
   onOpenRemoteModal,
 }) => {
   const [currentTime, setCurrentTime] = useState<string>('');
-  const [sleepState, setSleepState] = useState<SleepTimerState>(() => sleepTimerService.getState());
   const [clientCount, setClientCount] = useState<number>(() => remoteService.getConnectedClients());
 
   useEffect(() => {
-    const unsub = sleepTimerService.subscribe(setSleepState);
     const unsubRemote = remoteService.subscribeClientCount(setClientCount);
     const updateClock = () => {
       const now = new Date();
@@ -57,7 +51,6 @@ export const TopNav: React.FC<TopNavProps> = ({
     const timer = setInterval(updateClock, 10000);
     return () => {
       clearInterval(timer);
-      unsub();
       unsubRemote();
     };
   }, []);
@@ -150,40 +143,14 @@ export const TopNav: React.FC<TopNavProps> = ({
             })}
           </div>
 
-          {/* 3. Action Controls Capsule (Settings & Sleep Timer) */}
+          {/* 3. Action Controls Capsule (Remote & Settings) */}
           <div className="tv-gtv-actions-capsule">
-            {/* Sleep Timer (if active or provided) */}
-            {onOpenSleepTimer && (
-              <Focusable
-                id="nav-sleep-btn"
-                groupId="top-nav"
-                indexInGroup={2 + TABS.length}
-                className="tv-gtv-action-focusable"
-                onSelect={onOpenSleepTimer}
-                scaleEffect={false}
-              >
-                {(isFocused) => (
-                  <div
-                    className={`tv-gtv-action-btn ${sleepState.isActive ? 'active-sleep' : ''} ${isFocused ? 'focused' : ''}`}
-                    title="Sleep Timer"
-                  >
-                    <Moon size={18} color={sleepState.isActive ? '#8ab4f8' : 'currentColor'} />
-                    {sleepState.isActive && (
-                      <span className="tv-gtv-sleep-badge">
-                        {Math.ceil(sleepState.remainingSeconds / 60)}
-                      </span>
-                    )}
-                  </div>
-                )}
-              </Focusable>
-            )}
-
             {/* Phone Companion Remote */}
             {onOpenRemoteModal && (
               <Focusable
                 id="nav-remote-btn"
                 groupId="top-nav"
-                indexInGroup={2 + TABS.length + (onOpenSleepTimer ? 1 : 0)}
+                indexInGroup={2 + TABS.length}
                 className="tv-gtv-action-focusable"
                 onSelect={onOpenRemoteModal}
                 scaleEffect={false}
@@ -208,7 +175,7 @@ export const TopNav: React.FC<TopNavProps> = ({
             <Focusable
               id="nav-settings-btn"
               groupId="top-nav"
-              indexInGroup={2 + TABS.length + (onOpenSleepTimer ? 1 : 0) + (onOpenRemoteModal ? 1 : 0)}
+              indexInGroup={2 + TABS.length + (onOpenRemoteModal ? 1 : 0)}
               className="tv-gtv-action-focusable"
               onSelect={onOpenSettings}
               scaleEffect={false}
@@ -283,23 +250,7 @@ export const TopNav: React.FC<TopNavProps> = ({
             </button>
           )}
 
-          {/* Sleep Timer */}
-          {onOpenSleepTimer && (
-            <button
-              type="button"
-              className={`tv-mobile-icon-btn ${sleepState.isActive ? 'active-sleep' : ''}`}
-              onClick={onOpenSleepTimer}
-              aria-label="Sleep Timer"
-              title="Sleep Timer"
-            >
-              <Moon size={18} color={sleepState.isActive ? '#8ab4f8' : 'currentColor'} />
-              {sleepState.isActive && (
-                <span className="tv-mobile-sleep-badge">
-                  {Math.ceil(sleepState.remainingSeconds / 60)}
-                </span>
-              )}
-            </button>
-          )}
+
 
           {/* Settings */}
           <button
