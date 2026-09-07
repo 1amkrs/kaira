@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { NavigationTab, ScreenId, Movie, Show, Episode, Album, Track, AppItem, PlaybackSource } from './types';
 import { TopNav } from './components/Navigation/TopNav';
-import { ControllerHints } from './components/ControllerHints/ControllerHints';
 import { HomeScreen } from './screens/Home/HomeScreen';
 import { MoviesScreen } from './screens/Movies/MoviesScreen';
 import { MovieDetailsScreen } from './screens/Movies/MovieDetailsScreen';
@@ -935,41 +934,6 @@ export const App: React.FC = () => {
         </div>
       )}
 
-      {/* Bottom Subtle Controller Navigation Hints */}
-      <ControllerHints
-        customHints={
-          activeVideoSource
-            ? [
-                { button: 'A', label: 'Play/Pause', color: '#81c995' },
-                { button: 'D-Pad', label: 'Seek 10s', color: '#ffffff' },
-                { button: 'LB/RB', label: 'Episode', color: '#8ab4f8' },
-                { button: 'B', label: 'Exit Player', color: '#f28b82' },
-              ]
-            : isMusicPlayerOpen
-            ? [
-                { button: 'A', label: 'Play/Pause', color: '#81c995' },
-                { button: 'LB/RB', label: 'Prev/Next Track', color: '#8ab4f8' },
-                { button: 'B', label: 'Minimize', color: '#f28b82' },
-              ]
-            : activeModal === 'search'
-            ? [
-                { button: 'A', label: 'Type Key', color: '#81c995' },
-                { button: 'B', label: 'Close Search', color: '#f28b82' },
-                { button: 'D-Pad', label: 'Move Focus', color: '#ffffff' },
-              ]
-            : activeModal === 'settings'
-            ? [
-                { button: 'A', label: 'Select Option', color: '#81c995' },
-                { button: 'B', label: 'Close Settings', color: '#f28b82' },
-              ]
-            : isProfileModalOpen
-            ? [
-                { button: 'A', label: 'Select Profile', color: '#81c995' },
-                { button: 'B', label: 'Cancel', color: '#f28b82' },
-              ]
-            : undefined
-        }
-      />
 
       {/* Startup Splash Animation */}
       {showSplash && <SplashScreen onFinish={() => setShowSplash(false)} />}

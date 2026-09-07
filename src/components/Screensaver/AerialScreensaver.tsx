@@ -1,7 +1,18 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { MapPin, Sun, Music as MusicIcon } from 'lucide-react';
-import { ambientService } from '../../services/ambient/ambientService';
+import { 
+  Lock, 
+  Wifi, 
+  Battery, 
+  SlidersHorizontal, 
+  MapPin, 
+  Music as MusicIcon, 
+  ArrowRight, 
+  Key, 
+  Power 
+} from 'lucide-react';
 import { playbackService } from '../../services/playback/PlaybackService';
+import { profileService } from '../../services/profile/ProfileService';
+import { renderAvatarIcon } from '../Profile/PinModal';
 import { spatialNav } from '../../services/spatialNav/spatialNavEngine';
 import './AerialScreensaver.css';
 
@@ -19,6 +30,13 @@ interface AerialShot {
 }
 
 const AERIAL_SHOTS: AerialShot[] = [
+  {
+    id: 'sonoma',
+    title: 'Sonoma Rolling Hills',
+    location: 'California, USA',
+    videoUrl: 'https://assets.mixkit.co/videos/preview/mixkit-aerial-view-of-green-hills-and-mountains-41508-large.mp4',
+    fallbackImageUrl: 'https://images.unsplash.com/photo-1506744038136-46273834b3fb?auto=format&fit=crop&w=3840&q=85',
+  },
   {
     id: 'dubai',
     title: 'Dubai Skyline & Marina at Night',
@@ -60,9 +78,9 @@ export const AerialScreensaver: React.FC<AerialScreensaverProps> = ({ isActive, 
   const [currentIndex, setCurrentIndex] = useState<number>(0);
   const [timeStr, setTimeStr] = useState<string>('');
   const [dateStr, setDateStr] = useState<string>('');
-  const [ambientIntensity, setAmbientIntensity] = useState<number>(80);
   const [videoFailed, setVideoFailed] = useState<boolean>(false);
   const [nowPlayingTitle, setNowPlayingTitle] = useState<string | null>(null);
+  const [activeProfile, setActiveProfile] = useState(() => profileService.getActiveProfile());
 
   // Push spatial navigation scope to isolate focus while screensaver is showing
   useEffect(() => {
@@ -73,19 +91,24 @@ export const AerialScreensaver: React.FC<AerialScreensaverProps> = ({ isActive, 
     };
   }, [isActive]);
 
-  // Clock & Date updates
+  // Sync active profile
+  useEffect(() => {
+    if (!isActive) return;
+    const unsubProfile = profileService.subscribe(() => {
+      setActiveProfile(profileService.getActiveProfile());
+    });
+    return unsubProfile;
+  }, [isActive]);
+
+  // Clock & Date updates (macOS Sonoma lockscreen typography)
   useEffect(() => {
     const updateTime = () => {
       const now = new Date();
-      setTimeStr(
-        now.toLocaleTimeString([], {
-          hour: '2-digit',
-          minute: '2-digit',
-          hour12: true,
-        })
-      );
+      const hours = now.getHours() % 12 || 12;
+      const minutes = String(now.getMinutes()).padStart(2, '0');
+      setTimeStr(`${hours}:${minutes}`);
       setDateStr(
-        now.toLocaleDateString([], {
+        now.toLocaleDateString('en-US', {
           weekday: 'long',
           month: 'long',
           day: 'numeric',
@@ -98,20 +121,19 @@ export const AerialScreensaver: React.FC<AerialScreensaverProps> = ({ isActive, 
     return () => clearInterval(interval);
   }, []);
 
-  // Cycle shots every 35 seconds
+  // Cycle aerial shots every 40 seconds
   useEffect(() => {
     if (!isActive) return;
     const cycle = setInterval(() => {
       setVideoFailed(false);
       setCurrentIndex((prev) => (prev + 1) % AERIAL_SHOTS.length);
-    }, 35000);
+    }, 40000);
     return () => clearInterval(cycle);
   }, [isActive]);
 
-  // Read ambient lighting and background audio status
+  // Read background audio status
   useEffect(() => {
     if (isActive) {
-      setAmbientIntensity(ambientService.getState().intensity);
       const curSource = playbackService.getState().currentSource;
       if (curSource && playbackService.getState().status === 'playing') {
         setNowPlayingTitle(`${curSource.title}${curSource.artist ? ` • ${curSource.artist}` : ''}`);
@@ -151,14 +173,17 @@ export const AerialScreensaver: React.FC<AerialScreensaverProps> = ({ isActive, 
   if (!isActive) return null;
 
   const currentShot = AERIAL_SHOTS[currentIndex];
+  const displayName = activeProfile?.name || 'Primary User';
+  const avatarColor = activeProfile?.avatarColor || 'linear-gradient(135deg, #e50914, #ff453a)';
+  const avatarIcon = activeProfile?.avatarIcon || 'user';
 
   return (
     <div
-      className="tv-screensaver-container"
+      className="tv-screensaver-container tv-macos-lockscreen"
       role="presentation"
       onClick={handleInteraction}
     >
-      {/* 4K Aerial Video Layer or High-Res Photographic Fallback */}
+      {/* 4K Aerial Video Layer or High-Res Photographic Fallback (Sonoma signature) */}
       {!videoFailed ? (
         <video
           key={currentShot.videoUrl}
@@ -184,35 +209,94 @@ export const AerialScreensaver: React.FC<AerialScreensaverProps> = ({ isActive, 
       {/* Cinematic Vignette Overlay */}
       <div className="tv-screensaver-scrim" />
 
-      {/* Ambient Info HUD */}
-      <div className="tv-screensaver-content">
-        {/* Big Clock */}
-        <div className="tv-screensaver-clock-box">
-          <h1 className="tv-screensaver-time">{timeStr}</h1>
-          <p className="tv-screensaver-date">{dateStr}</p>
-        </div>
-
-        {/* Location, Ambient Lighting & Audio Info */}
-        <div className="tv-screensaver-bottom-bar">
-          <div className="tv-screensaver-location-pill">
-            <MapPin size={16} />
-            <span>{currentShot.title} • {currentShot.location}</span>
-          </div>
-
-          <div className="tv-screensaver-ambient-pill">
-            <Sun size={16} />
-            <span>Ambient Smart Lighting {ambientIntensity}%</span>
-          </div>
-
-          {nowPlayingTitle && (
-            <div className="tv-screensaver-ambient-pill">
-              <MusicIcon size={16} />
-              <span>{nowPlayingTitle}</span>
+      {/* macOS Lockscreen Shell */}
+      <div className="tv-macos-lock-content">
+        {/* 1. Top Status Bar (macOS Sonoma header) */}
+        <header className="tv-macos-lock-topbar">
+          <div className="tv-macos-lock-topbar-left">
+            <div className="tv-macos-lock-badge">
+              <Lock size={13} className="tv-macos-lock-icon" />
+              <span className="tv-macos-lock-badge-text">tvOS</span>
             </div>
-          )}
+          </div>
 
-          <span className="tv-screensaver-hint">Press any button on your remote to wake</span>
-        </div>
+          <div className="tv-macos-lock-topbar-right">
+            <div className="tv-macos-status-item" title="Wi-Fi Connected">
+              <Wifi size={15} />
+            </div>
+            <div className="tv-macos-status-item" title="Control Center">
+              <SlidersHorizontal size={14} />
+            </div>
+            <div className="tv-macos-status-item tv-macos-battery" title="Power: 100%">
+              <span className="tv-macos-battery-pct">100%</span>
+              <Battery size={16} />
+            </div>
+          </div>
+        </header>
+
+        {/* 2. Hero Clock & Date (macOS Sonoma centered layout) */}
+        <main className="tv-macos-lock-center">
+          <div className="tv-macos-lock-clock-box">
+            <div className="tv-macos-lock-date">{dateStr}</div>
+            <h1 className="tv-macos-lock-time">{timeStr}</h1>
+          </div>
+
+          {/* 3. User Login & Unlock Card (macOS avatar + frosted password pill) */}
+          <div className="tv-macos-lock-auth-pod">
+            <div
+              className="tv-macos-lock-avatar"
+              style={{ background: avatarColor }}
+            >
+              {renderAvatarIcon(avatarIcon, 38, '#ffffff')}
+            </div>
+            <div className="tv-macos-lock-username">{displayName}</div>
+
+            {/* Frosted Password Pill */}
+            <div className="tv-macos-lock-input-pill" onClick={handleInteraction}>
+              <div className="tv-macos-lock-pill-icon">
+                <Key size={14} />
+              </div>
+              <span className="tv-macos-lock-pill-placeholder">
+                Touch ID or Enter Password
+              </span>
+              <button
+                type="button"
+                className="tv-macos-lock-pill-btn"
+                aria-label="Unlock"
+                onClick={handleInteraction}
+              >
+                <ArrowRight size={13} strokeWidth={2.5} />
+              </button>
+            </div>
+
+            <div className="tv-macos-lock-wake-hint">
+              Click or press any key to unlock
+            </div>
+          </div>
+        </main>
+
+        {/* 4. Bottom Footer (macOS Sonoma Aerial Location + Now Playing / Sleep) */}
+        <footer className="tv-macos-lock-footer">
+          <div className="tv-macos-lock-footer-left">
+            <div className="tv-macos-pill tv-macos-location-pill">
+              <MapPin size={13} />
+              <span>{currentShot.title} • {currentShot.location}</span>
+            </div>
+          </div>
+
+          <div className="tv-macos-lock-footer-right">
+            {nowPlayingTitle && (
+              <div className="tv-macos-pill tv-macos-nowplaying-pill">
+                <MusicIcon size={13} className="music-pulse" />
+                <span className="tv-macos-nowplaying-title">{nowPlayingTitle}</span>
+              </div>
+            )}
+            <div className="tv-macos-pill tv-macos-action-pill" onClick={handleInteraction}>
+              <Power size={13} />
+              <span>Sleep</span>
+            </div>
+          </div>
+        </footer>
       </div>
     </div>
   );
