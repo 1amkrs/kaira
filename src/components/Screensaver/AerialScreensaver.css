@@ -66,7 +66,7 @@
   pointer-events: none;
 }
 
-/* macOS Lockscreen Shell Layout */
+/* macOS Lockscreen Shell Layout (Clean & Centered) */
 .tv-macos-lock-content {
   position: relative;
   z-index: 10;
@@ -74,84 +74,17 @@
   height: 100%;
   display: flex;
   flex-direction: column;
-  justify-content: space-between;
-}
-
-/* ─── 1. Top Status Bar ─── */
-.tv-macos-lock-topbar {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 52px;
-  display: flex;
   align-items: center;
-  justify-content: space-between;
-  padding: 0 clamp(20px, 3.5vw, 44px);
-  z-index: 20;
+  justify-content: center;
 }
 
-.tv-macos-lock-topbar-left {
-  display: flex;
-  align-items: center;
-}
-
-.tv-macos-lock-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  color: rgba(255, 255, 255, 0.92);
-  font-size: 13px;
-  font-weight: 600;
-  letter-spacing: -0.1px;
-  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.75);
-}
-
-.tv-macos-lock-icon {
-  color: rgba(255, 255, 255, 0.9);
-}
-
-.tv-macos-lock-badge-text {
-  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
-  opacity: 0.9;
-}
-
-.tv-macos-lock-topbar-right {
-  display: flex;
-  align-items: center;
-  gap: 18px;
-  color: rgba(255, 255, 255, 0.92);
-  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.75);
-}
-
-.tv-macos-status-item {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 12.5px;
-  font-weight: 500;
-  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
-}
-
-.tv-macos-battery {
-  gap: 5px;
-}
-
-.tv-macos-battery-pct {
-  font-size: 12px;
-  font-weight: 500;
-  opacity: 0.85;
-}
-
-/* ─── 2. Center Hero Clock & Auth Pod ─── */
+/* ─── Hero Clock & Auth Pod ─── */
 .tv-macos-lock-center {
-  flex: 1;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding-top: 24px;
-  padding-bottom: 24px;
+  margin: auto;
 }
 
 .tv-macos-lock-clock-box {
@@ -183,7 +116,7 @@
   margin: 0;
 }
 
-/* ─── 3. User Login & Unlock Pod (Sonoma Capsule Style) ─── */
+/* ─── User Login & Typable Password Form (Sonoma Capsule Style) ─── */
 .tv-macos-lock-auth-pod {
   display: flex;
   flex-direction: column;
@@ -219,7 +152,15 @@
   text-shadow: 0 2px 10px rgba(0, 0, 0, 0.75);
 }
 
-/* Frosted Password Pill Input */
+.tv-macos-lock-form {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin: 0;
+  padding: 0;
+}
+
+/* Typable Frosted Password Pill Input */
 .tv-macos-lock-input-pill {
   display: flex;
   align-items: center;
@@ -234,40 +175,55 @@
   border: 1px solid rgba(255, 255, 255, 0.32);
   box-shadow: 0 8px 26px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.25);
   transition: all 220ms ease;
-  cursor: pointer;
+  cursor: text;
 }
 
-.tv-macos-lock-input-pill:hover {
+.tv-macos-lock-input-pill:hover,
+.tv-macos-lock-input-pill:focus-within {
   background: rgba(255, 255, 255, 0.26);
   border-color: rgba(255, 255, 255, 0.55);
   box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.25), 0 12px 36px rgba(0, 0, 0, 0.5);
-  transform: translateY(-1px);
 }
 
 .tv-macos-lock-pill-icon {
   color: rgba(255, 255, 255, 0.75);
   display: flex;
   align-items: center;
+  flex-shrink: 0;
 }
 
-.tv-macos-lock-pill-placeholder {
+.tv-macos-lock-input-field {
   flex: 1;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: #ffffff;
   font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
-  font-size: 13px;
-  color: rgba(255, 255, 255, 0.75);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  font-size: 13.5px;
+  line-height: 1;
+  padding: 0;
+  margin: 0;
+  width: 100%;
+}
+
+.tv-macos-lock-input-field.has-text {
+  letter-spacing: 2px;
+  font-size: 15px;
+}
+
+.tv-macos-lock-input-field::placeholder {
+  color: rgba(255, 255, 255, 0.65);
   letter-spacing: -0.1px;
+  font-size: 13px;
 }
 
 .tv-macos-lock-pill-btn {
   width: 26px;
   height: 26px;
   border-radius: 50%;
-  background: rgba(255, 255, 255, 0.28);
+  background: rgba(255, 255, 255, 0.24);
   border: none;
-  color: #ffffff;
+  color: rgba(255, 255, 255, 0.7);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -276,10 +232,15 @@
   flex-shrink: 0;
 }
 
-.tv-macos-lock-input-pill:hover .tv-macos-lock-pill-btn,
+.tv-macos-lock-pill-btn.active,
 .tv-macos-lock-pill-btn:hover {
   background: #ffffff;
   color: #000000;
+  transform: scale(1.04);
+}
+
+.tv-macos-lock-pill-btn:active {
+  transform: scale(0.95);
 }
 
 .tv-macos-lock-wake-hint {
@@ -288,8 +249,42 @@
   font-weight: 500;
   color: rgba(255, 255, 255, 0.65);
   text-shadow: 0 1px 4px rgba(0, 0, 0, 0.75);
-  margin-top: 2px;
+  margin-top: 8px;
   animation: tvMacPulse 2.8s ease-in-out infinite;
+}
+
+.tv-macos-lock-error-hint {
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+  font-size: 12px;
+  font-weight: 500;
+  color: #ff453a;
+  text-shadow: 0 1px 6px rgba(0, 0, 0, 0.9);
+  margin-top: 8px;
+  animation: tvMacErrorFade 200ms ease;
+}
+
+@keyframes tvMacErrorFade {
+  from {
+    opacity: 0;
+    transform: translateY(-3px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.tv-macos-lock-input-pill.shake-anim {
+  animation: tvMacShake 450ms cubic-bezier(0.36, 0.07, 0.19, 0.97) both;
+  border-color: rgba(255, 69, 58, 0.85);
+  box-shadow: 0 0 0 3px rgba(255, 69, 58, 0.35), 0 8px 26px rgba(0, 0, 0, 0.45);
+}
+
+@keyframes tvMacShake {
+  10%, 90% { transform: translate3d(-3px, 0, 0); }
+  20%, 80% { transform: translate3d(5px, 0, 0); }
+  30%, 50%, 70% { transform: translate3d(-6px, 0, 0); }
+  40%, 60% { transform: translate3d(6px, 0, 0); }
 }
 
 @keyframes tvMacPulse {
@@ -301,107 +296,8 @@
   }
 }
 
-/* ─── 4. Bottom Footer (macOS Sonoma Aerial Location & Actions) ─── */
-.tv-macos-lock-footer {
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  height: 60px;
-  padding: 0 clamp(20px, 3.5vw, 44px);
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  z-index: 20;
-}
-
-.tv-macos-lock-footer-left,
-.tv-macos-lock-footer-right {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.tv-macos-pill {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 7px 16px;
-  border-radius: 9999px;
-  background: rgba(0, 0, 0, 0.42);
-  backdrop-filter: blur(24px) saturate(180%);
-  -webkit-backdrop-filter: blur(24px) saturate(180%);
-  border: 1px solid rgba(255, 255, 255, 0.18);
-  color: rgba(255, 255, 255, 0.92);
-  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
-  font-size: 12px;
-  font-weight: 500;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
-  transition: all 180ms ease;
-}
-
-.tv-macos-location-pill {
-  max-width: 450px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.tv-macos-nowplaying-pill {
-  max-width: 320px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  border-color: rgba(138, 180, 248, 0.35);
-}
-
-.tv-macos-nowplaying-title {
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.music-pulse {
-  animation: tvMacMusicPulse 2s ease-in-out infinite alternate;
-}
-
-@keyframes tvMacMusicPulse {
-  0% {
-    color: #8ab4f8;
-    transform: scale(1);
-  }
-  100% {
-    color: #81c995;
-    transform: scale(1.15);
-  }
-}
-
-.tv-macos-action-pill {
-  cursor: pointer;
-}
-
-.tv-macos-action-pill:hover {
-  background: rgba(255, 255, 255, 0.22);
-  color: #ffffff;
-  border-color: rgba(255, 255, 255, 0.35);
-  transform: translateY(-1px);
-}
-
-/* ─── Responsive Adjustments (Mobile & Small Screens) ─── */
+/* ─── Responsive Adjustments ─── */
 @media (max-width: 768px) {
-  .tv-macos-lock-topbar {
-    height: 44px;
-    padding: 0 16px;
-  }
-
-  .tv-macos-battery-pct {
-    display: none;
-  }
-
-  .tv-macos-lock-topbar-right {
-    gap: 12px;
-  }
-
   .tv-macos-lock-time {
     font-size: clamp(3.8rem, 16vw, 5.5rem);
     letter-spacing: -1.5px;
@@ -423,21 +319,5 @@
   .tv-macos-lock-input-pill {
     width: 240px;
     height: 36px;
-  }
-
-  .tv-macos-lock-footer {
-    height: 52px;
-    padding: 0 16px;
-  }
-
-  .tv-macos-location-pill {
-    max-width: 200px;
-    font-size: 11px;
-    padding: 5px 10px;
-  }
-
-  .tv-macos-pill {
-    font-size: 11px;
-    padding: 5px 12px;
   }
 }

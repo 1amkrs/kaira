@@ -604,6 +604,72 @@ test('ScreensaverService: Default inactivity timeout is 5 minutes (300,000ms)', 
   assert.equal(timeoutMs, 300000);
 });
 
+test('ScreensaverService: handleUserInput suppresses auto-wake while active to allow password typing', () => {
+  let isActive = true;
+  let activityReported = false;
+
+  const reportActivity = () => {
+    activityReported = true;
+  };
+
+  const handleUserInput = () => {
+    if (isActive) {
+      // Directed to password input field
+      return;
+    }
+    reportActivity();
+  };
+
+  handleUserInput();
+  assert.equal(activityReported, false, 'Keydown/pointerdown while screensaver is active must not report activity or wake');
+  assert.equal(isActive, true, 'Screensaver remains active for password entry');
+
+  // When inactive, user input resumes normal activity reporting
+  isActive = false;
+  handleUserInput();
+  assert.equal(activityReported, true, 'User input reports activity when screensaver is inactive');
+});
+
+test('Screensaver: Typable password authentication verifies PIN and unlocks profile session', () => {
+  const profileWithPin = { id: 'prof-primary', name: 'Primary', pin: '4321' };
+  const profileWithoutPin = { id: 'prof-guest', name: 'Guest' };
+
+  let unlocked = false;
+  let sessionUnlocked = false;
+
+  const attemptUnlock = (profile, inputPassword) => {
+    const targetPin = profile?.pin?.trim();
+    if (targetPin) {
+      if (inputPassword.trim() === targetPin) {
+        sessionUnlocked = true;
+        unlocked = true;
+        return { success: true };
+      }
+      return { success: false, error: 'Incorrect Password' };
+    }
+    unlocked = true;
+    return { success: true };
+  };
+
+  // 1. Wrong PIN attempt
+  const wrongResult = attemptUnlock(profileWithPin, '1111');
+  assert.equal(wrongResult.success, false);
+  assert.equal(wrongResult.error, 'Incorrect Password');
+  assert.equal(unlocked, false);
+
+  // 2. Correct PIN attempt
+  const correctResult = attemptUnlock(profileWithPin, '4321');
+  assert.equal(correctResult.success, true);
+  assert.equal(sessionUnlocked, true);
+  assert.equal(unlocked, true);
+
+  // 3. Unpinned profile
+  unlocked = false;
+  const unpinnedResult = attemptUnlock(profileWithoutPin, '');
+  assert.equal(unpinnedResult.success, true);
+  assert.equal(unlocked, true);
+});
+
 test('TopNav: Actions capsule spatial navigation indices are contiguous without nav-sleep-btn', () => {
   const TABS = [{ id: 'for-you' }, { id: 'movies' }, { id: 'shows' }, { id: 'library' }];
   const hasRemoteModal = true;

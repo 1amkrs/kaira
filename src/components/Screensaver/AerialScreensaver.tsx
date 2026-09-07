@@ -1,16 +1,5 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { 
-  Lock, 
-  Wifi, 
-  Battery, 
-  SlidersHorizontal, 
-  MapPin, 
-  Music as MusicIcon, 
-  ArrowRight, 
-  Key, 
-  Power 
-} from 'lucide-react';
-import { playbackService } from '../../services/playback/PlaybackService';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { ArrowRight, Key } from 'lucide-react';
 import { profileService } from '../../services/profile/ProfileService';
 import { renderAvatarIcon } from '../Profile/PinModal';
 import { spatialNav } from '../../services/spatialNav/spatialNavEngine';
@@ -79,8 +68,11 @@ export const AerialScreensaver: React.FC<AerialScreensaverProps> = ({ isActive, 
   const [timeStr, setTimeStr] = useState<string>('');
   const [dateStr, setDateStr] = useState<string>('');
   const [videoFailed, setVideoFailed] = useState<boolean>(false);
-  const [nowPlayingTitle, setNowPlayingTitle] = useState<string | null>(null);
   const [activeProfile, setActiveProfile] = useState(() => profileService.getActiveProfile());
+  const [password, setPassword] = useState<string>('');
+  const [isShaking, setIsShaking] = useState<boolean>(false);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   // Push spatial navigation scope to isolate focus while screensaver is showing
   useEffect(() => {
@@ -98,6 +90,19 @@ export const AerialScreensaver: React.FC<AerialScreensaverProps> = ({ isActive, 
       setActiveProfile(profileService.getActiveProfile());
     });
     return unsubProfile;
+  }, [isActive]);
+
+  // Focus and clear input when screensaver becomes active
+  useEffect(() => {
+    if (isActive) {
+      setPassword('');
+      setErrorMsg(null);
+      setIsShaking(false);
+      const timer = setTimeout(() => {
+        inputRef.current?.focus();
+      }, 100);
+      return () => clearTimeout(timer);
+    }
   }, [isActive]);
 
   // Clock & Date updates (macOS Sonoma lockscreen typography)
@@ -131,44 +136,88 @@ export const AerialScreensaver: React.FC<AerialScreensaverProps> = ({ isActive, 
     return () => clearInterval(cycle);
   }, [isActive]);
 
-  // Read background audio status
-  useEffect(() => {
-    if (isActive) {
-      const curSource = playbackService.getState().currentSource;
-      if (curSource && playbackService.getState().status === 'playing') {
-        setNowPlayingTitle(`${curSource.title}${curSource.artist ? ` • ${curSource.artist}` : ''}`);
-      } else {
-        setNowPlayingTitle(null);
-      }
-    }
-  }, [isActive]);
-
-  // Wake handler that traps keystroke/clicks so they don't trigger underlying buttons
-  const handleInteraction = useCallback(
-    (e?: Event | React.SyntheticEvent) => {
-      if (!isActive) return;
+  // Password Unlock Submission Handler
+  const handleUnlockSubmit = useCallback(
+    (e?: React.FormEvent) => {
       if (e) {
         e.preventDefault();
         e.stopPropagation();
       }
-      onWake();
+
+      const targetPin = activeProfile?.pin?.trim();
+
+      if (targetPin) {
+        if (password.trim() === targetPin) {
+          profileService.unlockProfileSession(activeProfile.id);
+          onWake();
+        } else {
+          setIsShaking(true);
+          setErrorMsg('Incorrect Password');
+          setPassword('');
+          setTimeout(() => {
+            setIsShaking(false);
+            inputRef.current?.focus();
+          }, 450);
+        }
+      } else {
+        // No PIN configured on profile: unlock directly
+        onWake();
+      }
     },
-    [isActive, onWake]
+    [activeProfile, password, onWake]
   );
 
+  // Global Keydown Handler: redirect keystrokes to password input & support Enter / Escape
   useEffect(() => {
     if (!isActive) return;
 
-    window.addEventListener('keydown', handleInteraction, { capture: true });
-    window.addEventListener('pointerdown', handleInteraction, { capture: true });
-    window.addEventListener('gamepadconnected', handleInteraction, { capture: true });
+    const handleWindowKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        e.stopPropagation();
+        handleUnlockSubmit();
+        return;
+      }
 
-    return () => {
-      window.removeEventListener('keydown', handleInteraction, { capture: true });
-      window.removeEventListener('pointerdown', handleInteraction, { capture: true });
-      window.removeEventListener('gamepadconnected', handleInteraction, { capture: true });
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        e.stopPropagation();
+        if (!activeProfile?.pin) {
+          onWake();
+        } else {
+          setPassword('');
+          setErrorMsg(null);
+        }
+        return;
+      }
+
+      // If typing printable characters or backspace while input is not focused, focus it
+      if (document.activeElement !== inputRef.current) {
+        if (e.key.length === 1 && !e.ctrlKey && !e.altKey && !e.metaKey) {
+          inputRef.current?.focus();
+        }
+      }
     };
-  }, [isActive, handleInteraction]);
+
+    window.addEventListener('keydown', handleWindowKeyDown);
+    return () => {
+      window.removeEventListener('keydown', handleWindowKeyDown);
+    };
+  }, [isActive, activeProfile, handleUnlockSubmit, onWake]);
+
+  // Backdrop click handler
+  const handleBackdropClick = (e: React.MouseEvent) => {
+    // If clicked on input or button, let native action proceed
+    if ((e.target as HTMLElement).closest('.tv-macos-lock-input-pill') || (e.target as HTMLElement).closest('button')) {
+      return;
+    }
+
+    if (!activeProfile?.pin) {
+      onWake();
+    } else {
+      inputRef.current?.focus();
+    }
+  };
 
   if (!isActive) return null;
 
@@ -181,7 +230,7 @@ export const AerialScreensaver: React.FC<AerialScreensaverProps> = ({ isActive, 
     <div
       className="tv-screensaver-container tv-macos-lockscreen"
       role="presentation"
-      onClick={handleInteraction}
+      onClick={handleBackdropClick}
     >
       {/* 4K Aerial Video Layer or High-Res Photographic Fallback (Sonoma signature) */}
       {!videoFailed ? (
@@ -209,94 +258,76 @@ export const AerialScreensaver: React.FC<AerialScreensaverProps> = ({ isActive, 
       {/* Cinematic Vignette Overlay */}
       <div className="tv-screensaver-scrim" />
 
-      {/* macOS Lockscreen Shell */}
+      {/* macOS Lockscreen Shell (Distraction-Free Centered Layout) */}
       <div className="tv-macos-lock-content">
-        {/* 1. Top Status Bar (macOS Sonoma header) */}
-        <header className="tv-macos-lock-topbar">
-          <div className="tv-macos-lock-topbar-left">
-            <div className="tv-macos-lock-badge">
-              <Lock size={13} className="tv-macos-lock-icon" />
-              <span className="tv-macos-lock-badge-text">tvOS</span>
-            </div>
-          </div>
-
-          <div className="tv-macos-lock-topbar-right">
-            <div className="tv-macos-status-item" title="Wi-Fi Connected">
-              <Wifi size={15} />
-            </div>
-            <div className="tv-macos-status-item" title="Control Center">
-              <SlidersHorizontal size={14} />
-            </div>
-            <div className="tv-macos-status-item tv-macos-battery" title="Power: 100%">
-              <span className="tv-macos-battery-pct">100%</span>
-              <Battery size={16} />
-            </div>
-          </div>
-        </header>
-
-        {/* 2. Hero Clock & Date (macOS Sonoma centered layout) */}
+        {/* Hero Clock & Date + User Auth Pod */}
         <main className="tv-macos-lock-center">
           <div className="tv-macos-lock-clock-box">
             <div className="tv-macos-lock-date">{dateStr}</div>
             <h1 className="tv-macos-lock-time">{timeStr}</h1>
           </div>
 
-          {/* 3. User Login & Unlock Card (macOS avatar + frosted password pill) */}
           <div className="tv-macos-lock-auth-pod">
             <div
               className="tv-macos-lock-avatar"
               style={{ background: avatarColor }}
+              onClick={() => {
+                if (!activeProfile?.pin) {
+                  onWake();
+                } else {
+                  inputRef.current?.focus();
+                }
+              }}
+              title={displayName}
             >
               {renderAvatarIcon(avatarIcon, 38, '#ffffff')}
             </div>
             <div className="tv-macos-lock-username">{displayName}</div>
 
-            {/* Frosted Password Pill */}
-            <div className="tv-macos-lock-input-pill" onClick={handleInteraction}>
-              <div className="tv-macos-lock-pill-icon">
-                <Key size={14} />
-              </div>
-              <span className="tv-macos-lock-pill-placeholder">
-                Touch ID or Enter Password
-              </span>
-              <button
-                type="button"
-                className="tv-macos-lock-pill-btn"
-                aria-label="Unlock"
-                onClick={handleInteraction}
+            {/* Typable Frosted Password Form & Pill */}
+            <form onSubmit={handleUnlockSubmit} className="tv-macos-lock-form">
+              <div
+                className={`tv-macos-lock-input-pill ${isShaking ? 'shake-anim' : ''}`}
+                onClick={() => inputRef.current?.focus()}
               >
-                <ArrowRight size={13} strokeWidth={2.5} />
-              </button>
-            </div>
+                <div className="tv-macos-lock-pill-icon">
+                  <Key size={14} />
+                </div>
+                <input
+                  ref={inputRef}
+                  type="password"
+                  value={password}
+                  onChange={(e) => {
+                    setPassword(e.target.value);
+                    setErrorMsg(null);
+                  }}
+                  placeholder={activeProfile?.pin ? 'Enter PIN or Password' : 'Enter Password'}
+                  className={`tv-macos-lock-input-field ${password ? 'has-text' : ''}`}
+                  autoComplete="off"
+                  spellCheck={false}
+                  autoFocus
+                />
+                <button
+                  type="submit"
+                  className={`tv-macos-lock-pill-btn ${password ? 'active' : ''}`}
+                  aria-label="Unlock"
+                >
+                  <ArrowRight size={13} strokeWidth={2.5} />
+                </button>
+              </div>
 
-            <div className="tv-macos-lock-wake-hint">
-              Click or press any key to unlock
-            </div>
+              {errorMsg ? (
+                <div className="tv-macos-lock-error-hint">{errorMsg}</div>
+              ) : (
+                <div className="tv-macos-lock-wake-hint">
+                  {activeProfile?.pin
+                    ? 'Enter password and press Return to unlock'
+                    : 'Press Return or click to unlock'}
+                </div>
+              )}
+            </form>
           </div>
         </main>
-
-        {/* 4. Bottom Footer (macOS Sonoma Aerial Location + Now Playing / Sleep) */}
-        <footer className="tv-macos-lock-footer">
-          <div className="tv-macos-lock-footer-left">
-            <div className="tv-macos-pill tv-macos-location-pill">
-              <MapPin size={13} />
-              <span>{currentShot.title} • {currentShot.location}</span>
-            </div>
-          </div>
-
-          <div className="tv-macos-lock-footer-right">
-            {nowPlayingTitle && (
-              <div className="tv-macos-pill tv-macos-nowplaying-pill">
-                <MusicIcon size={13} className="music-pulse" />
-                <span className="tv-macos-nowplaying-title">{nowPlayingTitle}</span>
-              </div>
-            )}
-            <div className="tv-macos-pill tv-macos-action-pill" onClick={handleInteraction}>
-              <Power size={13} />
-              <span>Sleep</span>
-            </div>
-          </div>
-        </footer>
       </div>
     </div>
   );

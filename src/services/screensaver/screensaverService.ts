@@ -91,10 +91,16 @@ class ScreensaverService {
   }
 
   private handleUserInput = (): void => {
+    if (this.isActive) {
+      // While screensaver lockscreen is active, keystrokes and pointer interaction
+      // are directed to the lockscreen password field instead of auto-waking.
+      return;
+    }
     this.reportActivity();
   };
 
   private handleMouseMove = (e: MouseEvent): void => {
+    if (this.isActive) return;
     // Filter tiny mouse sensor jitter (< 8px movement)
     const dx = Math.abs(e.clientX - this.lastMouseX);
     const dy = Math.abs(e.clientY - this.lastMouseY);
