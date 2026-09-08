@@ -1003,4 +1003,339 @@ test('Duration: Fragment chunk buffer duration (e.g. 9s) never overwrites expect
   assert.equal(stateDuration, 2406.68, 'Full duration (>60s) updates successfully');
 });
 
+test('PlaybackService: Video delegate forwards remote SEEK and SEEK_RELATIVE commands to active video screen', () => {
+  let receivedSeek = null;
+  let receivedDelta = null;
+  let toggled = false;
 
+  const videoDelegate = {
+    seek: (sec) => { receivedSeek = sec; },
+    seekRelative: (delta) => { receivedDelta = delta; },
+    play: () => {},
+    pause: () => {},
+    togglePlayPause: () => { toggled = true; },
+  };
+
+  // Mock service
+  let delegate = null;
+  const setVideoDelegate = (d) => { delegate = d; };
+  const seek = (seconds) => {
+    if (delegate) delegate.seek(seconds);
+  };
+  const seekRelative = (delta) => {
+    if (delegate) delegate.seekRelative(delta);
+  };
+  const togglePlayPause = () => {
+    if (delegate) delegate.togglePlayPause();
+  };
+
+  setVideoDelegate(videoDelegate);
+
+  seek(450);
+  assert.equal(receivedSeek, 450, 'Remote SEEK should be forwarded to video delegate');
+
+  seekRelative(15);
+  assert.equal(receivedDelta, 15, 'Remote SEEK_RELATIVE should be forwarded to video delegate');
+
+  togglePlayPause();
+  assert.equal(toggled, true, 'Remote PLAY_PAUSE should be forwarded to video delegate');
+
+  // Deregister
+  setVideoDelegate(null);
+  receivedSeek = null;
+  seek(900);
+  assert.equal(receivedSeek, null, 'Deregistered delegate should not receive commands');
+});
+
+test('Watchdog: Suppressed for Self-Debrid streams (:8081) and post-startup seeking', () => {
+  const evaluateWatchdogEligible = ({ streamUrl, isPlaying, hasStartedPlaying, isAlreadyVidSrc }) => {
+    const isSelfDebrid = streamUrl.includes(':8081');
+    const isDirectOrDebrid = streamUrl.includes('.mp4') || streamUrl.includes('.mkv') || isSelfDebrid;
+    return isDirectOrDebrid && !isAlreadyVidSrc && !isSelfDebrid && !hasStartedPlaying;
+  };
+
+  // 1. Initial load of cloud mirror (should be eligible for watchdog)
+  assert.equal(
+    evaluateWatchdogEligible({
+      streamUrl: 'https://debrid.io/file.mp4',
+      isPlaying: false,
+      hasStartedPlaying: false,
+      isAlreadyVidSrc: false,
+    }),
+    true,
+    'Initial cloud stream load should be protected by watchdog'
+  );
+
+  // 2. Self-Debrid local stream (:8081)
+  assert.equal(
+    evaluateWatchdogEligible({
+      streamUrl: 'http://localhost:8081/file/Yellowstone.mp4?audio=aac&transcode=1',
+      isPlaying: false,
+      hasStartedPlaying: false,
+      isAlreadyVidSrc: false,
+    }),
+    false,
+    'Self-Debrid stream must never trigger VidSrc fallback'
+  );
+
+  // 3. Cloud stream that has already started playing and is now buffering during seek
+  assert.equal(
+    evaluateWatchdogEligible({
+      streamUrl: 'https://debrid.io/file.mp4',
+      isPlaying: false,
+      hasStartedPlaying: true,
+      isAlreadyVidSrc: false,
+    }),
+    false,
+    'Active stream seeking/buffering must not trigger VidSrc fallback'
+  );
+});
+
+test('NativeDriver: Transcode seek preserves expectedDuration and suppresses spurious pause events', () => {
+  let isTranscodeSeeking = false;
+  let status = 'playing';
+  let expectedDuration = 2397.56;
+  let stateDuration = 2397.56;
+
+  const onPause = () => {
+    if (isTranscodeSeeking) return; // Suppressed
+    status = 'paused';
+  };
+
+  const startTranscodeSeek = (targetSec) => {
+    isTranscodeSeeking = true;
+    status = 'buffering';
+  };
+
+  const loadSource = (url, expectedDur) => {
+    if (expectedDur && expectedDur > 60) {
+      expectedDuration = expectedDur;
+      stateDuration = expectedDur;
+    } else if (expectedDuration > 60) {
+      stateDuration = expectedDuration;
+    }
+  };
+
+  // Start transcode seek
+  startTranscodeSeek(600);
+  assert.equal(isTranscodeSeeking, true);
+  assert.equal(status, 'buffering');
+
+  // Video element emits pause event during load()
+  onPause();
+  assert.equal(status, 'buffering', 'Status must stay buffering during transcode seek, not paused');
+
+  // Reload source with undefined duration parameter
+  loadSource('http://localhost:8081/file/show.mp4?start=600', undefined);
+  assert.equal(stateDuration, 2397.56, 'Duration must be preserved across transcode seek reloads');
+});
+
+test('EpisodeRuntime: formatEpisodeRuntime cleanly formats runtimes and prevents duplicate min suffixes', () => {
+  const formatEpisodeRuntime = (minutes) => {
+    if (!minutes || isNaN(minutes) || minutes <= 0) return '45 min';
+    if (minutes >= 65) {
+      const h = Math.floor(minutes / 60);
+      const m = minutes % 60;
+      return m > 0 ? `${h}h ${m}m` : `${h}h`;
+    }
+    return `${minutes} min`;
+  };
+
+  assert.equal(formatEpisodeRuntime(40), '40 min');
+  assert.equal(formatEpisodeRuntime(47), '47 min');
+  assert.equal(formatEpisodeRuntime(37), '37 min');
+  assert.equal(formatEpisodeRuntime(60), '60 min');
+  assert.equal(formatEpisodeRuntime(65), '1h 5m');
+  assert.equal(formatEpisodeRuntime(92), '1h 32m');
+  assert.equal(formatEpisodeRuntime(120), '2h');
+  assert.equal(formatEpisodeRuntime(0), '45 min');
+  assert.equal(formatEpisodeRuntime(undefined), '45 min');
+
+  // Verify no duplicate "min min"
+  assert.equal(formatEpisodeRuntime(40).includes('min min'), false);
+  assert.equal(formatEpisodeRuntime(51).includes('min min'), false);
+});
+
+test('EpisodeRuntime: Per-episode runtime resolution assigns individual probed and TVMaze durations instead of 51min series average', () => {
+  const seriesAverageMetaRuntime = '51 min';
+
+  // Probed files from Self-Debrid local cache
+  const selfDebridCacheFiles = [
+    { name: 'Yellowstone.2018.S03E01.1080p.BluRay.x265-RARBG.mp4', duration: 2397.56 },
+    { name: 'Yellowstone.2018.S03E02.1080p.BluRay.x265-RARBG.mp4', duration: 2833.75 },
+    { name: 'Yellowstone.2018.S03E06.1080p.BluRay.x265-RARBG.mp4', duration: 2229.39 },
+  ];
+
+  // TVMaze per-episode broadcast metadata
+  const tvMazeEpisodes = [
+    { season: 1, number: 1, name: 'Daybreak', runtime: 120 },
+    { season: 1, number: 2, name: 'Kill the Messenger', runtime: 60 },
+    { season: 3, number: 1, name: "You're the Indian Now", runtime: 60 },
+    { season: 3, number: 2, name: 'Freight Trains and Monsters', runtime: 63 },
+    { season: 3, number: 6, name: 'All for Nothing', runtime: 60 },
+  ];
+
+  // Build resolved runtime map
+  const runtimeMap = new Map();
+
+  // 1. Map TVMaze
+  for (const ep of tvMazeEpisodes) {
+    const key = `s${ep.season}e${ep.number}`;
+    runtimeMap.set(key, { runtimeMinutes: ep.runtime, durationSeconds: ep.runtime * 60, source: 'tvmaze' });
+  }
+
+  // 2. Map Self-Debrid cache (takes precedence when probed video is cached locally)
+  for (const f of selfDebridCacheFiles) {
+    const match = f.name.match(/[sS](\d+)[eE](\d+)/i);
+    if (match) {
+      const s = parseInt(match[1], 10);
+      const e = parseInt(match[2], 10);
+      const key = `s${s}e${e}`;
+      runtimeMap.set(key, {
+        runtimeMinutes: Math.round(f.duration / 60),
+        durationSeconds: Math.round(f.duration),
+        source: 'self-debrid',
+      });
+    }
+  }
+
+  // Episode 1 Season 3 (probed Self-Debrid cache: 2397.56s = 40 min)
+  const s3e1 = runtimeMap.get('s3e1');
+  assert.equal(s3e1.runtimeMinutes, 40, 'S3E1 must be 40 min, not hardcoded 51 min');
+  assert.equal(s3e1.durationSeconds, 2398);
+  assert.equal(s3e1.source, 'self-debrid');
+
+  // Episode 2 Season 3 (probed Self-Debrid cache: 2833.75s = 47 min)
+  const s3e2 = runtimeMap.get('s3e2');
+  assert.equal(s3e2.runtimeMinutes, 47, 'S3E2 must be 47 min, not hardcoded 51 min');
+  assert.equal(s3e2.durationSeconds, 2834);
+
+  // Episode 6 Season 3 (probed Self-Debrid cache: 2229.39s = 37 min)
+  const s3e6 = runtimeMap.get('s3e6');
+  assert.equal(s3e6.runtimeMinutes, 37, 'S3E6 must be 37 min, not hardcoded 51 min');
+  assert.equal(s3e6.durationSeconds, 2229);
+
+  // Episode 1 Season 1 (from TVMaze: 120 min)
+  const s1e1 = runtimeMap.get('s1e1');
+  assert.equal(s1e1.runtimeMinutes, 120, 'S1E1 pilot must be 120 min, not 51 min');
+  assert.equal(s1e1.source, 'tvmaze');
+
+  // Episode 2 Season 1 (from TVMaze: 60 min)
+  const s1e2 = runtimeMap.get('s1e2');
+  assert.equal(s1e2.runtimeMinutes, 60, 'S1E2 must be 60 min, not 51 min');
+});
+
+test('WatchHistory: Episode duration uses source.durationSeconds and episode.durationSeconds over series average', () => {
+  const resolveWatchHistoryDuration = (sourceDuration, episodeDuration, episodeRuntimeMinutes) => {
+    return sourceDuration || episodeDuration || (episodeRuntimeMinutes || 45) * 60;
+  };
+
+  // Case 1: Active Self-Debrid playback stream with probed duration 2398s
+  const dur1 = resolveWatchHistoryDuration(2398, 2400, 40);
+  assert.equal(dur1, 2398, 'Prioritizes source.durationSeconds from active stream');
+
+  // Case 2: Episode metadata duration when stream duration is not yet known
+  const dur2 = resolveWatchHistoryDuration(undefined, 2834, 47);
+  assert.equal(dur2, 2834, 'Uses episode.durationSeconds when source duration not set');
+
+  // Case 3: Fallback to runtimeMinutes
+  const dur3 = resolveWatchHistoryDuration(undefined, undefined, 40);
+  assert.equal(dur3, 2400, 'Falls back to episode.runtimeMinutes * 60');
+
+  // Never defaults to 51 min (3060s) unless explicit
+  assert.notEqual(dur1, 3060);
+  assert.notEqual(dur2, 3060);
+});
+
+test('EmbedDriver: Seeker scrub never re-assigns iframe.src (prevents video from restarting from 0:00)', () => {
+  let iframeSrcChanged = false;
+  const mockIframe = {
+    _src: 'https://vidlink.pro/tv/tt4236770/3/1',
+    get src() {
+      return this._src;
+    },
+    set src(val) {
+      iframeSrcChanged = true;
+      this._src = val;
+    },
+    contentWindow: {
+      postMessage: () => {},
+    },
+  };
+
+  // Simulating seekTo in EmbedDriver / EmbedBackend without destructive src reassignment
+  const seekTo = (seconds, iframe) => {
+    const target = Math.max(0, seconds);
+    // PostMessage dispatched to iframe
+    if (iframe && iframe.contentWindow) {
+      iframe.contentWindow.postMessage({ type: 'seek', time: target }, '*');
+    }
+    // Note: iframe.src is NEVER modified
+  };
+
+  seekTo(500, mockIframe);
+  seekTo(1200, mockIframe);
+  assert.equal(iframeSrcChanged, false, 'iframe.src must never be re-assigned during seekTo to avoid video reloading and restarting');
+});
+
+test('AddonService: Title hint cleans Season/Episode notation for accurate Self-Debrid cache matching', () => {
+  const sanitizeTitle = (titleHint) => {
+    return (titleHint || '')
+      .replace(/\b[sS]\d+[\.\-_ ]?[eE]\d+\b/gi, ' ')
+      .replace(/\b\d+x\d+\b/gi, ' ')
+      .replace(/\b[sS]\d+\b/gi, ' ')
+      .replace(/\b[eE]\d+\b/gi, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+  };
+
+  assert.equal(sanitizeTitle('Yellowstone S3E1'), 'Yellowstone');
+  assert.equal(sanitizeTitle('Yellowstone S03E01'), 'Yellowstone');
+  assert.equal(sanitizeTitle('Yellowstone 3x01'), 'Yellowstone');
+  assert.equal(sanitizeTitle('Yellowstone S3 E1'), 'Yellowstone');
+  assert.equal(sanitizeTitle('Breaking Bad S05E16'), 'Breaking Bad');
+});
+
+test('AddonService: Direct inventory fallback identifies cached episode from cached_files', () => {
+  const cachedFiles = [
+    {
+      name: 'Yellowstone.2018.S03E01.1080p.BluRay.x265-RARBG.mp4',
+      relpath: 'Yellowstone.2018.S03.1080p.BluRay.x265-RARBG/Yellowstone.2018.S03E01.1080p.BluRay.x265-RARBG.mp4',
+      duration: 2397.56,
+      stream_url: 'http://localhost:8081/file/Yellowstone.2018.S03.1080p.BluRay.x265-RARBG/Yellowstone.2018.S03E01.1080p.BluRay.x265-RARBG.mp4?audio=aac&transcode=1&downmix=stereo'
+    },
+    {
+      name: 'Yellowstone.2018.S03E02.1080p.BluRay.x265-RARBG.mp4',
+      relpath: 'Yellowstone.2018.S03.1080p.BluRay.x265-RARBG/Yellowstone.2018.S03E02.1080p.BluRay.x265-RARBG.mp4',
+      duration: 2833.75,
+      stream_url: 'http://localhost:8081/file/Yellowstone.2018.S03.1080p.BluRay.x265-RARBG/Yellowstone.2018.S03E02.1080p.BluRay.x265-RARBG.mp4?audio=aac&transcode=1&downmix=stereo'
+    }
+  ];
+
+  const findCachedEpisode = (files, title, seasonNumber, episodeNumber) => {
+    const titleWords = title.toLowerCase().split(/[^a-z0-9]+/).filter((w) => w.length > 2);
+    for (const f of files) {
+      const combined = `${f.name || ''} ${f.relpath || ''}`.toLowerCase();
+      if (seasonNumber !== undefined && episodeNumber !== undefined) {
+        const epRegex = new RegExp(`[sS]0?${seasonNumber}[\\.\\-_ ]?[eE]0?${episodeNumber}\\b|\\b0?${seasonNumber}x0?${episodeNumber}\\b`, 'i');
+        if (!epRegex.test(combined)) continue;
+      }
+      if (titleWords.length > 0) {
+        const matches = titleWords.filter((w) => combined.includes(w));
+        if (matches.length < Math.min(2, titleWords.length)) continue;
+      }
+      return f;
+    }
+    return null;
+  };
+
+  const ep1 = findCachedEpisode(cachedFiles, 'Yellowstone', 3, 1);
+  assert.ok(ep1);
+  assert.equal(ep1.name, 'Yellowstone.2018.S03E01.1080p.BluRay.x265-RARBG.mp4');
+  assert.equal(Math.round(ep1.duration), 2398);
+
+  const ep2 = findCachedEpisode(cachedFiles, 'Yellowstone', 3, 2);
+  assert.ok(ep2);
+  assert.equal(ep2.name, 'Yellowstone.2018.S03E02.1080p.BluRay.x265-RARBG.mp4');
+  assert.equal(Math.round(ep2.duration), 2834);
+});

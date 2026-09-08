@@ -216,7 +216,12 @@ export const App: React.FC = () => {
     setActiveVideoSource(source);
   }, [activeProfile.id]);
 
-  const handlePlayEpisode = useCallback(async (episode: Episode, customStreamUrl?: string, streamType?: 'direct' | 'embed' | 'youtube' | 'torrent') => {
+  const handlePlayEpisode = useCallback(async (
+    episode: Episode,
+    customStreamUrl?: string,
+    streamType?: 'direct' | 'embed' | 'youtube' | 'torrent',
+    streamDurationSeconds?: number
+  ) => {
     // Eagerly ensure selectedShow is set to this TV show so it sits directly underneath the player
     setSelectedShowSeason(episode.seasonNumber || 1);
     if (!selectedShow || (selectedShow.id !== episode.showId && selectedShow.imdbId !== episode.showId)) {
@@ -232,9 +237,13 @@ export const App: React.FC = () => {
     const source = await mediaProvider.getPlaybackSource(episode);
     if (customStreamUrl) {
       source.streamUrl = customStreamUrl;
+      if (streamDurationSeconds && streamDurationSeconds > 0) {
+        source.durationSeconds = streamDurationSeconds;
+      }
     } else {
       try {
-        const streams = await addonService.fetchStreams('series', episode.showId, episode.seasonNumber, episode.number, `${episode.title}`, undefined);
+        const titleHint = episode.showTitle || (selectedShow && selectedShow.id === episode.showId ? selectedShow.title : undefined) || episode.title;
+        const streams = await addonService.fetchStreams('series', episode.showId, episode.seasonNumber, episode.number, titleHint, undefined);
         const best = addonService.selectBestStream(streams);
         if (best) {
           source.streamUrl = best.url;
@@ -258,7 +267,7 @@ export const App: React.FC = () => {
       backdrop: episode.thumbnail,
       progress: 0,
       positionSeconds: 0,
-      durationSeconds: (episode.runtimeMinutes || 45) * 60,
+      durationSeconds: source.durationSeconds || episode.durationSeconds || (episode.runtimeMinutes || 45) * 60,
       episodeInfo: {
         seasonNumber: episode.seasonNumber,
         episodeNumber: episode.number,

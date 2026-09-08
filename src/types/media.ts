@@ -71,9 +71,11 @@ export interface Episode {
   thumbnail: string;
   runtime: string;
   runtimeMinutes?: number;
+  durationSeconds?: number;
   airDate?: string;
   streamUrl?: string;
   imdbId?: string;
+  showTitle?: string;
   progress?: number; // 0 to 100
   intro?: { start: number; end: number; type?: string };
   outro?: { start: number; end: number };
@@ -131,6 +133,7 @@ export interface PlaybackSource {
   mediaType: 'movie' | 'episode' | 'track';
   mediaId: string;
   showId?: string;
+  showTitle?: string;
   seasonId?: string;
   episodeNumber?: number;
   seasonNumber?: number;

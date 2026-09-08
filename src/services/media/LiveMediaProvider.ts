@@ -40,12 +40,28 @@ import {
 export { SAMPLE_CDN_POOL, getDirectFallbackStream, DIRECT_CINEMA_STREAMS };
 export type { ContinueWatchingItem };
 
+export function formatEpisodeRuntime(minutes: number): string {
+  if (!minutes || isNaN(minutes) || minutes <= 0) return '45 min';
+  if (minutes >= 65) {
+    const h = Math.floor(minutes / 60);
+    const m = minutes % 60;
+    return m > 0 ? `${h}h ${m}m` : `${h}h`;
+  }
+  return `${minutes} min`;
+}
+
 class LiveMediaProviderService implements MediaProvider {
+  public formatEpisodeRuntime(minutes: number): string {
+    return formatEpisodeRuntime(minutes);
+  }
+
   private moviesCache: Movie[] = [];
   private movieDetailsCache: Map<string, Movie> = new Map();
   private showsCache: Show[] = [];
   private showDetailsCache: Map<string, Show> = new Map();
   private episodesCache: Map<string, Episode[]> = new Map();
+  private showRuntimesCache: Map<string, Map<string, { runtimeMinutes: number; durationSeconds?: number }>> = new Map();
+  private pendingRuntimesPromises: Map<string, Promise<Map<string, { runtimeMinutes: number; durationSeconds?: number }>>> = new Map();
   private albumsCache: Album[] = [];
   private albumDetailsCache: Map<string, Album> = new Map();
   private artistsCache: Artist[] = [];
@@ -62,6 +78,7 @@ class LiveMediaProviderService implements MediaProvider {
       this.movieDetailsCache.clear();
       this.showDetailsCache.clear();
       this.albumDetailsCache.clear();
+      this.episodesCache.clear();
     });
   }
 
@@ -300,10 +317,140 @@ class LiveMediaProviderService implements MediaProvider {
         .slice(0, 20);
 
       this.showsCache = filtered.map(item => this.mapTvMazeShow(item));
-      return this.showsCache;
+    return this.showsCache;
     } catch (e) {
       console.warn('[LiveMediaProvider] TVMaze fetch failed', e);
       return [];
+    }
+  }
+
+  public async fetchEpisodeRuntimes(
+    cleanImdbId: string,
+    titleHint?: string
+  ): Promise<Map<string, { runtimeMinutes: number; durationSeconds?: number }>> {
+    if (this.showRuntimesCache.has(cleanImdbId)) {
+      return this.showRuntimesCache.get(cleanImdbId)!;
+    }
+
+    if (this.pendingRuntimesPromises.has(cleanImdbId)) {
+      return this.pendingRuntimesPromises.get(cleanImdbId)!;
+    }
+
+    const fetchPromise = (async () => {
+      const runtimeMap = new Map<string, { runtimeMinutes: number; durationSeconds?: number }>();
+      let showName = titleHint;
+
+      // 1. Query TVMaze for per-episode broadcast runtimes
+      if (cleanImdbId.startsWith('tt')) {
+        try {
+          const lookupRes = await fetch(`https://api.tvmaze.com/lookup/shows?imdb=${cleanImdbId}`);
+          if (lookupRes.ok) {
+            const showData = await lookupRes.json();
+            if (showData?.name && !showName) {
+              showName = showData.name;
+            }
+            if (showData?.id) {
+              const epRes = await fetch(`https://api.tvmaze.com/shows/${showData.id}/episodes`);
+              if (epRes.ok) {
+                const epsData = await epRes.json();
+                if (Array.isArray(epsData)) {
+                  for (const ep of epsData) {
+                    if (ep.season && ep.number && ep.runtime) {
+                      const key = `s${ep.season}e${ep.number}`;
+                      runtimeMap.set(key, {
+                        runtimeMinutes: ep.runtime,
+                        durationSeconds: ep.runtime * 60,
+                      });
+                    }
+                  }
+                }
+              }
+            }
+          }
+        } catch (err) {
+          console.warn(`[LiveMediaProvider] TVMaze lookup notice for ${cleanImdbId}:`, err);
+        }
+      } else if (/^\d+$/.test(cleanImdbId)) {
+        try {
+          const epRes = await fetch(`https://api.tvmaze.com/shows/${cleanImdbId}/episodes`);
+          if (epRes.ok) {
+            const epsData = await epRes.json();
+            if (Array.isArray(epsData)) {
+              for (const ep of epsData) {
+                if (ep.season && ep.number && ep.runtime) {
+                  const key = `s${ep.season}e${ep.number}`;
+                  runtimeMap.set(key, {
+                    runtimeMinutes: ep.runtime,
+                    durationSeconds: ep.runtime * 60,
+                  });
+                }
+              }
+            }
+          }
+        } catch (err) {
+          console.warn(`[LiveMediaProvider] TVMaze episodes lookup notice for ${cleanImdbId}:`, err);
+        }
+      }
+
+      // 2. Query Self-Debrid local cache (highest priority - actual probed video duration)
+      try {
+        const debridCfg = addonService.getDebridConfig();
+        const debridUrl = (debridCfg?.provider === 'selfdebrid' && debridCfg?.endpointUrl
+          ? debridCfg.endpointUrl
+          : 'http://localhost:8081'
+        ).replace(/\/+$/, '');
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), 1200);
+
+        const cacheRes = await fetch(`${debridUrl}/cache`, { signal: controller.signal });
+        clearTimeout(timer);
+
+        if (cacheRes.ok) {
+          const cacheData = await cacheRes.json();
+          if (cacheData && Array.isArray(cacheData.cached_files)) {
+            const cleanShowTitle = (showName || '')
+              .replace(/\(\d{4}\)/g, '')
+              .replace(/\b(19|20)\d{2}\b/g, '')
+              .trim();
+            const titleWords = cleanShowTitle.toLowerCase().split(/[^a-z0-9]+/).filter((w) => w.length > 2);
+            for (const f of cacheData.cached_files) {
+              if (!f.name || !f.duration) continue;
+              const combined = `${f.name || ''} ${f.relpath || ''}`.toLowerCase();
+              // If we have a show title, verify file belongs to this show
+              if (titleWords.length > 0) {
+                const matches = titleWords.filter((w) => combined.includes(w));
+                if (matches.length === 0) continue;
+              }
+
+              const epMatch = f.name.match(/[sS](\d{1,2})[eE](\d{1,3})/i) || f.name.match(/\b(\d{1,2})x(\d{1,3})\b/i);
+              if (epMatch) {
+                const s = parseInt(epMatch[1], 10);
+                const e = parseInt(epMatch[2], 10);
+                const exactDur = Math.round(f.duration);
+                const exactMins = Math.round(f.duration / 60);
+                const key = `s${s}e${e}`;
+                // Self-Debrid probed duration overwrites any TV broadcast estimate
+                runtimeMap.set(key, {
+                  runtimeMinutes: exactMins,
+                  durationSeconds: exactDur,
+                });
+              }
+            }
+          }
+        }
+      } catch (err) {
+        // Suppress timeout or unreachable local debrid cache
+      }
+
+      this.showRuntimesCache.set(cleanImdbId, runtimeMap);
+      return runtimeMap;
+    })();
+
+    this.pendingRuntimesPromises.set(cleanImdbId, fetchPromise);
+    try {
+      return await fetchPromise;
+    } finally {
+      this.pendingRuntimesPromises.delete(cleanImdbId);
     }
   }
 
@@ -358,23 +505,50 @@ class LiveMediaProviderService implements MediaProvider {
             };
           });
 
-          // Map all episodes from Cinemeta
-          const allMappedEpisodes: Episode[] = videos.map((v: any) => ({
-            id: `ep-${v.id || cleanId + '-' + v.season + '-' + (v.number || v.episode || 1)}`,
-            showId: id,
-            seasonId: `season-${v.season || 1}`,
-            number: v.number || v.episode || 1,
-            seasonNumber: v.season || 1,
-            title: v.title || v.name || `Episode ${v.number || v.episode || 1}`,
-            description: this.stripHtml(v.overview || v.description || 'No episode synopsis available.'),
-            thumbnail:
-              v.thumbnail ||
-              `https://episodes.metahub.space/${cleanId}/${v.season || 1}/${v.number || v.episode || 1}/w780.jpg`,
-            runtime: `${v.runtime || meta.runtime || 45} min`,
-            runtimeMinutes: parseInt(String(v.runtime || meta.runtime || 45), 10) || 45,
-            airDate: v.released || v.firstAired,
-            streamUrl: DIRECT_CINEMA_STREAMS[cleanId] || 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/TearsOfSteel.mp4',
-          }));
+          // Fetch accurate per-episode runtimes from TVMaze and Self-Debrid local cache
+          const runtimesMap = await this.fetchEpisodeRuntimes(cleanId, meta.name);
+
+          // Map all episodes from Cinemeta with accurate per-episode durations
+          const allMappedEpisodes: Episode[] = videos.map((v: any) => {
+            const sNum = v.season || 1;
+            const epNum = v.number || v.episode || 1;
+            const runtimeInfo = runtimesMap.get(`s${sNum}e${epNum}`);
+
+            let mins = runtimeInfo?.runtimeMinutes;
+            let durSec = runtimeInfo?.durationSeconds;
+
+            if (!mins) {
+              if (v.runtime) {
+                mins = parseInt(String(v.runtime), 10);
+              } else if (meta.runtime) {
+                mins = parseInt(String(meta.runtime), 10);
+              }
+              mins = mins || 45;
+            }
+
+            if (!durSec) {
+              durSec = mins * 60;
+            }
+
+            return {
+              id: `ep-${v.id || cleanId + '-' + sNum + '-' + epNum}`,
+              showId: id,
+              seasonId: `season-${sNum}`,
+              number: epNum,
+              seasonNumber: sNum,
+              showTitle: meta.name || 'Television Series',
+              title: v.title || v.name || `Episode ${epNum}`,
+              description: this.stripHtml(v.overview || v.description || 'No episode synopsis available.'),
+              thumbnail:
+                v.thumbnail ||
+                `https://episodes.metahub.space/${cleanId}/${sNum}/${epNum}/w780.jpg`,
+              runtime: this.formatEpisodeRuntime(mins),
+              runtimeMinutes: mins,
+              durationSeconds: durSec,
+              airDate: v.released || v.firstAired,
+              streamUrl: DIRECT_CINEMA_STREAMS[cleanId] || 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/TearsOfSteel.mp4',
+            };
+          });
 
           // Pre-cache episodes per season
           validSeasons.forEach((sNum) => {
@@ -474,26 +648,53 @@ class LiveMediaProviderService implements MediaProvider {
     // 1. If it's an IMDb ID or show cached via Cinemeta
     if (cleanId.startsWith('tt')) {
       try {
-        const res = await fetch(`https://v3-cinemeta.strem.io/meta/series/${cleanId}.json`);
-        const data = await res.json();
+        const cachedShow = this.showDetailsCache.get(cleanId) || this.showDetailsCache.get(showId);
+        const res = await fetch(`https://v3-cinemeta.strem.io/meta/series/${cleanId}.json`).then((r) => r.json());
+        const showTitle = cachedShow?.title || res?.meta?.name;
+        const runtimesMap = await this.fetchEpisodeRuntimes(cleanId, showTitle);
+        const data = res;
         if (data && data.meta && Array.isArray(data.meta.videos)) {
           const videos = data.meta.videos;
-          const allEpisodes: Episode[] = videos.map((v: any) => ({
-            id: `ep-${v.id || cleanId + '-' + (v.season || 1) + '-' + (v.number || v.episode || 1)}`,
-            showId: showId,
-            seasonId: `season-${v.season || 1}`,
-            number: v.number || v.episode || 1,
-            seasonNumber: v.season || 1,
-            title: v.title || v.name || `Episode ${v.number || v.episode || 1}`,
-            description: this.stripHtml(v.overview || v.description || 'No episode synopsis available.'),
-            thumbnail:
-              v.thumbnail ||
-              `https://episodes.metahub.space/${cleanId}/${v.season || 1}/${v.number || v.episode || 1}/w780.jpg`,
-            runtime: `${v.runtime || 45} min`,
-            runtimeMinutes: parseInt(String(v.runtime || 45), 10) || 45,
-            airDate: v.released || v.firstAired,
-            streamUrl: DIRECT_CINEMA_STREAMS[cleanId] || 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/TearsOfSteel.mp4',
-          }));
+          const allEpisodes: Episode[] = videos.map((v: any) => {
+            const sNum = v.season || 1;
+            const epNum = v.number || v.episode || 1;
+            const runtimeInfo = runtimesMap.get(`s${sNum}e${epNum}`);
+
+            let mins = runtimeInfo?.runtimeMinutes;
+            let durSec = runtimeInfo?.durationSeconds;
+
+            if (!mins) {
+              if (v.runtime) {
+                mins = parseInt(String(v.runtime), 10);
+              } else if (data.meta.runtime) {
+                mins = parseInt(String(data.meta.runtime), 10);
+              }
+              mins = mins || 45;
+            }
+
+            if (!durSec) {
+              durSec = mins * 60;
+            }
+
+            return {
+              id: `ep-${v.id || cleanId + '-' + sNum + '-' + epNum}`,
+              showId: showId,
+              seasonId: `season-${sNum}`,
+              number: epNum,
+              seasonNumber: sNum,
+              showTitle: showTitle || 'Television Series',
+              title: v.title || v.name || `Episode ${epNum}`,
+              description: this.stripHtml(v.overview || v.description || 'No episode synopsis available.'),
+              thumbnail:
+                v.thumbnail ||
+                `https://episodes.metahub.space/${cleanId}/${sNum}/${epNum}/w780.jpg`,
+              runtime: this.formatEpisodeRuntime(mins),
+              runtimeMinutes: mins,
+              durationSeconds: durSec,
+              airDate: v.released || v.firstAired,
+              streamUrl: DIRECT_CINEMA_STREAMS[cleanId] || 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/TearsOfSteel.mp4',
+            };
+          });
 
           const seasonEps = allEpisodes.filter((e) => e.seasonNumber === seasonNumber);
           const result = seasonEps.length > 0 ? seasonEps : allEpisodes.slice(0, 15);
@@ -508,50 +709,69 @@ class LiveMediaProviderService implements MediaProvider {
 
     // 2. TVMaze Numeric ID Lookup
     try {
-      const res = await fetch(`https://api.tvmaze.com/shows/${cleanId}/episodes`);
-      const data = await res.json();
+      const cachedShow = this.showDetailsCache.get(cleanId) || this.showDetailsCache.get(showId);
+      const showTitle = cachedShow?.title || 'Television Series';
+      const [res, runtimesMap] = await Promise.all([
+        fetch(`https://api.tvmaze.com/shows/${cleanId}/episodes`).then((r) => r.json()),
+        this.fetchEpisodeRuntimes(cleanId, showTitle),
+      ]);
+      const data = res;
 
       if (Array.isArray(data)) {
         const episodes: Episode[] = (data as any[])
           .filter((ep) => ep.season === seasonNumber)
-          .map((ep) => ({
-            id: `ep-${ep.id}`,
-            showId: showId,
-            seasonId: `season-${ep.season}`,
-            number: ep.number,
-            seasonNumber: ep.season,
-            title: ep.name,
-            description: this.stripHtml(ep.summary || 'No episode synopsis available.'),
-            thumbnail:
-              ep.image?.original ||
-              ep.image?.medium ||
-              `https://images.metahub.space/background/medium/${cleanId}/img`,
-            runtime: `${ep.runtime || 45} min`,
-            runtimeMinutes: ep.runtime || 45,
-            airDate: ep.airdate,
-            streamUrl: DIRECT_CINEMA_STREAMS[cleanId] || 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/TearsOfSteel.mp4',
-          }));
+          .map((ep) => {
+            const runtimeInfo = runtimesMap.get(`s${ep.season}e${ep.number}`);
+            const mins = runtimeInfo?.runtimeMinutes || ep.runtime || 45;
+            const durSec = runtimeInfo?.durationSeconds || mins * 60;
+            return {
+              id: `ep-${ep.id}`,
+              showId: showId,
+              seasonId: `season-${ep.season}`,
+              number: ep.number,
+              seasonNumber: ep.season,
+              showTitle: showTitle || cachedShow?.title || 'Television Series',
+              title: ep.name,
+              description: this.stripHtml(ep.summary || 'No episode synopsis available.'),
+              thumbnail:
+                ep.image?.original ||
+                ep.image?.medium ||
+                `https://images.metahub.space/background/medium/${cleanId}/img`,
+              runtime: this.formatEpisodeRuntime(mins),
+              runtimeMinutes: mins,
+              durationSeconds: durSec,
+              airDate: ep.airdate,
+              streamUrl: DIRECT_CINEMA_STREAMS[cleanId] || 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/TearsOfSteel.mp4',
+            };
+          });
 
         const finalEps =
           episodes.length > 0
             ? episodes
-            : (data as any[]).slice(0, 15).map((ep) => ({
-                id: `ep-${ep.id}`,
-                showId: showId,
-                seasonId: `season-${ep.season}`,
-                number: ep.number,
-                seasonNumber: ep.season,
-                title: ep.name,
-                description: this.stripHtml(ep.summary || 'No episode synopsis available.'),
-                thumbnail:
-                  ep.image?.original ||
-                  ep.image?.medium ||
-                  `https://images.metahub.space/background/medium/${cleanId}/img`,
-                runtime: `${ep.runtime || 45} min`,
-                runtimeMinutes: ep.runtime || 45,
-                airDate: ep.airdate,
-                streamUrl: DIRECT_CINEMA_STREAMS[cleanId] || 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/TearsOfSteel.mp4',
-              }));
+            : (data as any[]).slice(0, 15).map((ep) => {
+                const runtimeInfo = runtimesMap.get(`s${ep.season}e${ep.number}`);
+                const mins = runtimeInfo?.runtimeMinutes || ep.runtime || 45;
+                const durSec = runtimeInfo?.durationSeconds || mins * 60;
+                return {
+                  id: `ep-${ep.id}`,
+                  showId: showId,
+                  seasonId: `season-${ep.season}`,
+                  number: ep.number,
+                  seasonNumber: ep.season,
+                  showTitle: showTitle || cachedShow?.title || 'Television Series',
+                  title: ep.name,
+                  description: this.stripHtml(ep.summary || 'No episode synopsis available.'),
+                  thumbnail:
+                    ep.image?.original ||
+                    ep.image?.medium ||
+                    `https://images.metahub.space/background/medium/${cleanId}/img`,
+                  runtime: this.formatEpisodeRuntime(mins),
+                  runtimeMinutes: mins,
+                  durationSeconds: durSec,
+                  airDate: ep.airdate,
+                  streamUrl: DIRECT_CINEMA_STREAMS[cleanId] || 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/TearsOfSteel.mp4',
+                };
+              });
 
         this.episodesCache.set(cacheKey, finalEps);
         this.episodesCache.set(`${cleanId}-s${seasonNumber}`, finalEps);
@@ -1149,7 +1369,7 @@ class LiveMediaProviderService implements MediaProvider {
         targetStreamType = 'embed';
       }
 
-      const calculatedEpDuration = this.parseRuntimeToSeconds(ep.runtime, ep.runtimeMinutes, 2700);
+      const calculatedEpDuration = ep.durationSeconds || this.parseRuntimeToSeconds(ep.runtime, ep.runtimeMinutes, 2700);
 
       const intro = ep.intro || (await introService.getIntroTimestamps({
         id: `source-${ep.id}`,
@@ -1179,6 +1399,7 @@ class LiveMediaProviderService implements MediaProvider {
         mediaType: 'episode',
         mediaId: ep.id,
         showId: ep.showId,
+        showTitle: ep.showTitle || this.showDetailsCache.get(ep.showId)?.title || this.showDetailsCache.get(cleanShowId)?.title,
         seasonId: ep.seasonId,
         episodeNumber: ep.number,
         seasonNumber: ep.seasonNumber,

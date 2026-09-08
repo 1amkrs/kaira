@@ -14,7 +14,7 @@ import './ShowDetailsScreen.css';
 interface ShowDetailsScreenProps {
   show: Show;
   initialSeason?: number;
-  onPlayEpisode: (episode: Episode, customStreamUrl?: string, streamType?: AddonStream['streamType']) => void;
+  onPlayEpisode: (episode: Episode, customStreamUrl?: string, streamType?: AddonStream['streamType'], streamDurationSeconds?: number) => void;
   onSelectSimilar?: (show: Show) => void;
   onBack: () => void;
   isPlayerActive?: boolean;
@@ -102,13 +102,13 @@ export const ShowDetailsScreen: React.FC<ShowDetailsScreenProps> = ({
         cleanImdb,
         ep.seasonNumber,
         ep.number,
-        `${detailedShow.title} S${ep.seasonNumber}E${ep.number}`,
+        detailedShow.title,
         undefined
       );
       if (streams && streams.length > 0) {
         const best = addonService.selectBestStream(streams);
         if (best) {
-          onPlayEpisode(ep, best.url, best.streamType);
+          onPlayEpisode(ep, best.url, best.streamType, best.durationSeconds);
           return;
         }
       }
@@ -133,7 +133,7 @@ export const ShowDetailsScreen: React.FC<ShowDetailsScreenProps> = ({
         cleanImdb,
         targetEp.seasonNumber,
         targetEp.number,
-        `${detailedShow.title} S${targetEp.seasonNumber}E${targetEp.number}`,
+        detailedShow.title,
         undefined
       );
       if (streams && streams.length > 0) {
@@ -149,7 +149,7 @@ export const ShowDetailsScreen: React.FC<ShowDetailsScreenProps> = ({
     if (!resolvingEpisode) return;
     setIsTrailerReady(false);
     setAvailableStreams(null);
-    onPlayEpisode(resolvingEpisode, stream.url, stream.streamType);
+    onPlayEpisode(resolvingEpisode, stream.url, stream.streamType, stream.durationSeconds);
     setResolvingEpisode(null);
   };
 

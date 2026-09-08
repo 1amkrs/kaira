@@ -275,16 +275,6 @@ export class EmbedDriver implements IPlaybackDriver {
       (window as any).electronAPI.controlMedia('seek', target);
     }
 
-    // 3. For web browser / cross-origin iframes (VidAPI, VidLink, VidSrc) that don't accept postMessage:
-    // If the jump is substantial (e.g. Skip Intro >= 2s or scrubbing), reload iframe with start parameter
-    const isElectron = typeof window !== 'undefined' && Boolean((window as any).electronAPI);
-    if (!isElectron && Math.abs(target - previousTime) >= 2 && this.iframe && this.currentSourceUrl) {
-      const seekUrl = buildEmbedSeekUrl(this.currentSourceUrl, target);
-      if (this.iframe.src !== seekUrl) {
-        this.iframe.src = seekUrl;
-      }
-    }
-
     this.callbacks?.onTimeUpdate(target, dur);
   }
 

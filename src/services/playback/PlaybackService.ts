@@ -2,8 +2,17 @@ import { PlaybackSource, PlaybackState } from '../../types/media';
 import { musicPluginService } from '../music/MusicPluginService';
 
 
+export interface IVideoPlaybackDelegate {
+  seek(seconds: number): void;
+  seekRelative(deltaSeconds: number): void;
+  play(): void;
+  pause(): void;
+  togglePlayPause(): void;
+}
+
 class PlaybackService {
   private audioElement: HTMLAudioElement | null = null;
+  private videoDelegate: IVideoPlaybackDelegate | null = null;
   private state: PlaybackState = {
     currentSource: null,
     status: 'idle',
@@ -18,6 +27,10 @@ class PlaybackService {
   };
   private listeners: Set<(state: PlaybackState) => void> = new Set();
   private lastEndedTime: number = 0;
+
+  public setVideoDelegate(delegate: IVideoPlaybackDelegate | null): void {
+    this.videoDelegate = delegate;
+  }
 
 
   constructor() {
@@ -138,6 +151,9 @@ class PlaybackService {
   }
 
   public pause(): void {
+    if (this.videoDelegate) {
+      this.videoDelegate.pause();
+    }
     if (this.state.currentSource?.type === 'audio' && this.audioElement) {
       this.audioElement.pause();
     }
@@ -145,6 +161,9 @@ class PlaybackService {
   }
 
   public resume(): void {
+    if (this.videoDelegate) {
+      this.videoDelegate.play();
+    }
     if (this.state.currentSource?.type === 'audio' && this.audioElement) {
       this.audioElement.play().catch(() => {});
     }
@@ -152,6 +171,10 @@ class PlaybackService {
   }
 
   public togglePlayPause(): void {
+    if (this.videoDelegate) {
+      this.videoDelegate.togglePlayPause();
+      return;
+    }
     if (this.state.status === 'playing') {
       this.pause();
     } else {
@@ -161,14 +184,20 @@ class PlaybackService {
 
   public seek(seconds: number): void {
     const target = Math.max(0, Math.min(this.state.duration || Infinity, seconds));
+    if (this.videoDelegate) {
+      this.videoDelegate.seek(target);
+    }
     if (this.state.currentSource?.type === 'audio' && this.audioElement) {
       this.audioElement.currentTime = target;
     }
     this.updateTime(target, this.state.duration);
   }
 
-
   public seekRelative(deltaSeconds: number): void {
+    if (this.videoDelegate) {
+      this.videoDelegate.seekRelative(deltaSeconds);
+      return;
+    }
     this.seek(this.state.currentTime + deltaSeconds);
   }
 

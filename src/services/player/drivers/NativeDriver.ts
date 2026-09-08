@@ -104,7 +104,7 @@ export class NativeDriver implements IPlaybackDriver {
 
   private onTimeUpdate = (): void => {
     if (!this.videoElement || this.isDestroyed || this.isTranscodeSeeking) return;
-    const cur = (this.videoElement.currentTime || 0) + this.streamStartTime;
+    const cur = Math.max(0, this.videoElement.currentTime || 0) + this.streamStartTime;
     const dur = this.getValidDuration();
     this.state.currentTime = cur;
     this.callbacks?.onTimeUpdate(cur, dur);
@@ -125,7 +125,7 @@ export class NativeDriver implements IPlaybackDriver {
       this.state.duration = dur;
     }
     const finalDur = this.getValidDuration();
-    const cur = (this.videoElement.currentTime || 0) + this.streamStartTime;
+    const cur = Math.max(0, this.videoElement.currentTime || 0) + this.streamStartTime;
     this.callbacks?.onTimeUpdate(cur, finalDur);
   };
 
@@ -156,6 +156,8 @@ export class NativeDriver implements IPlaybackDriver {
 
   private onPause = (): void => {
     if (this.isDestroyed) return;
+    // Suppress spurious pause events during active transcode seek / source swap
+    if (this.isTranscodeSeeking) return;
     if (this.state.status !== 'ended' && this.state.status !== 'error') {
       this.state.status = 'paused';
       this.callbacks?.onStatusChange('paused');
@@ -172,9 +174,19 @@ export class NativeDriver implements IPlaybackDriver {
 
   private onCanPlay = (): void => {
     if (this.isDestroyed) return;
-    this.isTranscodeSeeking = false;
     this.retryCount = 0;
-    this.callbacks?.onBuffering(false);
+    if (this.isTranscodeSeeking) {
+      this.callbacks?.onBuffering(false);
+      if (this.wasPlayingBeforeSeek || this.state.status === 'playing') {
+        this.doPlay().catch(() => {});
+      } else {
+        this.isTranscodeSeeking = false;
+        this.state.status = 'paused';
+        this.callbacks?.onStatusChange('paused');
+      }
+    } else {
+      this.callbacks?.onBuffering(false);
+    }
   };
 
   private wasPlayingBeforeSeek = false;
@@ -188,7 +200,7 @@ export class NativeDriver implements IPlaybackDriver {
     if (this.isDestroyed) return;
     this.callbacks?.onBuffering(false);
     if (this.videoElement) {
-      const cur = (this.videoElement.currentTime || 0) + this.streamStartTime;
+      const cur = Math.max(0, this.videoElement.currentTime || 0) + this.streamStartTime;
       this.callbacks?.onTimeUpdate(cur, this.getValidDuration());
       if (this.wasPlayingBeforeSeek || this.state.status === 'playing') {
         if (this.videoElement.paused) {
@@ -207,21 +219,38 @@ export class NativeDriver implements IPlaybackDriver {
 
   private onError = (): void => {
     if (this.isDestroyed) return;
-    if (this.retryCount < 4 && this.state.currentTime === 0) {
+
+    if (this.isTranscodeSeeking) {
+      console.warn('[NativeDriver] Transient error during transcode seek, retrying reload...');
+      setTimeout(() => {
+        if (!this.isDestroyed && this.videoElement && this.videoElement.src) {
+          try {
+            this.videoElement.load();
+            if (this.wasPlayingBeforeSeek || this.state.status === 'playing') {
+              this.doPlay().catch(() => {});
+            }
+          } catch (_) {}
+        }
+      }, 500);
+      return;
+    }
+
+    if (this.retryCount < 3) {
       this.retryCount++;
-      console.log(`[NativeDriver] Waiting for torrent buffer from Self-Debrid (attempt ${this.retryCount}/4)...`);
+      console.log(`[NativeDriver] Waiting for stream buffer from Self-Debrid (attempt ${this.retryCount}/3)...`);
       this.state.status = 'buffering';
       this.callbacks?.onBuffering(true);
       setTimeout(() => {
         if (!this.isDestroyed && this.videoElement && this.videoElement.src) {
           try {
             this.videoElement.load();
-            this.doPlay();
+            this.doPlay().catch(() => {});
           } catch (_) {}
         }
-      }, 2000);
+      }, 1500);
       return;
     }
+
     const msg = this.videoElement?.error?.message || 'Video playback error';
     this.state.status = 'error';
     this.state.error = msg;
@@ -266,9 +295,17 @@ export class NativeDriver implements IPlaybackDriver {
       this.streamStartTime = 0;
     }
 
+    if (this.streamStartTime > 0) {
+      this.state.currentTime = this.streamStartTime;
+    }
+
     if (expectedDuration && isFinite(expectedDuration) && expectedDuration > 60) {
       this.expectedDuration = expectedDuration;
       this.state.duration = expectedDuration;
+    } else if (this.expectedDuration > 60) {
+      this.state.duration = this.expectedDuration;
+    } else if (this.state.duration > 60) {
+      this.expectedDuration = this.state.duration;
     } else {
       this.expectedDuration = 0;
     }
@@ -342,7 +379,9 @@ export class NativeDriver implements IPlaybackDriver {
           this.videoElement.addEventListener('loadedmetadata', seekOnce);
         }
 
-        await this.doPlay();
+        if (!this.isTranscodeSeeking || this.wasPlayingBeforeSeek) {
+          await this.doPlay();
+        }
       } catch (err) {
         console.warn('[NativeDriver] Error loading source:', err);
       }

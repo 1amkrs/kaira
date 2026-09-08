@@ -190,14 +190,6 @@ export class EmbedBackend implements IPlayerBackend {
       (window as any).electronAPI.controlMedia('seek', target);
     }
 
-    const isElectron = typeof window !== 'undefined' && Boolean((window as any).electronAPI);
-    if (!isElectron && Math.abs(target - previousTime) >= 2 && this.iframe && this.currentSourceUrl) {
-      const seekUrl = buildEmbedSeekUrl(this.currentSourceUrl, target);
-      if (this.iframe.src !== seekUrl) {
-        this.iframe.src = seekUrl;
-      }
-    }
-
     this.callbacks?.onTimeUpdate(target, this.state.duration);
   }
 

@@ -238,55 +238,101 @@ class AddonService {
     const streams: AddonStream[] = [];
 
     // 0. Pre-check Self-Debrid Local Disk Cache & Completed Torrents
-    const isSelfDebrid = this.debridConfig.enabled && this.debridConfig.provider === 'selfdebrid';
-    if (isSelfDebrid) {
-      const selfUrl = (this.debridConfig.endpointUrl || 'http://localhost:8081').replace(/\/+$/, '');
-      try {
-        const checkParams = new URLSearchParams();
-        if (titleHint) checkParams.set('title', titleHint);
-        if (seasonNumber !== undefined) checkParams.set('season', String(seasonNumber));
-        if (episodeNumber !== undefined) checkParams.set('episode', String(episodeNumber));
+    const selfUrl = (this.debridConfig.provider === 'selfdebrid' && this.debridConfig.endpointUrl
+      ? this.debridConfig.endpointUrl
+      : 'http://localhost:8081'
+    ).replace(/\/+$/, '');
 
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 1200);
+    try {
+      const cleanTitle = (titleHint || '')
+        .replace(/\b[sS]\d+[\.\-_ ]?[eE]\d+\b/gi, ' ')
+        .replace(/\b\d+x\d+\b/gi, ' ')
+        .replace(/\b[sS]\d+\b/gi, ' ')
+        .replace(/\b[eE]\d+\b/gi, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
 
-        const [cacheCheckRes, cacheInvRes] = await Promise.allSettled([
-          fetch(`${selfUrl}/cache/check?${checkParams.toString()}`, { signal: controller.signal }).then((r) => r.json()),
-          fetch(`${selfUrl}/cache`, { signal: controller.signal }).then((r) => r.json()),
-        ]);
-        clearTimeout(timeoutId);
+      const checkParams = new URLSearchParams();
+      if (cleanTitle) checkParams.set('title', cleanTitle);
+      if (seasonNumber !== undefined) checkParams.set('season', String(seasonNumber));
+      if (episodeNumber !== undefined) checkParams.set('episode', String(episodeNumber));
 
-        if (cacheInvRes.status === 'fulfilled' && cacheInvRes.value?.cached_hashes) {
-          this.cachedTorrentHashes.clear();
-          const hashes = cacheInvRes.value.cached_hashes;
-          Object.keys(hashes).forEach((h) => {
-            if (hashes[h]?.completed) {
-              this.cachedTorrentHashes.add(h.toLowerCase());
-            }
-          });
-        }
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 1200);
 
-        if (cacheCheckRes.status === 'fulfilled' && cacheCheckRes.value?.cached) {
-          const c = cacheCheckRes.value;
-          console.log(`[AddonService] ⚡ Found local cached file in Self-Debrid:`, c.name);
-          streams.push({
-            name: 'Self-Debrid [⚡ Local Disk Cache]',
-            title: `${titleHint || c.name} • Instant Disk Playback`,
-            description: `Pre-downloaded in Debrid Cache (${c.name}) • Zero Buffering`,
-            url: c.stream_url,
-            streamType: 'direct',
-            quality: '1080p',
-            resolution: '1080p Disk Cache',
-            audio: 'AAC Stereo Transcode',
-            providerName: 'Self-Debrid Local',
-            isDebrid: true,
-            isCached: true,
-            durationSeconds: c.duration ? Math.round(c.duration) : undefined,
-          });
-        }
-      } catch (err) {
-        console.warn('[AddonService] Self-Debrid local cache pre-check notice:', err);
+      const [cacheCheckRes, cacheInvRes] = await Promise.allSettled([
+        fetch(`${selfUrl}/cache/check?${checkParams.toString()}`, { signal: controller.signal }).then((r) => r.json()),
+        fetch(`${selfUrl}/cache`, { signal: controller.signal }).then((r) => r.json()),
+      ]);
+      clearTimeout(timeoutId);
+
+      if (cacheInvRes.status === 'fulfilled' && cacheInvRes.value?.cached_hashes) {
+        this.cachedTorrentHashes.clear();
+        const hashes = cacheInvRes.value.cached_hashes;
+        Object.keys(hashes).forEach((h) => {
+          if (hashes[h]?.completed) {
+            this.cachedTorrentHashes.add(h.toLowerCase());
+          }
+        });
       }
+
+      let cachedItem: any = null;
+      if (cacheCheckRes.status === 'fulfilled' && cacheCheckRes.value?.cached) {
+        cachedItem = cacheCheckRes.value;
+      } else if (cacheInvRes.status === 'fulfilled' && Array.isArray(cacheInvRes.value?.cached_files)) {
+        // Fallback: search cached_files inventory directly
+        const titleWords = cleanTitle.toLowerCase().split(/[^a-z0-9]+/).filter((w) => w.length > 2);
+        const files: any[] = cacheInvRes.value.cached_files;
+        for (const f of files) {
+          const combined = `${f.name || ''} ${f.relpath || ''}`.toLowerCase();
+          if (seasonNumber !== undefined && episodeNumber !== undefined) {
+            const epRegex = new RegExp(`[sS]0?${seasonNumber}[\\.\\-_ ]?[eE]0?${episodeNumber}\\b|\\b0?${seasonNumber}x0?${episodeNumber}\\b`, 'i');
+            if (!epRegex.test(combined)) continue;
+          }
+          if (titleWords.length > 0) {
+            const matches = titleWords.filter((w) => combined.includes(w));
+            if (matches.length >= Math.min(1, titleWords.length)) {
+              cachedItem = f;
+              break;
+            }
+          } else {
+            cachedItem = f;
+            break;
+          }
+        }
+
+        // Pass 2: if no cached item yet, match by season & episode
+        if (!cachedItem && seasonNumber !== undefined && episodeNumber !== undefined) {
+          for (const f of files) {
+            const combined = `${f.name || ''} ${f.relpath || ''}`.toLowerCase();
+            const epRegex = new RegExp(`[sS]0?${seasonNumber}[\\.\\-_ ]?[eE]0?${episodeNumber}\\b|\\b0?${seasonNumber}x0?${episodeNumber}\\b`, 'i');
+            if (epRegex.test(combined)) {
+              cachedItem = f;
+              break;
+            }
+          }
+        }
+      }
+
+      if (cachedItem && cachedItem.stream_url) {
+        console.log(`[AddonService] ⚡ Found local cached file in Self-Debrid:`, cachedItem.name);
+        streams.unshift({
+          name: 'Self-Debrid [⚡ Local Disk Cache]',
+          title: `${titleHint || cachedItem.name} • Instant Disk Playback`,
+          description: `Pre-downloaded in Debrid Cache (${cachedItem.name}) • Zero Buffering`,
+          url: cachedItem.stream_url,
+          streamType: 'direct',
+          quality: '1080p',
+          resolution: '1080p Disk Cache',
+          audio: 'AAC Stereo Transcode',
+          providerName: 'Self-Debrid Local',
+          isDebrid: true,
+          isCached: true,
+          durationSeconds: cachedItem.duration ? Math.round(cachedItem.duration) : undefined,
+        });
+      }
+    } catch (err) {
+      console.warn('[AddonService] Self-Debrid local cache pre-check notice:', err);
     }
 
     // 1. Primary Full Feature Stream (VidLink Mirror)
@@ -482,7 +528,7 @@ class AddonService {
       }
     }
 
-    const isCachedTorrent = isSelfDebrid && Boolean(raw.infoHash && this.cachedTorrentHashes.has(raw.infoHash.toLowerCase()));
+    const isCachedTorrent = (isSelfDebrid || this.cachedTorrentHashes.size > 0) && Boolean(raw.infoHash && this.cachedTorrentHashes.has(raw.infoHash.toLowerCase()));
 
     return {
       name: isCachedTorrent

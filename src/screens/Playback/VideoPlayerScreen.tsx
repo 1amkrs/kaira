@@ -32,6 +32,7 @@ import { gamepadManager } from '../../services/controller/gamepadManager';
 import { PlaybackSource, Episode } from '../../types/media';
 import { AddonStream, SubtitleTrack } from '../../types/addons';
 import { Focusable } from '../../components/Focusable/Focusable';
+import { playbackService } from '../../services/playback/PlaybackService';
 import './VideoPlayerScreen.css';
 
 
@@ -230,6 +231,7 @@ export const VideoPlayerScreen: React.FC<VideoPlayerScreenProps> = ({
   // If a debrid/direct torrent stream takes too much time to load (>10s) or errors out, automatically fall back to VidSrc Server 2
   const [hasFallenBackToVidSrc, setHasFallenBackToVidSrc] = useState<boolean>(false);
   const loadingWatchdogRef = useRef<NodeJS.Timeout | null>(null);
+  const hasStartedPlayingRef = useRef<boolean>(false);
 
   const triggerVidSrcFallback = useCallback((reason: string) => {
     if (hasFallenBackToVidSrc) return;
@@ -264,7 +266,11 @@ export const VideoPlayerScreen: React.FC<VideoPlayerScreenProps> = ({
   }, [hasFallenBackToVidSrc, availableStreams, source, engineState.currentTime, engineState.duration, triggerFeedback]);
 
   useEffect(() => {
-    // If playing or already fallen back, clear watchdog
+    // If playing, mark that stream has started and clear watchdog
+    if (engineState.status === 'playing') {
+      hasStartedPlayingRef.current = true;
+    }
+
     if (engineState.status === 'playing' || hasFallenBackToVidSrc) {
       if (loadingWatchdogRef.current) {
         clearTimeout(loadingWatchdogRef.current);
@@ -273,14 +279,20 @@ export const VideoPlayerScreen: React.FC<VideoPlayerScreenProps> = ({
       return;
     }
 
+    const isSelfDebrid =
+      currentStreamUrl.includes(':8081') ||
+      Boolean(source.streamUrl && source.streamUrl.includes(':8081'));
     const isDirectOrDebrid =
       currentDriverType === 'direct' ||
-      currentStreamUrl.includes(':8081') ||
       currentStreamUrl.includes('.mp4') ||
-      currentStreamUrl.includes('.mkv');
+      currentStreamUrl.includes('.mkv') ||
+      isSelfDebrid;
     const isAlreadyVidSrc = currentStreamUrl.includes('vidsrc');
 
-    if (isDirectOrDebrid && !isAlreadyVidSrc) {
+    // Only allow fallback to VidSrc if:
+    // 1) NOT a Self-Debrid local cached stream (local streams should never switch to cloud mirror)
+    // 2) The stream has NOT started playing yet (never fall back during active seeking / buffering)
+    if (isDirectOrDebrid && !isAlreadyVidSrc && !isSelfDebrid && !hasStartedPlayingRef.current) {
       if (engineState.status === 'buffering') {
         if (!loadingWatchdogRef.current) {
           loadingWatchdogRef.current = setTimeout(() => {
@@ -298,7 +310,7 @@ export const VideoPlayerScreen: React.FC<VideoPlayerScreenProps> = ({
         loadingWatchdogRef.current = null;
       }
     };
-  }, [engineState.status, engineState.error, currentDriverType, currentStreamUrl, hasFallenBackToVidSrc, triggerVidSrcFallback]);
+  }, [engineState.status, engineState.error, currentDriverType, currentStreamUrl, source.streamUrl, hasFallenBackToVidSrc, triggerVidSrcFallback]);
 
 
   // 2. Fetch Alternate Mirrors & Intro Timestamps in background
@@ -312,7 +324,7 @@ export const VideoPlayerScreen: React.FC<VideoPlayerScreenProps> = ({
             imdb,
             source.seasonNumber,
             source.episodeNumber,
-            source.title,
+            source.showTitle || source.title,
             source.ytTrailerId
           );
           if (streams && streams.length > 0) {
@@ -456,6 +468,27 @@ export const VideoPlayerScreen: React.FC<VideoPlayerScreenProps> = ({
     },
     [pingHud]
   );
+
+  // Register Video Delegate with PlaybackService so Companion Remote directly controls video playback
+  useEffect(() => {
+    playbackService.setVideoDelegate({
+      seek: (sec) => seekTo(sec),
+      seekRelative: (delta) => seekBy(delta),
+      play: () => {
+        engineRef.current?.play();
+        pingHud();
+      },
+      pause: () => {
+        engineRef.current?.pause();
+        pingHud();
+      },
+      togglePlayPause: () => handleTogglePlayPause(),
+    });
+
+    return () => {
+      playbackService.setVideoDelegate(null);
+    };
+  }, [seekTo, seekBy, handleTogglePlayPause, pingHud]);
 
   const handleSkipIntro = useCallback(() => {
     if (!introSegment || !engineRef.current) return;
@@ -729,25 +762,6 @@ export const VideoPlayerScreen: React.FC<VideoPlayerScreenProps> = ({
     };
   }, [pingHud, isMenuOpen, onExit, handleTogglePlayPause, seekBy, triggerFeedback]);
 
-  // 6. Scrubber Drag & Pointer Handlers
-  const handleScrubberMove = (e: React.PointerEvent<HTMLDivElement>) => {
-    const rect = e.currentTarget.getBoundingClientRect();
-    if (rect.width <= 0) return;
-    const pos = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
-    setHoverPosition(pos);
-    if (isScrubbing) {
-      setScrubPosition(pos);
-    }
-  };
-
-  const handleScrubberCommit = (pos: number) => {
-    const dur =
-      engineState.duration > 60
-        ? engineState.duration
-        : source.durationSeconds || (source.mediaType === 'episode' ? 2700 : 7200);
-    seekTo(pos * dur);
-  };
-
   // Helper: Format Time string HH:MM:SS / MM:SS
   const formatTime = (secs: number): string => {
     if (!secs || isNaN(secs) || secs < 0) return '0:00';
@@ -761,7 +775,6 @@ export const VideoPlayerScreen: React.FC<VideoPlayerScreenProps> = ({
     return `${m}:${s < 10 ? '0' : ''}${s}`;
   };
 
-  const currentScrubFraction = isScrubbing && scrubPosition !== null ? scrubPosition : null;
   const fallbackDur = source.durationSeconds || (source.mediaType === 'episode' ? 2700 : 7200);
   const currentEffectiveDur =
     engineState.duration > 60
@@ -769,6 +782,23 @@ export const VideoPlayerScreen: React.FC<VideoPlayerScreenProps> = ({
       : fallbackDur > 0
       ? fallbackDur
       : engineState.duration;
+
+  // 6. Scrubber Drag & Pointer Handlers
+  const handleScrubberMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    if (rect.width <= 0) return;
+    const pos = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+    setHoverPosition(pos);
+    if (isScrubbing) {
+      setScrubPosition(pos);
+    }
+  };
+
+  const handleScrubberCommit = (pos: number) => {
+    seekTo(pos * currentEffectiveDur);
+  };
+
+  const currentScrubFraction = isScrubbing && scrubPosition !== null ? scrubPosition : null;
 
   const displayCurrentTime =
     currentScrubFraction !== null ? currentScrubFraction * currentEffectiveDur : engineState.currentTime;
@@ -997,6 +1027,9 @@ export const VideoPlayerScreen: React.FC<VideoPlayerScreenProps> = ({
               indexInGroup={0}
               className="tv-hud-scrubber-focusable"
               scaleEffect={false}
+              onSelect={() => {
+                handleTogglePlayPause();
+              }}
             >
               {(isFocused) => (
                 <div
@@ -1005,6 +1038,9 @@ export const VideoPlayerScreen: React.FC<VideoPlayerScreenProps> = ({
                   }`}
                   onPointerDown={(e) => {
                     setIsScrubbing(true);
+                    try {
+                      (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+                    } catch (_) {}
                     const rect = e.currentTarget.getBoundingClientRect();
                     if (rect.width > 0) {
                       const pos = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
@@ -1014,6 +1050,9 @@ export const VideoPlayerScreen: React.FC<VideoPlayerScreenProps> = ({
                   }}
                   onPointerMove={handleScrubberMove}
                   onPointerUp={(e) => {
+                    try {
+                      (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
+                    } catch (_) {}
                     if (isScrubbing) {
                       const rect = e.currentTarget.getBoundingClientRect();
                       const pos = rect.width > 0 ? Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width)) : 0;
@@ -1022,10 +1061,10 @@ export const VideoPlayerScreen: React.FC<VideoPlayerScreenProps> = ({
                     setIsScrubbing(false);
                     setScrubPosition(null);
                   }}
-                  onPointerLeave={() => {
-                    if (isScrubbing && scrubPosition !== null) {
-                      handleScrubberCommit(scrubPosition);
-                    }
+                  onPointerCancel={(e) => {
+                    try {
+                      (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
+                    } catch (_) {}
                     setIsScrubbing(false);
                     setScrubPosition(null);
                     setHoverPosition(null);
