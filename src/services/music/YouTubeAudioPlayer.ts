@@ -87,6 +87,8 @@ export class YouTubeAudioPlayer {
 
   private onTimeUpdateCallback?: (currentTime: number, duration: number) => void;
   private onStateChangeCallback?: (status: 'idle' | 'playing' | 'paused' | 'buffering' | 'ended') => void;
+  private resolvedVideoIdCache: Map<string, string> = new Map();
+
   private onErrorCallback?: (err: any) => void;
 
   constructor() {
@@ -116,7 +118,57 @@ export class YouTubeAudioPlayer {
       }
     }
 
+    if (this.resolvedVideoIdCache.has(combined)) {
+      return this.resolvedVideoIdCache.get(combined)!;
+    }
+
     return null;
+  }
+
+  public async resolveVideoIdAsync(title: string, artist: string, initialId?: string): Promise<string> {
+    const direct = this.resolveVideoId(title, artist, initialId);
+    if (direct) return direct;
+
+    const cacheKey = `${title.toLowerCase().trim()} ${artist.toLowerCase().trim()}`;
+    if (this.resolvedVideoIdCache.has(cacheKey)) {
+      return this.resolvedVideoIdCache.get(cacheKey)!;
+    }
+
+    // Dynamic probe via Invidious / YouTube search endpoints
+    const query = `${title} ${artist}`;
+    const invInstances = [
+      'https://inv.nadeko.net',
+      'https://invidious.nerdvpn.de',
+      'https://invidious.private.coffee',
+      'https://yewtu.be',
+    ];
+
+    for (const inst of invInstances) {
+      try {
+        const controller = new AbortController();
+        const tid = setTimeout(() => controller.abort(), 1800);
+        const res = await fetch(
+          `${inst}/api/v1/search?q=${encodeURIComponent(query)}&type=video`,
+          { signal: controller.signal }
+        );
+        clearTimeout(tid);
+
+        if (res.ok) {
+          const json = await res.json();
+          if (Array.isArray(json) && json.length > 0 && json[0].videoId) {
+            const vid = json[0].videoId;
+            this.resolvedVideoIdCache.set(cacheKey, vid);
+            return vid;
+          }
+        }
+      } catch (e) {
+        continue;
+      }
+    }
+
+    // Default to search query so YouTube Iframe plays top match via listType=search
+    this.resolvedVideoIdCache.set(cacheKey, query);
+    return query;
   }
 
   private ensureIframe(): HTMLIFrameElement {
@@ -241,8 +293,8 @@ export class YouTubeAudioPlayer {
     } catch (e) {}
   }
 
-  public async play(videoId: string, startSeconds: number = 0): Promise<void> {
-    this.currentVideoId = videoId;
+  public async play(videoIdOrQuery: string, startSeconds: number = 0): Promise<void> {
+    this.currentVideoId = videoIdOrQuery;
     this.currentTime = startSeconds;
     this.status = 'buffering';
     if (this.onStateChangeCallback) {
@@ -251,9 +303,19 @@ export class YouTubeAudioPlayer {
 
     const iframe = this.ensureIframe();
     const origin = typeof window !== 'undefined' ? window.location.origin : '';
-    const srcUrl = `https://www.youtube-nocookie.com/embed/${videoId}?enablejsapi=1&autoplay=1&start=${Math.floor(
-      startSeconds
-    )}&origin=${encodeURIComponent(origin)}&playsinline=1&controls=0&disablekb=1&fs=0&iv_load_policy=3&modestbranding=1&rel=0`;
+
+    // Check if videoIdOrQuery is a direct 11-char YouTube Video ID or a Search Query
+    const isDirectId = /^[a-zA-Z0-9_-]{11}$/.test(videoIdOrQuery.trim());
+
+    const srcUrl = isDirectId
+      ? `https://www.youtube-nocookie.com/embed/${videoIdOrQuery.trim()}?enablejsapi=1&autoplay=1&start=${Math.floor(
+          startSeconds
+        )}&origin=${encodeURIComponent(origin)}&playsinline=1&controls=0&disablekb=1&fs=0&iv_load_policy=3&modestbranding=1&rel=0`
+      : `https://www.youtube-nocookie.com/embed?listType=search&list=${encodeURIComponent(
+          videoIdOrQuery.trim()
+        )}&enablejsapi=1&autoplay=1&start=${Math.floor(
+          startSeconds
+        )}&origin=${encodeURIComponent(origin)}&playsinline=1&controls=0&disablekb=1&fs=0&iv_load_policy=3&modestbranding=1&rel=0`;
 
     // Always assign new src to trigger instant clean playback
     iframe.src = srcUrl;

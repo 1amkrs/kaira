@@ -275,10 +275,10 @@ export class StreamResolverService {
       return fallbackUrl;
     }
 
-    // Tier 5: Default verified high-bitrate Audius full stream
-    const defaultStream = `${this.activeAudiusHost}/v1/tracks/D7KyP/stream?app_name=kaira_tvOS`;
-    this.streamCache.set(cleanKey, defaultStream);
-    return defaultStream;
+    // Tier 5: Direct YouTube search stream link
+    const ytStream = `https://www.youtube.com/results?search_query=${encodeURIComponent(title + ' ' + artist)}`;
+    this.streamCache.set(cleanKey, ytStream);
+    return fallbackUrl || ytStream;
   }
 
   public mapAudiusTrack(t: any, idx: number, host: string = this.activeAudiusHost): Track {

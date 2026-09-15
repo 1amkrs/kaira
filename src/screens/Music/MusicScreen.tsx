@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Play, ChevronLeft, ChevronRight } from 'lucide-react';
 import { Album, Track, MusicVideo, CommunityPlaylist, MoodCategoryItem } from '../../types/media';
 import { mediaProvider } from '../../services/media/LiveMediaProvider';
@@ -243,7 +243,7 @@ export const MusicScreen: React.FC<MusicScreenProps> = ({ onSelectAlbum, onPlayT
                     durationSeconds: mv.durationSeconds,
                     trackNumber: idx + 1,
                     artwork: mv.thumbnail,
-                    audioUrl: `https://api.audius.co/v1/tracks/D7KyP/stream?app_name=kaira_tvOS`,
+                    audioUrl: mv.ytVideoId ? `https://www.youtube.com/watch?v=${mv.ytVideoId}` : '',
                     ytVideoId: mv.ytVideoId,
                   };
                   onPlayTrack(trackEquivalent, [trackEquivalent]);

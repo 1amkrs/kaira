@@ -408,7 +408,14 @@ class MusicEngine {
     this.notify();
 
     // 1. Check if track can be played via official YouTube Audio/Video Engine
-    const ytId = youTubeAudioPlayer.resolveVideoId(track.title, track.artist, track.ytVideoId);
+    let ytId = track.ytVideoId || youTubeAudioPlayer.resolveVideoId(track.title, track.artist, track.ytVideoId);
+    if (!ytId && track.title) {
+      try {
+        ytId = await youTubeAudioPlayer.resolveVideoIdAsync(track.title, track.artist, track.ytVideoId);
+      } catch (e) {
+        ytId = `${track.title} ${track.artist}`.trim();
+      }
+    }
 
     if (ytId) {
       this.isYouTubeMode = true;

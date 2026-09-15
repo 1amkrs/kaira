@@ -846,15 +846,7 @@ class LiveMediaProviderService implements MediaProvider {
     const albums = await this.getAlbums();
     const artists = await this.getArtists();
 
-    const topTracks: Track[] = [...YOUTUBE_MUSIC_QUICK_PICKS.slice(0, 6)];
-
-    // 1. Fetch live 320kbps full-length tracks from Audius Open Music Protocol
-    try {
-      const audiusTrending = await musicPluginService.fetchTrendingTracks(10);
-      if (audiusTrending && audiusTrending.length > 0) {
-        topTracks.push(...audiusTrending);
-      }
-    } catch (e) {}
+    const topTracks: Track[] = [...YOUTUBE_MUSIC_QUICK_PICKS];
 
     return {
       recentlyPlayed: albums.slice(0, 5),
@@ -1121,39 +1113,93 @@ class LiveMediaProviderService implements MediaProvider {
 
     result.shows = Array.from(showMap.values()).slice(0, 8);
 
-    // Process Audius Tracks
-    if (audiusMusic.status === 'fulfilled' && Array.isArray(audiusMusic.value)) {
-      result.tracks.push(...audiusMusic.value.slice(0, 8));
-    }
+    // 1. Curated Catalog Album Matches
+    const curatedAlbumMatches = YOUTUBE_MUSIC_ALBUMS.filter(
+      (a) =>
+        a.title.toLowerCase().includes(trimmed) ||
+        a.artist.toLowerCase().includes(trimmed) ||
+        (a.genre && a.genre.toLowerCase().includes(trimmed))
+    );
 
-    // Process iTunes Albums
+    // 2. iTunes Albums (Apple Music Catalog)
+    const itunesAlbumList: Album[] = [];
     if (itunesAlbums.status === 'fulfilled' && itunesAlbums.value?.results) {
-      result.albums = itunesAlbums.value.results.map((a: any) => ({
-        id: `album-${a.collectionId}`,
-        title: a.collectionName,
-        artist: a.artistName,
-        artwork: (a.artworkUrl100 || '').replace('100x100bb', '1000x1000bb'),
-        year: a.releaseDate ? new Date(a.releaseDate).getFullYear() : 2023,
-        genre: a.primaryGenreName,
-        trackCount: a.trackCount,
-      }));
+      itunesAlbumList.push(
+        ...itunesAlbums.value.results.map((a: any) => ({
+          id: `album-${a.collectionId}`,
+          title: a.collectionName,
+          artist: a.artistName,
+          artwork: (a.artworkUrl100 || '').replace('100x100bb', '1000x1000bb'),
+          year: a.releaseDate ? new Date(a.releaseDate).getFullYear() : 2023,
+          genre: a.primaryGenreName,
+          trackCount: a.trackCount,
+          typeBadge: 'Album',
+          isFavorite: this.favorites.has(`album-${a.collectionId}`),
+        }))
+      );
     }
 
-    // Process iTunes Songs
+    result.albums = [...curatedAlbumMatches];
+    itunesAlbumList.forEach((ia) => {
+      if (!result.albums.some((ca) => ca.title.toLowerCase() === ia.title.toLowerCase())) {
+        result.albums.push(ia);
+      }
+    });
+
+    // 3. Curated Catalog Track Matches (with verified official YouTube Video IDs)
+    const curatedTrackMatches: Track[] = [];
+    YOUTUBE_MUSIC_QUICK_PICKS.forEach((t) => {
+      if (t.title.toLowerCase().includes(trimmed) || t.artist.toLowerCase().includes(trimmed)) {
+        curatedTrackMatches.push(t);
+      }
+    });
+    YOUTUBE_MUSIC_ALBUMS.forEach((alb) => {
+      alb.tracks?.forEach((t) => {
+        if (
+          (t.title.toLowerCase().includes(trimmed) || t.artist.toLowerCase().includes(trimmed)) &&
+          !curatedTrackMatches.some((existing) => existing.id === t.id)
+        ) {
+          curatedTrackMatches.push(t);
+        }
+      });
+    });
+
+    // 4. iTunes Songs (Official Master Track Catalog)
+    const itunesTracks: Track[] = [];
     if (itunesSongs.status === 'fulfilled' && itunesSongs.value?.results) {
-      const itunesTracks = itunesSongs.value.results.map((s: any, idx: number) => ({
-        id: `track-${s.trackId || idx}`,
-        title: s.trackName,
-        artist: s.artistName,
-        album: s.collectionName,
-        albumId: `album-${s.collectionId}`,
-        duration: this.formatMillis(s.trackTimeMillis || 200000),
-        durationSeconds: Math.round((s.trackTimeMillis || 200000) / 1000),
-        trackNumber: s.trackNumber || 1,
-        artwork: (s.artworkUrl100 || '').replace('100x100bb', '1000x1000bb'),
-        audioUrl: s.previewUrl,
-      }));
-      result.tracks.push(...itunesTracks.slice(0, 8));
+      itunesTracks.push(
+        ...itunesSongs.value.results.map((s: any, idx: number) => ({
+          id: `track-${s.trackId || idx}`,
+          title: s.trackName || 'Untitled Song',
+          artist: s.artistName || 'Unknown Artist',
+          album: s.collectionName || 'Single',
+          albumId: `album-${s.collectionId || 'single'}`,
+          duration: this.formatMillis(s.trackTimeMillis || 200000),
+          durationSeconds: Math.round((s.trackTimeMillis || 200000) / 1000),
+          trackNumber: s.trackNumber || 1,
+          artwork: (s.artworkUrl100 || '').replace('100x100bb', '1000x1000bb'),
+          audioUrl: s.previewUrl,
+        }))
+      );
+    }
+
+    // Combine Curated + iTunes tracks (Curated official tracks first, then iTunes master tracks)
+    result.tracks = [...curatedTrackMatches];
+    itunesTracks.forEach((it) => {
+      if (
+        !result.tracks.some(
+          (ct) =>
+            ct.title.toLowerCase() === it.title.toLowerCase() &&
+            ct.artist.toLowerCase() === it.artist.toLowerCase()
+        )
+      ) {
+        result.tracks.push(it);
+      }
+    });
+
+    // 5. Fallback only if 0 tracks were resolved from Curated + iTunes
+    if (result.tracks.length === 0 && audiusMusic.status === 'fulfilled' && Array.isArray(audiusMusic.value)) {
+      result.tracks.push(...audiusMusic.value.slice(0, 8));
     }
 
     return result;
