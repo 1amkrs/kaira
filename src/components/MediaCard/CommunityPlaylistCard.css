@@ -1,0 +1,129 @@
+﻿.tv-comm-pl-wrapper {
+  flex: 0 0 auto;
+  width: clamp(170px, 14vw, 240px);
+  border-radius: var(--radius-md);
+  text-align: left;
+}
+
+.tv-comm-pl-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+}
+
+.tv-comm-pl-art-box {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  background-color: var(--bg-surface-2);
+  border: 1px solid var(--border-subtle);
+  transition: border-color var(--duration-base) var(--easing-standard),
+              box-shadow var(--duration-base) var(--easing-standard),
+              filter var(--duration-base) var(--easing-standard);
+}
+
+.tv-comm-pl-card.focused .tv-comm-pl-art-box {
+  border-color: rgba(255, 255, 255, 0.4);
+  box-shadow: 0 12px 30px -4px rgba(0, 0, 0, 0.7);
+  filter: brightness(1.05);
+}
+
+.tv-comm-pl-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: 1fr 1fr;
+  width: 100%;
+  height: 100%;
+  gap: 1px;
+  background-color: rgba(0, 0, 0, 0.4);
+}
+
+.tv-comm-pl-quad-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.tv-comm-pl-avatar-badge {
+  position: absolute;
+  bottom: 8px;
+  left: 8px;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  overflow: hidden;
+  border: 2px solid #ffffff;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.6);
+  background-color: var(--bg-surface-2);
+}
+
+.tv-comm-pl-avatar-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.tv-comm-pl-play-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #ffffff;
+}
+
+.tv-comm-pl-meta {
+  padding: 2px 4px 0 4px;
+}
+
+.tv-comm-pl-title {
+  font-size: var(--font-title-sm);
+  font-weight: 600;
+  color: var(--text-primary);
+  line-height: 1.3;
+}
+
+.tv-comm-pl-subrow {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: var(--font-caption);
+  color: var(--text-secondary);
+  margin-top: 3px;
+}
+
+.tv-comm-pl-creator {
+  color: var(--text-secondary);
+}
+
+.tv-comm-pl-dot {
+  color: var(--text-tertiary);
+}
+
+.tv-comm-pl-views {
+  color: var(--text-tertiary);
+}
+
+@media (max-width: 768px) {
+  .tv-comm-pl-wrapper {
+    width: 130px;
+  }
+  .tv-comm-pl-title {
+    font-size: 13px;
+  }
+  .tv-comm-pl-subrow {
+    font-size: 11px;
+  }
+  .tv-comm-pl-avatar-badge {
+    width: 22px;
+    height: 22px;
+    bottom: 6px;
+    left: 6px;
+  }
+}

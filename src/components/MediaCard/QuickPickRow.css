@@ -1,0 +1,136 @@
+﻿.tv-quick-pick-focusable {
+  width: 100%;
+  border-radius: var(--radius-md);
+  display: block;
+}
+
+.tv-quick-pick-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 8px 12px;
+  border-radius: var(--radius-md);
+  background: transparent;
+  transition: background-color var(--duration-base) var(--easing-standard),
+              transform var(--duration-micro) var(--easing-enter),
+              box-shadow var(--duration-base) var(--easing-standard);
+  cursor: pointer;
+  user-select: none;
+}
+
+.tv-quick-pick-row.focused {
+  background-color: rgba(255, 255, 255, 0.12);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+}
+
+.tv-quick-pick-row.current {
+  border-left: 3px solid var(--google-blue);
+  background-color: rgba(138, 180, 248, 0.08);
+}
+
+.tv-quick-pick-art-container {
+  position: relative;
+  width: 52px;
+  height: 52px;
+  min-width: 52px;
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  background-color: var(--bg-surface-2);
+}
+
+.tv-quick-pick-art {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.tv-quick-pick-play-overlay,
+.tv-quick-pick-playing-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #ffffff;
+}
+
+.tv-quick-pick-playing-overlay {
+  color: var(--google-blue);
+  background: rgba(0, 0, 0, 0.65);
+}
+
+.tv-playing-pulse {
+  animation: tvPulse 1.2s infinite alternate ease-in-out;
+}
+
+@keyframes tvPulse {
+  0% { transform: scale(0.9); opacity: 0.8; }
+  100% { transform: scale(1.15); opacity: 1; }
+}
+
+.tv-quick-pick-info {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 3px;
+  min-width: 0;
+  flex: 1;
+}
+
+.tv-quick-pick-title-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.tv-quick-pick-title {
+  font-size: var(--font-body);
+  font-weight: 600;
+  color: var(--text-primary);
+  line-height: 1.3;
+}
+
+.tv-quick-pick-row.current .tv-quick-pick-title {
+  color: var(--google-blue);
+}
+
+.tv-quick-pick-subrow {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: var(--font-caption);
+  color: var(--text-secondary);
+}
+
+.tv-quick-pick-artist {
+  color: var(--text-secondary);
+}
+
+.tv-quick-pick-dot {
+  color: var(--text-tertiary);
+}
+
+.tv-quick-pick-plays {
+  color: var(--text-tertiary);
+}
+
+@media (max-width: 768px) {
+  .tv-quick-pick-row {
+    padding: 6px 8px;
+    gap: 10px;
+  }
+  .tv-quick-pick-art-container {
+    width: 44px;
+    height: 44px;
+    min-width: 44px;
+  }
+  .tv-quick-pick-title {
+    font-size: 13px;
+  }
+  .tv-quick-pick-subrow {
+    font-size: 11px;
+  }
+}

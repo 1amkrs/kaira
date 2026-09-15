@@ -67,6 +67,26 @@
   margin-top: 3px;
 }
 
+.tv-explicit-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 9px;
+  font-weight: 700;
+  color: #0f0f0f;
+  background-color: #888888;
+  border-radius: 2px;
+  width: 13px;
+  height: 13px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.tv-album-badge {
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
 .tv-album-artist {
   color: var(--text-secondary);
 }

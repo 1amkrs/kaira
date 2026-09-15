@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Play, Pause, SkipForward, SkipBack, Disc, Maximize2, X } from 'lucide-react';
+import { Play, Pause, SkipForward, SkipBack, Maximize2, X, Music } from 'lucide-react';
 import { playbackService } from '../../services/playback/PlaybackService';
 import { PlaybackState } from '../../types/media';
 import { Focusable } from '../Focusable/Focusable';
@@ -25,6 +25,13 @@ export const MiniPlayer: React.FC<MiniPlayerProps> = ({ onOpenFullPlayer }) => {
   const isPlaying = playback.status === 'playing';
   const progressPct = playback.duration > 0 ? (playback.currentTime / playback.duration) * 100 : 0;
 
+  const formatTime = (sec: number) => {
+    const total = Math.floor(sec || 0);
+    const m = Math.floor(total / 60);
+    const s = total % 60;
+    return `${m}:${s < 10 ? '0' : ''}${s}`;
+  };
+
   return (
     <div className="tv-mini-player-bar" role="region" aria-label="Audio Player">
       {/* Top micro progress line */}
@@ -45,15 +52,21 @@ export const MiniPlayer: React.FC<MiniPlayerProps> = ({ onOpenFullPlayer }) => {
           {(isFocused) => (
             <div className={`tv-mini-track-info ${isFocused ? 'focused' : ''}`}>
               <div className="tv-mini-art-box">
-                <img
-                  src={src.artwork}
-                  alt={src.title}
-                  className={`tv-mini-art ${isPlaying ? 'spinning' : ''}`}
-                />
+                {src.artwork ? (
+                  <img
+                    src={src.artwork}
+                    alt={src.title}
+                    className={`tv-mini-art ${isPlaying ? 'spinning' : ''}`}
+                  />
+                ) : (
+                  <Music size={20} color="var(--google-blue)" />
+                )}
               </div>
               <div className="tv-mini-text-col">
                 <span className="tv-mini-title text-truncate">{src.title}</span>
-                <span className="tv-mini-artist text-truncate">{src.subtitle}</span>
+                <span className="tv-mini-artist text-truncate">
+                  {src.subtitle || src.artist} • {formatTime(playback.currentTime)} / {formatTime(playback.duration || 210)}
+                </span>
               </div>
               <Maximize2 size={16} className="tv-mini-expand-icon" />
             </div>
@@ -87,7 +100,11 @@ export const MiniPlayer: React.FC<MiniPlayerProps> = ({ onOpenFullPlayer }) => {
           >
             {(isFocused) => (
               <div className={`tv-mini-btn playpause ${isFocused ? 'focused' : ''}`}>
-                {isPlaying ? <Pause size={20} fill="currentColor" /> : <Play size={20} fill="currentColor" />}
+                {isPlaying ? (
+                  <Pause size={20} fill="currentColor" />
+                ) : (
+                  <Play size={20} fill="currentColor" style={{ marginLeft: '1px' }} />
+                )}
               </div>
             )}
           </Focusable>

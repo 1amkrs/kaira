@@ -1,4 +1,5 @@
 import React, { useEffect, useRef } from 'react';
+import { musicEngine } from '../../services/music/MusicEngine';
 import './AudioVisualizer.css';
 
 interface AudioVisualizerProps {
@@ -27,15 +28,16 @@ export const AudioVisualizer: React.FC<AudioVisualizerProps> = ({ isPlaying }) =
     window.addEventListener('resize', handleResize);
 
     // Particle nodes for fluid floating aura
-    const numParticles = 48;
+    const numParticles = 40;
     const particles = Array.from({ length: numParticles }, (_, i) => ({
       x: Math.random() * width,
       y: Math.random() * height,
-      radius: Math.random() * 3.5 + 1.5,
-      speedX: (Math.random() - 0.5) * 1.2,
-      speedY: (Math.random() - 0.5) * 1.2,
-      hue: (i * 7 + 210) % 360, // Cyan, Google Blue, Purple spectrum
-      alpha: Math.random() * 0.5 + 0.3,
+      baseRadius: Math.random() * 3 + 2,
+      radius: Math.random() * 3 + 2,
+      speedX: (Math.random() - 0.5) * 1.5,
+      speedY: (Math.random() - 0.5) * 1.5,
+      hue: (i * 9 + 210) % 360,
+      alpha: Math.random() * 0.4 + 0.3,
     }));
 
     let phase = 0;
@@ -48,27 +50,96 @@ export const AudioVisualizer: React.FC<AudioVisualizerProps> = ({ isPlaying }) =
 
       ctx.clearRect(0, 0, width, height);
 
-      // Waveform bars / sine flow
-      phase += isPlaying ? 0.04 : 0.008;
+      const freqData = isPlaying ? musicEngine.getFrequencyData() : null;
+      const bassEnergy = isPlaying ? musicEngine.getBassEnergy() : 0;
+      const hasRealAudio = freqData !== null && freqData.length > 0;
 
-      // Draw multi-layered glowing sine waves
+      phase += isPlaying ? 0.03 + bassEnergy * 0.05 : 0.006;
+
+      // 1. Render Background Aurora Glow reacting to Bass
+      const glowGrad = ctx.createRadialGradient(
+        width / 2,
+        height / 2,
+        20,
+        width / 2,
+        height / 2,
+        width * (0.5 + bassEnergy * 0.3)
+      );
+      glowGrad.addColorStop(0, `rgba(66, 133, 244, ${0.15 + bassEnergy * 0.25})`);
+      glowGrad.addColorStop(0.5, `rgba(234, 67, 53, ${0.08 + bassEnergy * 0.15})`);
+      glowGrad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+      ctx.fillStyle = glowGrad;
+      ctx.fillRect(0, 0, width, height);
+
+      // 2. Real-Time Equalizer Bars (Rendered across bottom half)
+      const numBars = 48;
+      const barWidth = (width / numBars) * 0.65;
+      const barGap = (width / numBars) * 0.35;
+      const barBaseY = height * 0.78;
+
+      for (let i = 0; i < numBars; i++) {
+        let barHeight = 6;
+        if (hasRealAudio && freqData) {
+          // Map bar index to frequency bin with logarithmic scaling
+          const binIdx = Math.min(
+            freqData.length - 1,
+            Math.floor(Math.pow(i / numBars, 1.3) * (freqData.length * 0.85))
+          );
+          const rawVal = freqData[binIdx] || 0;
+          barHeight = Math.max(6, (rawVal / 255) * (height * 0.42));
+        } else if (isPlaying) {
+          // Synthetic pulsing wave when direct audio is active
+          barHeight =
+            12 + Math.sin(phase * 2 + i * 0.25) * 20 + Math.cos(phase * 1.5 + i * 0.15) * 15;
+        }
+
+        const barX = i * (barWidth + barGap) + barGap / 2;
+        const barY = barBaseY - barHeight;
+
+        // Gradient color for each bar
+        const barGrad = ctx.createLinearGradient(barX, barBaseY, barX, barY);
+        barGrad.addColorStop(0, 'rgba(66, 133, 244, 0.4)');
+        barGrad.addColorStop(0.6, 'rgba(138, 180, 248, 0.85)');
+        barGrad.addColorStop(1, '#ffffff');
+
+        ctx.fillStyle = barGrad;
+        ctx.beginPath();
+        // Rounded bar top
+        ctx.roundRect(barX, barY, barWidth, barHeight, [4, 4, 0, 0]);
+        ctx.fill();
+
+        // Glow tip on energetic bars
+        if (barHeight > 35) {
+          ctx.shadowColor = '#8ab4f8';
+          ctx.shadowBlur = 8;
+          ctx.fillStyle = '#ffffff';
+          ctx.beginPath();
+          ctx.arc(barX + barWidth / 2, barY, barWidth / 3, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.shadowBlur = 0;
+        }
+      }
+
+      // 3. Render Fluid Sine Ribbon Overlay
       for (let layer = 0; layer < 3; layer++) {
         ctx.beginPath();
         const baseAlpha = layer === 0 ? 0.45 : layer === 1 ? 0.3 : 0.2;
-        const colorGlow = layer === 0 ? '#ff453a' : layer === 1 ? '#ff7b72' : '#e50914';
+        const colorGlow = layer === 0 ? '#4285f4' : layer === 1 ? '#ea4335' : '#fbbc05';
 
         ctx.strokeStyle = colorGlow;
-        ctx.lineWidth = 3 - layer * 0.8;
+        ctx.lineWidth = 2.5 - layer * 0.6;
         ctx.shadowColor = colorGlow;
-        ctx.shadowBlur = 12;
+        ctx.shadowBlur = 10 + bassEnergy * 15;
 
-        const amplitude = (isPlaying ? 35 : 12) + layer * 15;
-        const frequency = 0.008 + layer * 0.004;
+        const amplitude = (isPlaying ? 30 + bassEnergy * 45 : 10) + layer * 14;
+        const frequency = 0.007 + layer * 0.003;
 
         for (let x = 0; x <= width; x += 6) {
           const y =
-            height / 2 +
-            Math.sin(x * frequency + phase + layer * 1.5) * amplitude * Math.sin(phase * 0.5 + x / width);
+            height * 0.42 +
+            Math.sin(x * frequency + phase + layer * 1.6) *
+              amplitude *
+              Math.sin(phase * 0.6 + x / width);
           if (x === 0) {
             ctx.moveTo(x, y);
           } else {
@@ -78,12 +149,13 @@ export const AudioVisualizer: React.FC<AudioVisualizerProps> = ({ isPlaying }) =
         ctx.stroke();
       }
 
-      // Render floating spectrum particles
+      // 4. Floating Spectrum Particles that bounce with bass
       ctx.shadowBlur = 0;
       particles.forEach((p) => {
         if (isPlaying) {
-          p.x += p.speedX;
-          p.y += p.speedY;
+          const speedMultiplier = 1 + bassEnergy * 2.5;
+          p.x += p.speedX * speedMultiplier;
+          p.y += p.speedY * speedMultiplier;
 
           if (p.x < 0) p.x = width;
           if (p.x > width) p.x = 0;
@@ -91,11 +163,12 @@ export const AudioVisualizer: React.FC<AudioVisualizerProps> = ({ isPlaying }) =
           if (p.y > height) p.y = 0;
         }
 
+        const dynamicRadius = p.baseRadius * (1 + bassEnergy * 1.6);
         ctx.beginPath();
-        ctx.arc(p.x, p.y, p.radius * (isPlaying ? 1.2 : 0.9), 0, Math.PI * 2);
-        ctx.fillStyle = `hsla(${p.hue}, 85%, 70%, ${p.alpha})`;
+        ctx.arc(p.x, p.y, dynamicRadius, 0, Math.PI * 2);
+        ctx.fillStyle = `hsla(${p.hue}, 85%, 70%, ${p.alpha + bassEnergy * 0.3})`;
         ctx.shadowColor = `hsla(${p.hue}, 85%, 70%, 0.8)`;
-        ctx.shadowBlur = 8;
+        ctx.shadowBlur = 6 + bassEnergy * 10;
         ctx.fill();
       });
 
@@ -123,7 +196,7 @@ export const AudioVisualizer: React.FC<AudioVisualizerProps> = ({ isPlaying }) =
       <canvas ref={canvasRef} className="tv-audio-visualizer-canvas" />
       <div className="tv-visualizer-tag">
         <span className="tv-pulse-dot" />
-        <span>Live Spectrum & Aurora Atmosphere</span>
+        <span>Live FFT Audio Spectrum & Aurora Atmosphere</span>
       </div>
     </div>
   );

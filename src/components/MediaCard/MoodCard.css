@@ -1,0 +1,110 @@
+﻿.tv-mood-card-wrapper {
+  flex: 0 0 auto;
+  width: clamp(220px, 18vw, 300px);
+  border-radius: var(--radius-md);
+  text-align: left;
+}
+
+.tv-mood-card {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+}
+
+.tv-mood-card-art-box {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 10;
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  background-color: var(--bg-surface-2);
+  border: 1px solid var(--border-subtle);
+  transition: border-color var(--duration-base) var(--easing-standard),
+              box-shadow var(--duration-base) var(--easing-standard),
+              filter var(--duration-base) var(--easing-standard);
+}
+
+.tv-mood-card.focused .tv-mood-card-art-box {
+  border-color: rgba(255, 255, 255, 0.4);
+  box-shadow: 0 12px 30px -4px rgba(0, 0, 0, 0.7);
+  filter: brightness(1.05);
+}
+
+.tv-mood-card-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.tv-mood-card-scrim {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    180deg,
+    rgba(0, 0, 0, 0.2) 0%,
+    rgba(0, 0, 0, 0.5) 50%,
+    rgba(0, 0, 0, 0.88) 100%
+  );
+}
+
+.tv-mood-card-overlay-content {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  z-index: 2;
+}
+
+.tv-mood-tag {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--google-blue);
+}
+
+.tv-mood-title {
+  font-size: var(--font-title-sm);
+  font-weight: 700;
+  color: #ffffff;
+  line-height: 1.2;
+}
+
+.tv-mood-subtitle {
+  font-size: var(--font-caption);
+  color: rgba(255, 255, 255, 0.75);
+  line-height: 1.3;
+}
+
+.tv-mood-play-overlay {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.95);
+  color: #0f0f0f;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+  z-index: 3;
+}
+
+@media (max-width: 768px) {
+  .tv-mood-card-wrapper {
+    width: 170px;
+  }
+  .tv-mood-title {
+    font-size: 13px;
+  }
+  .tv-mood-subtitle {
+    font-size: 11px;
+  }
+}

@@ -36,6 +36,13 @@ import {
   getDirectFallbackStream,
   DIRECT_CINEMA_STREAMS,
 } from '../../data/media/directStreams';
+import {
+  YOUTUBE_MUSIC_ALBUMS,
+  YOUTUBE_MUSIC_QUICK_PICKS,
+  YOUTUBE_MUSIC_VIDEOS,
+  YOUTUBE_COMMUNITY_PLAYLISTS,
+  YOUTUBE_MOOD_DECADE_ITEMS,
+} from '../../data/media/youtubeMusicData';
 
 export { SAMPLE_CDN_POOL, getDirectFallbackStream, DIRECT_CINEMA_STREAMS };
 export type { ContinueWatchingItem };
@@ -812,7 +819,24 @@ class LiveMediaProviderService implements MediaProvider {
     return null;
   }
 
-  // --- MUSIC (Audius Protocol + iTunes Live API) ---
+  // --- MUSIC (YouTube Music TV Catalog + Audius Protocol + iTunes Live API) ---
+  public async getYoutubeMusicData(): Promise<{
+    albums: Album[];
+    quickPicks: Track[];
+    musicVideos: import('../../types/media').MusicVideo[];
+    communityPlaylists: import('../../types/media').CommunityPlaylist[];
+    moodDecades: import('../../types/media').MoodCategoryItem[];
+  }> {
+    const albums = await this.getAlbums();
+    return {
+      albums: albums.slice(0, 10),
+      quickPicks: YOUTUBE_MUSIC_QUICK_PICKS,
+      musicVideos: YOUTUBE_MUSIC_VIDEOS,
+      communityPlaylists: YOUTUBE_COMMUNITY_PLAYLISTS,
+      moodDecades: YOUTUBE_MOOD_DECADE_ITEMS,
+    };
+  }
+
   public async getMusic(): Promise<{
     recentlyPlayed: Album[];
     albums: Album[];
@@ -822,23 +846,15 @@ class LiveMediaProviderService implements MediaProvider {
     const albums = await this.getAlbums();
     const artists = await this.getArtists();
 
-    const topTracks: Track[] = [];
+    const topTracks: Track[] = [...YOUTUBE_MUSIC_QUICK_PICKS.slice(0, 6)];
 
     // 1. Fetch live 320kbps full-length tracks from Audius Open Music Protocol
     try {
-      const audiusTrending = await musicPluginService.fetchTrendingTracks(15);
+      const audiusTrending = await musicPluginService.fetchTrendingTracks(10);
       if (audiusTrending && audiusTrending.length > 0) {
         topTracks.push(...audiusTrending);
       }
     } catch (e) {}
-
-    // 2. Fetch iTunes tracks
-    for (const alb of albums.slice(0, 4)) {
-      const fullAlb = await this.getAlbum(alb.id);
-      if (fullAlb?.tracks) {
-        topTracks.push(...fullAlb.tracks.slice(0, 2));
-      }
-    }
 
     return {
       recentlyPlayed: albums.slice(0, 5),
@@ -851,10 +867,12 @@ class LiveMediaProviderService implements MediaProvider {
   public async getAlbums(): Promise<Album[]> {
     if (this.albumsCache.length > 0) return this.albumsCache;
 
+    const baseAlbums = [...YOUTUBE_MUSIC_ALBUMS];
+
     try {
-      const queries = ['Daft Punk', 'Hans Zimmer', 'The Weeknd', 'Pink Floyd', 'Interstellar Soundtrack', 'Synthwave', 'Oppenheimer Soundtrack'];
+      const queries = ['Daft Punk', 'Hans Zimmer', 'The Weeknd', 'Pink Floyd', 'Synthwave', 'Billie Eilish'];
       const promises = queries.map(q =>
-        fetch(`https://itunes.apple.com/search?term=${encodeURIComponent(q)}&entity=album&limit=4`)
+        fetch(`https://itunes.apple.com/search?term=${encodeURIComponent(q)}&entity=album&limit=3`)
           .then(r => r.json())
           .catch(() => ({ results: [] }))
       );
@@ -872,7 +890,7 @@ class LiveMediaProviderService implements MediaProvider {
         }
       });
 
-      this.albumsCache = Array.from(uniqueAlbums.values()).map(item => ({
+      const itunesMapped: Album[] = Array.from(uniqueAlbums.values()).map(item => ({
         id: `album-${item.collectionId}`,
         title: item.collectionName,
         artist: item.artistName,
@@ -881,19 +899,36 @@ class LiveMediaProviderService implements MediaProvider {
         year: item.releaseDate ? new Date(item.releaseDate).getFullYear() : 2023,
         genre: item.primaryGenreName,
         trackCount: item.trackCount || 10,
+        typeBadge: 'Album',
         isFavorite: this.favorites.has(`album-${item.collectionId}`),
       }));
 
+      // Combine curated YouTube albums and iTunes live albums
+      const combined = [...baseAlbums];
+      itunesMapped.forEach(alb => {
+        if (!combined.some(existing => existing.title.toLowerCase() === alb.title.toLowerCase())) {
+          combined.push(alb);
+        }
+      });
+
+      this.albumsCache = combined;
       return this.albumsCache;
     } catch (e) {
-      console.error('[LiveMediaProvider] iTunes albums fetch failed', e);
-      return [];
+      console.warn('[LiveMediaProvider] iTunes albums fetch fallback', e);
+      this.albumsCache = baseAlbums;
+      return baseAlbums;
     }
   }
 
   public async getAlbum(id: string): Promise<Album | null> {
     if (this.albumDetailsCache.has(id)) {
       return this.albumDetailsCache.get(id)!;
+    }
+
+    const curated = YOUTUBE_MUSIC_ALBUMS.find(a => a.id === id);
+    if (curated) {
+      this.albumDetailsCache.set(id, curated);
+      return curated;
     }
 
     try {
@@ -929,6 +964,7 @@ class LiveMediaProviderService implements MediaProvider {
         genre: albumMeta.primaryGenreName,
         trackCount: tracks.length,
         tracks: tracks,
+        typeBadge: 'Album',
         isFavorite: this.favorites.has(id),
       };
 

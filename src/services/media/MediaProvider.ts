@@ -47,6 +47,13 @@ export interface MediaProvider {
     artists: Artist[];
     topTracks: Track[];
   }>;
+  getYoutubeMusicData(): Promise<{
+    albums: Album[];
+    quickPicks: Track[];
+    musicVideos: import('../../types/media').MusicVideo[];
+    communityPlaylists: import('../../types/media').CommunityPlaylist[];
+    moodDecades: import('../../types/media').MoodCategoryItem[];
+  }>;
   getAlbums(): Promise<Album[]>;
   getAlbum(id: string): Promise<Album | null>;
   getArtists(): Promise<Artist[]>;

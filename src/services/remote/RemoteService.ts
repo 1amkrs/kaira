@@ -8,6 +8,7 @@ import { appLauncher } from '../appLauncher/appLauncher';
 import { networkService } from '../network/NetworkService';
 import { systemService } from '../system/SystemService';
 import { soundEffectsService } from '../audio/soundEffectsService';
+import { musicEngine } from '../music/MusicEngine';
 import { screensaverService } from '../screensaver/screensaverService';
 import {
   RemoteCommand,
@@ -322,6 +323,8 @@ class RemoteService {
         isPlaying: playState.status === 'playing',
         isMuted: playState.isMuted || false,
         volume: playState.volume,
+        isShuffle: playState.isShuffle,
+        repeatMode: musicEngine.getState().repeatMode,
       };
     }
 
@@ -458,8 +461,11 @@ class RemoteService {
           }
           break;
         case 'SEEK_RELATIVE':
-          if (command.payload && typeof command.payload.offset === 'number') {
-            playbackService.seekRelative(command.payload.offset);
+          {
+            const deltaVal = command.payload?.delta ?? command.payload?.offset;
+            if (typeof deltaVal === 'number') {
+              playbackService.seekRelative(deltaVal);
+            }
           }
           break;
         case 'NEXT_TRACK':
@@ -467,6 +473,12 @@ class RemoteService {
           break;
         case 'PREV_TRACK':
           playbackService.previous();
+          break;
+        case 'SHUFFLE_TOGGLE':
+          musicEngine.toggleShuffle();
+          break;
+        case 'REPEAT_TOGGLE':
+          musicEngine.toggleRepeatMode();
           break;
 
         // --- 5. Audio & Volume Controls ---

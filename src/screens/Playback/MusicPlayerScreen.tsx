@@ -1,9 +1,29 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Play, Pause, SkipBack, SkipForward, ArrowLeft, Mic2, Sparkles, Music, ListMusic, Waves, X, Square } from 'lucide-react';
-import { playbackService } from '../../services/playback/PlaybackService';
-import { musicPluginService } from '../../services/music/MusicPluginService';
+import {
+  Play,
+  Pause,
+  SkipBack,
+  SkipForward,
+  ArrowLeft,
+  Mic2,
+  Sparkles,
+  Music,
+  ListMusic,
+  Waves,
+  X,
+  Shuffle,
+  Repeat,
+  Repeat1,
+  SlidersHorizontal,
+  Zap,
+} from 'lucide-react';
+import { musicEngine } from '../../services/music/MusicEngine';
+import {
+  MusicEngineState,
+  SoundPresetName,
+  SOUND_PRESETS,
+} from '../../services/music/types';
 import { spatialNav } from '../../services/spatialNav/spatialNavEngine';
-import { PlaybackState, SyncedLyricLine, PlaybackSource } from '../../types/media';
 import { Focusable } from '../../components/Focusable/Focusable';
 import { AudioVisualizer } from '../../components/Playback/AudioVisualizer';
 import { MusicQueueDrawer } from '../../components/Playback/MusicQueueDrawer';
@@ -14,36 +34,22 @@ interface MusicPlayerScreenProps {
 }
 
 export const MusicPlayerScreen: React.FC<MusicPlayerScreenProps> = ({ onClose }) => {
-  const [playback, setPlayback] = useState<PlaybackState>(playbackService.getState());
-  const [lyrics, setLyrics] = useState<SyncedLyricLine[]>([]);
+  const [engineState, setEngineState] = useState<MusicEngineState>(musicEngine.getState());
   const [showLyrics, setShowLyrics] = useState<boolean>(true);
   const [isQueueOpen, setIsQueueOpen] = useState<boolean>(false);
+  const [isEQOpen, setIsEQOpen] = useState<boolean>(false);
   const [activeLyricIndex, setActiveLyricIndex] = useState<number>(-1);
   const [isScrubbing, setIsScrubbing] = useState<boolean>(false);
   const [hoverPosition, setHoverPosition] = useState<number | null>(null);
   const lyricsContainerRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
-    const unsub = playbackService.subscribe(setPlayback);
+    const unsub = musicEngine.subscribe(setEngineState);
     return unsub;
   }, []);
 
-  const src = playback.currentSource;
-
-  // Load lyrics whenever current track changes
-  useEffect(() => {
-    if (src) {
-      if (src.lyrics && src.lyrics.length > 0) {
-        setLyrics(src.lyrics);
-      } else {
-        const trackTitle = src.title;
-        const trackArtist = src.artist || src.subtitle?.split('—')[0]?.trim() || '';
-        musicPluginService.fetchSyncedLyrics(trackTitle, trackArtist).then((res) => {
-          setLyrics(res.synced);
-        });
-      }
-    }
-  }, [src?.id, src?.title, src?.artist]);
+  const src = engineState.currentSource;
+  const lyrics = engineState.lyrics;
 
   // Track active lyric line based on currentTime with smooth lead
   useEffect(() => {
@@ -52,7 +58,7 @@ export const MusicPlayerScreen: React.FC<MusicPlayerScreenProps> = ({ onClose })
       return;
     }
 
-    const curTime = playback.currentTime;
+    const curTime = engineState.currentTime;
     let activeIdx = -1;
     for (let i = 0; i < lyrics.length; i++) {
       if (curTime >= lyrics[i].time - 0.15) {
@@ -71,19 +77,19 @@ export const MusicPlayerScreen: React.FC<MusicPlayerScreenProps> = ({ onClose })
         activeEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
       }
     }
-  }, [playback.currentTime, lyrics]);
+  }, [engineState.currentTime, lyrics]);
 
   const lastScrubTimeRef = useRef<number>(0);
 
   const handleTimelineScrub = (percent: number, immediate: boolean = false) => {
-    if (playback.duration <= 0) return;
+    if (engineState.duration <= 0) return;
     const now = performance.now();
     if (!immediate && now - lastScrubTimeRef.current < 100) {
       return;
     }
     lastScrubTimeRef.current = now;
-    const target = Math.max(0, Math.min(playback.duration, percent * playback.duration));
-    playbackService.seek(target);
+    const target = Math.max(0, Math.min(engineState.duration, percent * engineState.duration));
+    musicEngine.seek(target);
   };
 
   const handleScrubberPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
@@ -130,14 +136,14 @@ export const MusicPlayerScreen: React.FC<MusicPlayerScreenProps> = ({ onClose })
       if (e.key === 'ArrowLeft') {
         if (currentFocused === 'music-player-timeline' || currentFocused === 'music-ctrl-playpause') {
           e.preventDefault();
-          playbackService.seekRelative(-10);
+          musicEngine.seekRelative(-10);
           return;
         }
       }
       if (e.key === 'ArrowRight') {
         if (currentFocused === 'music-player-timeline' || currentFocused === 'music-ctrl-playpause') {
           e.preventDefault();
-          playbackService.seekRelative(10);
+          musicEngine.seekRelative(10);
           return;
         }
       }
@@ -150,32 +156,49 @@ export const MusicPlayerScreen: React.FC<MusicPlayerScreenProps> = ({ onClose })
           const now = Date.now();
           if (now - lastToggleRef.current < 260) return;
           lastToggleRef.current = now;
-          playbackService.togglePlayPause();
+          musicEngine.togglePlayPause();
           break;
         }
         case 'j':
         case 'J':
           e.preventDefault();
-          playbackService.seekRelative(-10);
+          musicEngine.seekRelative(-10);
           break;
         case 'l':
         case 'L':
           e.preventDefault();
-          playbackService.seekRelative(10);
+          musicEngine.seekRelative(10);
+          break;
+        case 's':
+        case 'S':
+          e.preventDefault();
+          musicEngine.toggleShuffle();
+          break;
+        case 'r':
+        case 'R':
+          e.preventDefault();
+          musicEngine.toggleRepeatMode();
           break;
         case 'Escape':
         case 'Backspace':
           e.preventDefault();
-          onClose();
+          if (isEQOpen) {
+            setIsEQOpen(false);
+          } else if (isQueueOpen) {
+            setIsQueueOpen(false);
+          } else {
+            onClose();
+          }
           break;
       }
     };
 
-    const handleBumperLeft = () => playbackService.previous();
-    const handleBumperRight = () => playbackService.next();
-    const handleTriggerLeft = () => playbackService.seekRelative(-15);
-    const handleTriggerRight = () => playbackService.seekRelative(15);
-    const handleButtonX = () => playbackService.togglePlayPause();
+    const handleBumperLeft = () => musicEngine.previous();
+    const handleBumperRight = () => musicEngine.next();
+    const handleTriggerLeft = () => musicEngine.seekRelative(-15);
+    const handleTriggerRight = () => musicEngine.seekRelative(15);
+    const handleButtonX = () => musicEngine.togglePlayPause();
+    const handleButtonY = () => musicEngine.toggleShuffle();
 
     window.addEventListener('keydown', handleKeyDown);
     window.addEventListener('tv:controller-bumper-left', handleBumperLeft);
@@ -183,6 +206,7 @@ export const MusicPlayerScreen: React.FC<MusicPlayerScreenProps> = ({ onClose })
     window.addEventListener('tv:controller-trigger-left', handleTriggerLeft);
     window.addEventListener('tv:controller-trigger-right', handleTriggerRight);
     window.addEventListener('tv:controller-button-x', handleButtonX);
+    window.addEventListener('tv:controller-button-y', handleButtonY);
 
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
@@ -191,13 +215,15 @@ export const MusicPlayerScreen: React.FC<MusicPlayerScreenProps> = ({ onClose })
       window.removeEventListener('tv:controller-trigger-left', handleTriggerLeft);
       window.removeEventListener('tv:controller-trigger-right', handleTriggerRight);
       window.removeEventListener('tv:controller-button-x', handleButtonX);
+      window.removeEventListener('tv:controller-button-y', handleButtonY);
     };
-  }, [onClose]);
+  }, [onClose, isEQOpen, isQueueOpen]);
 
   if (!src) return null;
 
-  const isPlaying = playback.status === 'playing';
-  const progressPct = playback.duration > 0 ? (playback.currentTime / playback.duration) * 100 : 0;
+  const isPlaying = engineState.status === 'playing';
+  const progressPct =
+    engineState.duration > 0 ? (engineState.currentTime / engineState.duration) * 100 : 0;
 
   const formatTime = (sec: number) => {
     const total = Math.floor(sec);
@@ -205,6 +231,17 @@ export const MusicPlayerScreen: React.FC<MusicPlayerScreenProps> = ({ onClose })
     const s = total % 60;
     return `${m < 10 ? '0' : ''}${m}:${s < 10 ? '0' : ''}${s}`;
   };
+
+  const presetList: SoundPresetName[] = [
+    'flat',
+    'bass-boost',
+    'vocal-clarity',
+    'electronic',
+    'rock',
+    'acoustic',
+    'jazz',
+    'night-mode',
+  ];
 
   return (
     <div className="tv-music-player-container">
@@ -235,47 +272,67 @@ export const MusicPlayerScreen: React.FC<MusicPlayerScreenProps> = ({ onClose })
 
         <div className="tv-music-header-center">
           <span className="tv-music-now-playing-tag">
-            <Music size={14} /> Now Playing • Audius / Lossless Stream
+            <Music size={14} /> High-Fidelity Studio Stream • {SOUND_PRESETS[engineState.activePreset]?.name || 'Studio'}
           </span>
         </div>
+
         <div className="tv-music-header-actions" style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+          {/* EQ / Sound Preset Toggle */}
+          <Focusable
+            id="music-eq-toggle"
+            groupId="music-player-top"
+            indexInGroup={1}
+            className="tv-music-lyrics-toggle-btn"
+            onSelect={() => setIsEQOpen(!isEQOpen)}
+          >
+            {(isFocused) => (
+              <div className={`tv-music-lyrics-pill ${isEQOpen ? 'active' : ''} ${isFocused ? 'focused' : ''}`}>
+                <SlidersHorizontal size={16} />
+                <span>EQ: {SOUND_PRESETS[engineState.activePreset]?.name.split(' ')[0]}</span>
+              </div>
+            )}
+          </Focusable>
+
+          {/* Queue Toggle */}
           <Focusable
             id="music-queue-toggle"
             groupId="music-player-top"
-            indexInGroup={1}
+            indexInGroup={2}
             className="tv-music-lyrics-toggle-btn"
             onSelect={() => setIsQueueOpen(!isQueueOpen)}
           >
             {(isFocused) => (
               <div className={`tv-music-lyrics-pill ${isQueueOpen ? 'active' : ''} ${isFocused ? 'focused' : ''}`}>
                 <ListMusic size={16} />
-                <span>Queue ({playback.queue.length})</span>
+                <span>Queue ({engineState.queue.length})</span>
               </div>
             )}
           </Focusable>
 
+          {/* Lyrics / Visualizer View Toggle */}
           <Focusable
             id="music-lyrics-toggle"
             groupId="music-player-top"
-            indexInGroup={2}
+            indexInGroup={3}
             className="tv-music-lyrics-toggle-btn"
             onSelect={() => setShowLyrics(!showLyrics)}
           >
             {(isFocused) => (
               <div className={`tv-music-lyrics-pill ${showLyrics ? 'active' : ''} ${isFocused ? 'focused' : ''}`}>
                 {showLyrics ? <Waves size={16} /> : <Mic2 size={16} />}
-                <span>{showLyrics ? 'Aurora Spectrum' : 'Live Lyrics'}</span>
+                <span>{showLyrics ? 'FFT Spectrum' : 'Live Lyrics'}</span>
               </div>
             )}
           </Focusable>
 
+          {/* Stop & Exit */}
           <Focusable
             id="music-stop-close-btn"
             groupId="music-player-top"
-            indexInGroup={3}
+            indexInGroup={4}
             className="tv-music-lyrics-toggle-btn"
             onSelect={() => {
-              playbackService.stop();
+              musicEngine.stop();
               onClose();
             }}
           >
@@ -310,11 +367,13 @@ export const MusicPlayerScreen: React.FC<MusicPlayerScreenProps> = ({ onClose })
               groupId="music-player-timeline-grp"
               indexInGroup={0}
               className="tv-music-scrubber-focusable"
-              onSelect={() => playbackService.togglePlayPause()}
+              onSelect={() => musicEngine.togglePlayPause()}
             >
               {(isFocused) => (
                 <div
-                  className={`tv-music-progress-bar-container ${isFocused ? 'focused' : ''} ${isScrubbing ? 'scrubbing' : ''}`}
+                  className={`tv-music-progress-bar-container ${isFocused ? 'focused' : ''} ${
+                    isScrubbing ? 'scrubbing' : ''
+                  }`}
                   onPointerDown={handleScrubberPointerDown}
                   onPointerMove={handleScrubberPointerMove}
                   onPointerUp={handleScrubberPointerUp}
@@ -331,10 +390,13 @@ export const MusicPlayerScreen: React.FC<MusicPlayerScreenProps> = ({ onClose })
                     {(isFocused || isScrubbing || hoverPosition !== null) && (
                       <div
                         className="tv-music-scrubber-tooltip"
-                        style={{ left: `${hoverPosition !== null ? hoverPosition * 100 : progressPct}%` }}
+                        style={{
+                          left: `${hoverPosition !== null ? hoverPosition * 100 : progressPct}%`,
+                        }}
                       >
                         {formatTime(
-                          (hoverPosition !== null ? hoverPosition : (progressPct / 100)) * (playback.duration || 240)
+                          (hoverPosition !== null ? hoverPosition : progressPct / 100) *
+                            (engineState.duration || 240)
                         )}
                       </div>
                     )}
@@ -344,59 +406,107 @@ export const MusicPlayerScreen: React.FC<MusicPlayerScreenProps> = ({ onClose })
             </Focusable>
 
             <div className="tv-music-time-row">
-              <span className="tv-music-time">{formatTime(playback.currentTime)}</span>
-              <span className="tv-music-time">{formatTime(playback.duration || 240)}</span>
+              <span className="tv-music-time">{formatTime(engineState.currentTime)}</span>
+              <span className="tv-music-time">{formatTime(engineState.duration || 240)}</span>
             </div>
           </div>
 
-          {/* Controls Bar */}
+          {/* Main Controls Row (Shuffle, Prev, Play/Pause, Next, Repeat) */}
           <div className="tv-music-controls-row">
+            {/* Shuffle Button */}
             <Focusable
-              id="music-ctrl-prev"
+              id="music-ctrl-shuffle"
               groupId="music-player-ctrls"
               indexInGroup={0}
               className="tv-music-ctrl-focusable"
-              onSelect={() => playbackService.previous()}
+              onSelect={() => musicEngine.toggleShuffle()}
             >
               {(isFocused) => (
-                <div className={`tv-music-btn ${isFocused ? 'focused' : ''}`}>
-                  <SkipBack size={26} />
+                <div
+                  className={`tv-music-btn secondary ${engineState.isShuffle ? 'active-mode' : ''} ${
+                    isFocused ? 'focused' : ''
+                  }`}
+                  title={engineState.isShuffle ? 'Shuffle On' : 'Shuffle Off'}
+                >
+                  <Shuffle size={20} />
                 </div>
               )}
             </Focusable>
 
+            {/* Previous Button */}
+            <Focusable
+              id="music-ctrl-prev"
+              groupId="music-player-ctrls"
+              indexInGroup={1}
+              className="tv-music-ctrl-focusable"
+              onSelect={() => musicEngine.previous()}
+            >
+              {(isFocused) => (
+                <div className={`tv-music-btn ${isFocused ? 'focused' : ''}`}>
+                  <SkipBack size={24} />
+                </div>
+              )}
+            </Focusable>
+
+            {/* Play/Pause Button */}
             <Focusable
               id="music-ctrl-play"
               groupId="music-player-ctrls"
-              indexInGroup={1}
+              indexInGroup={2}
               autoFocus={true}
               className="tv-music-ctrl-focusable"
-              onSelect={() => playbackService.togglePlayPause()}
+              onSelect={() => musicEngine.togglePlayPause()}
             >
               {(isFocused) => (
                 <div className={`tv-music-btn primary ${isFocused ? 'focused' : ''}`}>
-                  {isPlaying ? <Pause size={34} fill="currentColor" /> : <Play size={34} fill="currentColor" />}
+                  {isPlaying ? (
+                    <Pause size={32} fill="currentColor" />
+                  ) : (
+                    <Play size={32} fill="currentColor" style={{ marginLeft: '2px' }} />
+                  )}
                 </div>
               )}
             </Focusable>
 
+            {/* Next Button */}
             <Focusable
               id="music-ctrl-next"
               groupId="music-player-ctrls"
-              indexInGroup={2}
+              indexInGroup={3}
               className="tv-music-ctrl-focusable"
-              onSelect={() => playbackService.next()}
+              onSelect={() => musicEngine.next()}
             >
               {(isFocused) => (
                 <div className={`tv-music-btn ${isFocused ? 'focused' : ''}`}>
-                  <SkipForward size={26} />
+                  <SkipForward size={24} />
+                </div>
+              )}
+            </Focusable>
+
+            {/* Repeat Button */}
+            <Focusable
+              id="music-ctrl-repeat"
+              groupId="music-player-ctrls"
+              indexInGroup={4}
+              className="tv-music-ctrl-focusable"
+              onSelect={() => musicEngine.toggleRepeatMode()}
+            >
+              {(isFocused) => (
+                <div
+                  className={`tv-music-btn secondary ${
+                    engineState.repeatMode !== 'off' ? 'active-mode' : ''
+                  } ${isFocused ? 'focused' : ''}`}
+                  title={`Repeat: ${engineState.repeatMode.toUpperCase()}`}
+                >
+                  {engineState.repeatMode === 'one' ? <Repeat1 size={20} /> : <Repeat size={20} />}
+                  {engineState.repeatMode === 'one' && <span className="repeat-one-dot" />}
                 </div>
               )}
             </Focusable>
           </div>
         </div>
 
-        {/* Right Column: Live Synced Lyrics OR Fluid Audio Visualizer */}
+        {/* Right Column: Live Synced Lyrics OR Real-Time Audio Visualizer */}
         <div className="tv-music-lyrics-pane">
           {showLyrics && lyrics.length > 0 ? (
             <>
@@ -412,7 +522,7 @@ export const MusicPlayerScreen: React.FC<MusicPlayerScreenProps> = ({ onClose })
                     className={`tv-lyric-line ${idx === activeLyricIndex ? 'active' : ''} ${
                       idx < activeLyricIndex ? 'passed' : ''
                     }`}
-                    onClick={() => playbackService.seek(line.time)}
+                    onClick={() => musicEngine.seek(line.time)}
                     style={{ cursor: 'pointer' }}
                     title="Jump to line"
                   >
@@ -427,18 +537,120 @@ export const MusicPlayerScreen: React.FC<MusicPlayerScreenProps> = ({ onClose })
         </div>
       </div>
 
+      {/* Sound Preset & Equalizer Drawer */}
+      {isEQOpen && (
+        <div className="tv-music-eq-modal-backdrop" onClick={() => setIsEQOpen(false)}>
+          <div className="tv-music-eq-modal-panel" onClick={(e) => e.stopPropagation()}>
+            <div className="tv-eq-header">
+              <div className="tv-eq-title-row">
+                <SlidersHorizontal size={22} color="var(--google-blue)" />
+                <div>
+                  <h3 className="tv-eq-title">Studio Equalizer & DSP Presets</h3>
+                  <p className="tv-eq-subtitle">Real-time Web Audio API 10-band hardware tuning</p>
+                </div>
+              </div>
+              <Focusable
+                id="eq-close-btn"
+                groupId="eq-nav"
+                indexInGroup={0}
+                className="tv-queue-btn-focusable"
+                onSelect={() => setIsEQOpen(false)}
+              >
+                {(isFocused) => (
+                  <div className={`tv-queue-close-pill ${isFocused ? 'focused' : ''}`}>
+                    <X size={18} />
+                    <span>Close (B)</span>
+                  </div>
+                )}
+              </Focusable>
+            </div>
+
+            {/* Presets Grid */}
+            <div className="tv-eq-presets-grid">
+              {presetList.map((presetKey, idx) => {
+                const preset = SOUND_PRESETS[presetKey];
+                const isActive = engineState.activePreset === presetKey;
+                return (
+                  <Focusable
+                    key={presetKey}
+                    id={`eq-preset-${presetKey}`}
+                    groupId="eq-presets-list"
+                    indexInGroup={idx}
+                    className="tv-eq-preset-card-focusable"
+                    onSelect={() => {
+                      musicEngine.setPreset(presetKey);
+                    }}
+                  >
+                    {(isFocused) => (
+                      <div
+                        className={`tv-eq-preset-card ${isActive ? 'active' : ''} ${
+                          isFocused ? 'focused' : ''
+                        }`}
+                      >
+                        <div className="tv-eq-preset-name-row">
+                          <span className="tv-eq-preset-name">{preset.name}</span>
+                          {isActive && <span className="tv-eq-active-pill">ACTIVE</span>}
+                        </div>
+                        <p className="tv-eq-preset-desc">{preset.description}</p>
+                      </div>
+                    )}
+                  </Focusable>
+                );
+              })}
+            </div>
+
+            {/* Quick Bass Boost Toggle */}
+            <div className="tv-eq-bass-boost-bar">
+              <Focusable
+                id="eq-bass-boost-btn"
+                groupId="eq-footer"
+                indexInGroup={0}
+                className="tv-eq-bass-focusable"
+                onSelect={() => musicEngine.toggleAudioBoost()}
+              >
+                {(isFocused) => (
+                  <div
+                    className={`tv-eq-bass-btn ${engineState.audioBoostEnabled ? 'active' : ''} ${
+                      isFocused ? 'focused' : ''
+                    }`}
+                  >
+                    <Zap size={18} />
+                    <span>
+                      Deep Bass Sub-Shelf Boost: {engineState.audioBoostEnabled ? 'ON (+7dB)' : 'OFF'}
+                    </span>
+                  </div>
+                )}
+              </Focusable>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Up Next Song Queue Drawer */}
       <MusicQueueDrawer
-        queue={playback.queue}
-        currentIndex={playback.queueIndex}
+        queue={engineState.queue.map((t) => ({
+          id: `source-${t.id}`,
+          type: 'audio',
+          title: t.title,
+          subtitle: `${t.artist} — ${t.album}`,
+          artist: t.artist,
+          album: t.album,
+          artwork: t.artwork,
+          streamUrl: t.audioUrl || '',
+          durationSeconds: t.durationSeconds,
+          initialPosition: 0,
+          mediaType: 'track',
+          mediaId: t.id,
+        }))}
+        currentIndex={engineState.queueIndex}
         isOpen={isQueueOpen}
         onClose={() => setIsQueueOpen(false)}
         onSelectTrack={(_, idx) => {
-          playbackService.playIndex(idx);
+          musicEngine.playIndex(idx);
           setIsQueueOpen(false);
         }}
         onRemoveTrack={(idx) => {
-          playbackService.removeFromQueue(idx);
+          musicEngine.removeFromQueue(idx);
         }}
       />
     </div>

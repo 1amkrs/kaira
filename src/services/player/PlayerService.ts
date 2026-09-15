@@ -9,7 +9,7 @@ import { SubtitleEngine } from './SubtitleEngine';
 import { AudioBoostEngine } from './AudioBoostEngine';
 import { introService } from '../playback/IntroService';
 import { continueWatchingService } from '../playback/ContinueWatchingService';
-import { musicPluginService } from '../music/MusicPluginService';
+import { musicEngine } from '../music/MusicEngine';
 
 export interface PlayerServiceState {
   status: BackendStatus;
@@ -34,7 +34,6 @@ export interface PlayerServiceState {
 export class PlayerService {
   private container: HTMLElement | null = null;
   private currentBackend: IPlayerBackend | null = null;
-  private backgroundAudioEl: HTMLAudioElement | null = null;
 
   private subtitleEngine: SubtitleEngine = new SubtitleEngine();
   private audioBoostEngine: AudioBoostEngine = new AudioBoostEngine();
@@ -63,48 +62,9 @@ export class PlayerService {
   private isDestroyed = false;
 
   constructor() {
-    this.initBackgroundAudio();
     this.subtitleEngine.subscribe((text) => {
       this.state.currentSubtitleText = text;
       this.notify();
-    });
-  }
-
-  private initBackgroundAudio() {
-    if (typeof window === 'undefined') return;
-    this.backgroundAudioEl = new Audio();
-    this.backgroundAudioEl.preload = 'auto';
-
-    this.backgroundAudioEl.addEventListener('timeupdate', () => {
-      if (this.backgroundAudioEl && this.state.activeSource?.type === 'audio') {
-        const cur = this.backgroundAudioEl.currentTime;
-        const dur = this.backgroundAudioEl.duration || this.state.duration;
-        this.state.currentTime = cur;
-        if (dur > 0 && isFinite(dur)) {
-          this.state.duration = dur;
-        }
-        this.notify();
-      }
-    });
-
-    this.backgroundAudioEl.addEventListener('playing', () => {
-      if (this.state.activeSource?.type === 'audio') {
-        this.state.status = 'playing';
-        this.notify();
-      }
-    });
-
-    this.backgroundAudioEl.addEventListener('pause', () => {
-      if (this.state.activeSource?.type === 'audio' && this.state.status !== 'idle') {
-        this.state.status = 'paused';
-        this.notify();
-      }
-    });
-
-    this.backgroundAudioEl.addEventListener('ended', () => {
-      if (this.state.activeSource?.type === 'audio') {
-        this.handleNextInQueue();
-      }
     });
   }
 
@@ -145,11 +105,8 @@ export class PlayerService {
 
   public async play(source?: PlaybackSource, queue: PlaybackSource[] = []): Promise<void> {
     if (!source) {
-      // Resume current
-      if (this.state.activeSource?.type === 'audio' && this.backgroundAudioEl) {
-        await this.backgroundAudioEl.play().catch(() => {});
-        this.state.status = 'playing';
-      } else if (this.currentBackend) {
+      // Resume current video backend
+      if (this.currentBackend) {
         await this.currentBackend.play();
         this.state.status = 'playing';
       }
@@ -158,6 +115,19 @@ export class PlayerService {
     }
 
     console.log(`[PlayerService] Playing [${source.type}]: "${source.title}" -> ${source.streamUrl}`);
+
+    // If source is Audio -> Delegate to core MusicEngine
+    if (source.type === 'audio') {
+      if (this.currentBackend) {
+        this.currentBackend.destroy();
+        this.currentBackend = null;
+      }
+      await musicEngine.playSource(source, queue);
+      return;
+    }
+
+    // Video Playback -> stop musicEngine
+    musicEngine.stop();
 
     const newQueue = queue.length > 0 ? queue : [source];
     const queueIdx = newQueue.findIndex((item) => item.id === source.id);
@@ -184,45 +154,6 @@ export class PlayerService {
       }
     }
 
-    // Audio Playback
-    if (source.type === 'audio' && this.backgroundAudioEl) {
-      if (this.currentBackend) {
-        this.currentBackend.destroy();
-        this.currentBackend = null;
-      }
-
-      let activeUrl = source.streamUrl;
-      if (!activeUrl || activeUrl.includes('preview') || activeUrl.includes('itunes.apple.com')) {
-        try {
-          const resolved = await musicPluginService.resolveFullAudioStream(source.title, source.artist || '', activeUrl);
-          if (resolved) {
-            activeUrl = resolved;
-            source.streamUrl = resolved;
-          }
-        } catch (e) {}
-      }
-
-      if (activeUrl) {
-        this.backgroundAudioEl.src = activeUrl;
-        this.backgroundAudioEl.currentTime = source.initialPosition || 0;
-        this.backgroundAudioEl.volume = this.state.volume;
-        try {
-          await this.backgroundAudioEl.play();
-          this.state.status = 'playing';
-        } catch (err) {
-          console.warn('[PlayerService] Audio autoplay prevented:', err);
-          this.state.status = 'paused';
-        }
-      }
-      this.notify();
-      return;
-    }
-
-    // Video Playback
-    if (this.backgroundAudioEl) {
-      this.backgroundAudioEl.pause();
-    }
-
     let backendType: BackendType = 'html5';
     if (source.streamType === 'youtube' || (source.streamUrl && source.streamUrl.includes('youtube.com'))) {
       backendType = 'youtube';
@@ -235,7 +166,6 @@ export class PlayerService {
     this.state.activeBackendType = backendType;
 
     if (!this.container) {
-      // Fallback create element or defer
       this.notify();
       return;
     }
@@ -269,7 +199,6 @@ export class PlayerService {
             position: Math.round(cur),
             duration: Math.round(this.state.duration || this.state.activeSource.durationSeconds || 7200),
             mediaType: (this.state.activeSource.mediaType === 'episode' ? 'episode' : this.state.activeSource.mediaType === 'track' ? 'track' : 'movie') as 'movie' | 'episode' | 'track',
-
             showId: this.state.activeSource.showId,
             seasonNumber: this.state.activeSource.seasonNumber,
             episodeNumber: this.state.activeSource.episodeNumber,
@@ -311,9 +240,7 @@ export class PlayerService {
   }
 
   public pause(): void {
-    if (this.state.activeSource?.type === 'audio' && this.backgroundAudioEl) {
-      this.backgroundAudioEl.pause();
-    } else if (this.currentBackend) {
+    if (this.currentBackend) {
       this.currentBackend.pause();
     }
     this.state.status = 'paused';
@@ -330,9 +257,7 @@ export class PlayerService {
 
   public seekTo(seconds: number): void {
     const target = Math.max(0, Math.min(this.state.duration || Infinity, seconds));
-    if (this.state.activeSource?.type === 'audio' && this.backgroundAudioEl) {
-      this.backgroundAudioEl.currentTime = target;
-    } else if (this.currentBackend) {
+    if (this.currentBackend) {
       this.currentBackend.seekTo(target);
       this.subtitleEngine.updateTime(target);
     }
@@ -348,9 +273,6 @@ export class PlayerService {
     const clamped = Math.max(0, Math.min(1, volume));
     this.state.volume = clamped;
     this.state.isMuted = clamped === 0;
-    if (this.backgroundAudioEl) {
-      this.backgroundAudioEl.volume = clamped;
-    }
     if (this.currentBackend) {
       this.currentBackend.setVolume(clamped);
       this.currentBackend.setMuted(clamped === 0);
@@ -360,9 +282,6 @@ export class PlayerService {
 
   public setMute(muted: boolean): void {
     this.state.isMuted = muted;
-    if (this.backgroundAudioEl) {
-      this.backgroundAudioEl.muted = muted;
-    }
     if (this.currentBackend) {
       this.currentBackend.setMuted(muted);
     }
@@ -407,10 +326,6 @@ export class PlayerService {
   }
 
   public stop(): void {
-    if (this.backgroundAudioEl) {
-      this.backgroundAudioEl.pause();
-      this.backgroundAudioEl.currentTime = 0;
-    }
     if (this.currentBackend) {
       this.currentBackend.destroy();
       this.currentBackend = null;

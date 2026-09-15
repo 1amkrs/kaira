@@ -92,6 +92,8 @@ export interface Album {
   trackCount?: number;
   tracks?: Track[];
   isFavorite?: boolean;
+  isExplicit?: boolean;
+  typeBadge?: string; // e.g. "Album", "EP", "Single"
 }
 
 export interface Artist {
@@ -113,10 +115,48 @@ export interface Track {
   trackNumber: number;
   artwork: string;
   audioUrl: string; // Real playable audio stream URL
+  ytVideoId?: string;
   isAudius?: boolean;
   audiusId?: string;
+  isExplicit?: boolean;
+  playsCount?: string; // e.g. "158M plays"
   lyrics?: SyncedLyricLine[];
   plainLyrics?: string;
+}
+
+export interface MusicVideo {
+  id: string;
+  title: string;
+  artist: string;
+  thumbnail: string;
+  duration: string; // e.g. "3:45"
+  durationSeconds: number;
+  viewsCount: string; // e.g. "420M views"
+  ytVideoId: string;
+  streamUrl?: string;
+  year?: number;
+}
+
+export interface CommunityPlaylist {
+  id: string;
+  title: string;
+  creator: string;
+  creatorAvatar?: string;
+  viewsCount: string; // e.g. "787K views"
+  collageArtworks: string[]; // 4 artworks for 2x2 collage
+  trackCount?: number;
+  tracks?: Track[];
+}
+
+export interface MoodCategoryItem {
+  id: string;
+  title: string;
+  subtitle: string;
+  tag?: string; // e.g. "AUTUMN VIBES", "EASE INTO THE DAY"
+  artwork: string;
+  genre?: string;
+  badge?: string; // e.g. "Country", "Classic Rock"
+  tracks?: Track[];
 }
 
 export interface PlaybackSource {

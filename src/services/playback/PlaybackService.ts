@@ -1,6 +1,5 @@
 import { PlaybackSource, PlaybackState } from '../../types/media';
-import { musicPluginService } from '../music/MusicPluginService';
-
+import { musicEngine } from '../music/MusicEngine';
 
 export interface IVideoPlaybackDelegate {
   seek(seconds: number): void;
@@ -11,7 +10,6 @@ export interface IVideoPlaybackDelegate {
 }
 
 class PlaybackService {
-  private audioElement: HTMLAudioElement | null = null;
   private videoDelegate: IVideoPlaybackDelegate | null = null;
   private state: PlaybackState = {
     currentSource: null,
@@ -26,50 +24,50 @@ class PlaybackService {
     isRepeat: false,
   };
   private listeners: Set<(state: PlaybackState) => void> = new Set();
-  private lastEndedTime: number = 0;
+
+  constructor() {
+    this.initEngineBridge();
+  }
 
   public setVideoDelegate(delegate: IVideoPlaybackDelegate | null): void {
     this.videoDelegate = delegate;
   }
 
+  private initEngineBridge() {
+    // Sync state from core musicEngine when playing audio
+    musicEngine.subscribe((engineState) => {
+      if (this.state.currentSource?.type === 'audio' || engineState.currentSource) {
+        const queueSources: PlaybackSource[] = engineState.queue.map((t) => ({
+          id: `source-${t.id}`,
+          type: 'audio',
+          title: t.title,
+          subtitle: `${t.artist} — ${t.album}`,
+          artist: t.artist,
+          album: t.album,
+          artwork: t.artwork,
+          streamUrl: t.audioUrl || '',
+          durationSeconds: t.durationSeconds,
+          initialPosition: 0,
+          mediaType: 'track',
+          mediaId: t.id,
+          lyrics: t.lyrics,
+        }));
 
-  constructor() {
-    this.initAudio();
-  }
-
-  private initAudio() {
-    if (typeof window === 'undefined') return;
-
-    this.audioElement = new Audio();
-    this.audioElement.preload = 'auto';
-
-    this.audioElement.addEventListener('timeupdate', () => {
-      if (this.audioElement) {
-        this.updateTime(this.audioElement.currentTime, this.audioElement.duration);
+        this.state = {
+          ...this.state,
+          currentSource: engineState.currentSource,
+          status: engineState.status === 'error' ? 'idle' : engineState.status,
+          currentTime: engineState.currentTime,
+          duration: engineState.duration,
+          volume: engineState.volume,
+          isMuted: engineState.isMuted,
+          queue: queueSources,
+          queueIndex: engineState.queueIndex,
+          isShuffle: engineState.isShuffle,
+          isRepeat: engineState.repeatMode !== 'off',
+        };
+        this.notify();
       }
-    });
-
-    this.audioElement.addEventListener('playing', () => {
-      this.setStatus('playing');
-    });
-
-    this.audioElement.addEventListener('pause', () => {
-      if (this.state.status !== 'idle' && this.state.status !== 'buffering') {
-        this.setStatus('paused');
-      }
-    });
-
-    this.audioElement.addEventListener('ended', () => {
-      this.handleEnded();
-    });
-
-    this.audioElement.addEventListener('waiting', () => {
-      this.setStatus('buffering');
-    });
-
-    this.audioElement.addEventListener('error', (e) => {
-      console.warn('[PlaybackService] Audio stream error:', e);
-      this.setStatus('paused');
     });
   }
 
@@ -93,69 +91,48 @@ class PlaybackService {
   public async play(source: PlaybackSource, queue: PlaybackSource[] = []): Promise<void> {
     console.log(`[PlaybackService] Playing [${source.type}]: "${source.title}" -> ${source.streamUrl}`);
 
-    const newQueue = queue.length > 0 ? queue : [source];
-    const index = newQueue.findIndex((item) => item.id === source.id);
+    if (source.type === 'audio') {
+      const newQueue = queue.length > 0 ? queue : [source];
+      const index = newQueue.findIndex((item) => item.id === source.id);
 
-    this.state = {
-      ...this.state,
-      currentSource: source,
-      queue: newQueue,
-      queueIndex: index >= 0 ? index : 0,
-      currentTime: source.initialPosition || 0,
-      duration: source.durationSeconds || 0,
-      status: 'buffering',
-    };
+      this.state = {
+        ...this.state,
+        currentSource: source,
+        queue: newQueue,
+        queueIndex: index >= 0 ? index : 0,
+        currentTime: source.initialPosition || 0,
+        duration: source.durationSeconds || 0,
+        status: 'buffering',
+      };
+      this.notify();
 
-    if (source.type === 'audio' && this.audioElement) {
-      let activeUrl = source.streamUrl;
-
-      // If streamUrl is missing or is an iTunes preview, resolve full stream with fast timeout
-      if (!activeUrl || activeUrl.includes('preview') || activeUrl.includes('itunes.apple.com')) {
-        try {
-          const resolvePromise = musicPluginService.resolveFullAudioStream(source.title, source.artist || '', activeUrl);
-          const timeoutPromise = new Promise<string>((res) => setTimeout(() => res(source.streamUrl || ''), 2200));
-          const resolved = await Promise.race([resolvePromise, timeoutPromise]);
-          if (resolved) {
-            activeUrl = resolved;
-            source.streamUrl = resolved;
-          }
-        } catch (e) {
-          activeUrl = source.streamUrl;
-        }
-      }
-
-      if (activeUrl) {
-        this.audioElement.src = activeUrl;
-        this.audioElement.currentTime = source.initialPosition || 0;
-        try {
-          await this.audioElement.play();
-          this.setStatus('playing');
-        } catch (err) {
-          console.warn('[PlaybackService] Autoplay or playback prevented:', err);
-          this.setStatus('paused');
-        }
-      } else {
-        this.setStatus('paused');
-      }
+      await musicEngine.playSource(source, newQueue);
     } else {
-      // Video is playing -> pause background audio element and detach source so it cannot fire ended events
-      if (this.audioElement) {
-        this.audioElement.pause();
-        this.audioElement.removeAttribute('src');
-        this.audioElement.load();
-      }
-      this.setStatus('playing');
-    }
+      // Video is playing -> stop musicEngine immediately
+      musicEngine.stop();
 
-    this.notify();
+      const newQueue = queue.length > 0 ? queue : [source];
+      const index = newQueue.findIndex((item) => item.id === source.id);
+
+      this.state = {
+        ...this.state,
+        currentSource: source,
+        queue: newQueue,
+        queueIndex: index >= 0 ? index : 0,
+        currentTime: source.initialPosition || 0,
+        duration: source.durationSeconds || 0,
+        status: 'playing',
+      };
+      this.notify();
+    }
   }
 
   public pause(): void {
     if (this.videoDelegate) {
       this.videoDelegate.pause();
     }
-    if (this.state.currentSource?.type === 'audio' && this.audioElement) {
-      this.audioElement.pause();
+    if (this.state.currentSource?.type === 'audio') {
+      musicEngine.pause();
     }
     this.setStatus('paused');
   }
@@ -164,8 +141,8 @@ class PlaybackService {
     if (this.videoDelegate) {
       this.videoDelegate.play();
     }
-    if (this.state.currentSource?.type === 'audio' && this.audioElement) {
-      this.audioElement.play().catch(() => {});
+    if (this.state.currentSource?.type === 'audio') {
+      musicEngine.resume();
     }
     this.setStatus('playing');
   }
@@ -173,6 +150,10 @@ class PlaybackService {
   public togglePlayPause(): void {
     if (this.videoDelegate) {
       this.videoDelegate.togglePlayPause();
+      return;
+    }
+    if (this.state.currentSource?.type === 'audio') {
+      musicEngine.togglePlayPause();
       return;
     }
     if (this.state.status === 'playing') {
@@ -187,8 +168,8 @@ class PlaybackService {
     if (this.videoDelegate) {
       this.videoDelegate.seek(target);
     }
-    if (this.state.currentSource?.type === 'audio' && this.audioElement) {
-      this.audioElement.currentTime = target;
+    if (this.state.currentSource?.type === 'audio') {
+      musicEngine.seek(target);
     }
     this.updateTime(target, this.state.duration);
   }
@@ -198,10 +179,18 @@ class PlaybackService {
       this.videoDelegate.seekRelative(deltaSeconds);
       return;
     }
+    if (this.state.currentSource?.type === 'audio') {
+      musicEngine.seekRelative(deltaSeconds);
+      return;
+    }
     this.seek(this.state.currentTime + deltaSeconds);
   }
 
   public next(): void {
+    if (this.state.currentSource?.type === 'audio') {
+      musicEngine.next();
+      return;
+    }
     if (this.state.queue.length === 0) return;
     const nextIdx = (this.state.queueIndex + 1) % this.state.queue.length;
     const nextSource = this.state.queue[nextIdx];
@@ -211,6 +200,10 @@ class PlaybackService {
   }
 
   public previous(): void {
+    if (this.state.currentSource?.type === 'audio') {
+      musicEngine.previous();
+      return;
+    }
     if (this.state.currentTime > 4) {
       this.seek(0);
       return;
@@ -224,12 +217,20 @@ class PlaybackService {
   }
 
   public playIndex(index: number): void {
+    if (this.state.currentSource?.type === 'audio') {
+      musicEngine.playIndex(index);
+      return;
+    }
     if (index >= 0 && index < this.state.queue.length) {
       this.play(this.state.queue[index], this.state.queue);
     }
   }
 
   public removeFromQueue(index: number): void {
+    if (this.state.currentSource?.type === 'audio') {
+      musicEngine.removeFromQueue(index);
+      return;
+    }
     if (index < 0 || index >= this.state.queue.length) return;
     const newQueue = this.state.queue.filter((_, i) => i !== index);
     let newIndex = this.state.queueIndex;
@@ -247,9 +248,8 @@ class PlaybackService {
   }
 
   public stop(): void {
-    if (this.audioElement) {
-      this.audioElement.pause();
-      this.audioElement.currentTime = 0;
+    if (this.state.currentSource?.type === 'audio') {
+      musicEngine.stop();
     }
     this.state = {
       ...this.state,
@@ -264,9 +264,7 @@ class PlaybackService {
   public setVolume(volume: number): void {
     const clamped = Math.max(0, Math.min(1, volume));
     this.state.volume = clamped;
-    if (this.audioElement) {
-      this.audioElement.volume = clamped;
-    }
+    musicEngine.setVolume(clamped);
     this.notify();
   }
 
@@ -282,27 +280,6 @@ class PlaybackService {
     this.state.status = status;
     this.notify();
   }
-
-  private handleEnded(): void {
-    // Only handle ended for AUDIO playback! Video player manages its own lifecycle.
-    if (this.state.currentSource?.type !== 'audio') {
-      return;
-    }
-    const now = Date.now();
-    // Prevent rapid cascading track skips if events fire repeatedly
-    if (now - this.lastEndedTime < 2500) {
-      return;
-    }
-    this.lastEndedTime = now;
-
-    if (this.state.queue.length > 1 && this.state.queueIndex < this.state.queue.length - 1) {
-      this.next();
-    } else {
-      this.setStatus('ended');
-    }
-  }
-
 }
 
 export const playbackService = new PlaybackService();
-

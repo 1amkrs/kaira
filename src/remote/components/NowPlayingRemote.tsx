@@ -10,7 +10,10 @@ import {
   Volume2,
   VolumeX,
   Disc3,
-  Tv
+  Tv,
+  Shuffle,
+  Repeat,
+  Repeat1,
 } from 'lucide-react';
 import { remoteClient } from '../remoteClient';
 import { TVStateSnapshot } from '../../services/remote/remoteTypes';
@@ -63,6 +66,16 @@ export const NowPlayingRemote: React.FC<NowPlayingRemoteProps> = ({ tvState }) =
   const handleNext = () => {
     remoteClient.triggerHaptic(15);
     remoteClient.sendCommand('NEXT_TRACK');
+  };
+
+  const handleShuffle = () => {
+    remoteClient.triggerHaptic(15);
+    remoteClient.sendCommand('SHUFFLE_TOGGLE');
+  };
+
+  const handleRepeat = () => {
+    remoteClient.triggerHaptic(15);
+    remoteClient.sendCommand('REPEAT_TOGGLE');
   };
 
   // Scrubber Drag Handlers
@@ -222,6 +235,41 @@ export const NowPlayingRemote: React.FC<NowPlayingRemoteProps> = ({ tvState }) =
           aria-label="Fast Forward 15 Seconds"
         >
           <RotateCw size={20} />
+        </button>
+      </div>
+
+      {/* Secondary Music Actions: Shuffle & Repeat */}
+      <div style={{ display: 'flex', justifyContent: 'center', gap: '20px', marginTop: '12px' }}>
+        <button
+          type="button"
+          className="ref-circle-btn"
+          style={{
+            width: '36px',
+            height: '36px',
+            color: media.isShuffle ? '#4285f4' : 'rgba(255, 255, 255, 0.6)',
+            background: media.isShuffle ? 'rgba(66, 133, 244, 0.2)' : 'rgba(255, 255, 255, 0.08)',
+          }}
+          onClick={handleShuffle}
+          title="Toggle Shuffle"
+          aria-label="Toggle Shuffle"
+        >
+          <Shuffle size={16} />
+        </button>
+
+        <button
+          type="button"
+          className="ref-circle-btn"
+          style={{
+            width: '36px',
+            height: '36px',
+            color: media.repeatMode && media.repeatMode !== 'off' ? '#4285f4' : 'rgba(255, 255, 255, 0.6)',
+            background: media.repeatMode && media.repeatMode !== 'off' ? 'rgba(66, 133, 244, 0.2)' : 'rgba(255, 255, 255, 0.08)',
+          }}
+          onClick={handleRepeat}
+          title={`Repeat: ${(media.repeatMode || 'off').toUpperCase()}`}
+          aria-label="Toggle Repeat"
+        >
+          {media.repeatMode === 'one' ? <Repeat1 size={16} /> : <Repeat size={16} />}
         </button>
       </div>
     </div>

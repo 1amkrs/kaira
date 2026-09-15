@@ -25,6 +25,8 @@ export type RemoteCommandType =
   | 'SEEK_RELATIVE'
   | 'NEXT_TRACK'
   | 'PREV_TRACK'
+  | 'SHUFFLE_TOGGLE'
+  | 'REPEAT_TOGGLE'
   | 'SET_VOLUME'
   | 'VOLUME_DELTA'
   | 'MUTE_TOGGLE'
@@ -57,6 +59,8 @@ export interface NowPlayingMedia {
   isPlaying: boolean;
   isMuted: boolean;
   volume: number;
+  isShuffle?: boolean;
+  repeatMode?: string;
 }
 
 export interface TVStateSnapshot {

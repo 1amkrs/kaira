@@ -54,9 +54,10 @@ export const AlbumCard: React.FC<AlbumCardProps> = ({
           <div className="tv-album-meta">
             <h4 className="tv-album-title text-truncate">{album.title}</h4>
             <div className="tv-album-subrow">
+              {album.isExplicit && <span className="tv-explicit-badge">E</span>}
+              <span className="tv-album-badge">{album.typeBadge || 'Album'}</span>
+              <span className="tv-album-dot">•</span>
               <span className="tv-album-artist text-truncate">{album.artist}</span>
-              {album.year && <span className="tv-album-dot">•</span>}
-              {album.year && <span className="tv-album-year">{album.year}</span>}
             </div>
           </div>
         </div>

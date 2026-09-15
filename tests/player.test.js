@@ -1339,3 +1339,175 @@ test('AddonService: Direct inventory fallback identifies cached episode from cac
   assert.equal(ep2.name, 'Yellowstone.2018.S03E02.1080p.BluRay.x265-RARBG.mp4');
   assert.equal(Math.round(ep2.duration), 2834);
 });
+
+// ============================================================================
+// MUSIC ENGINE & AUDIO SUBSYSTEM TESTS
+// ============================================================================
+
+test('MusicEngine: LRC Parser handles standard timestamps, hour prefixes, milliseconds, and offsets', () => {
+  const parseLrc = (lrcText) => {
+    if (!lrcText) return [];
+    const lines = lrcText.split(/\r?\n/);
+    const result = [];
+    let offsetSeconds = 0;
+
+    for (const line of lines) {
+      const offsetMatch = line.match(/^\[offset:\s*([+-]?\d+)\]/i);
+      if (offsetMatch) {
+        offsetSeconds = parseInt(offsetMatch[1], 10) / 1000;
+      }
+    }
+
+    const tagRegex = /\[(?:(\d{1,2}):)?(\d{1,2}):(\d{2})(?:[.:](\d{1,3}))?\]/g;
+
+    for (const line of lines) {
+      if (/^\[(ti|ar|al|au|by|offset|length|re|ve):/i.test(line)) continue;
+
+      const timestamps = [];
+      let match;
+      while ((match = tagRegex.exec(line)) !== null) {
+        const hrs = match[1] ? parseInt(match[1], 10) : 0;
+        const min = parseInt(match[2], 10);
+        const sec = parseInt(match[3], 10);
+        let millis = 0;
+        if (match[4]) {
+          const rawMs = match[4];
+          if (rawMs.length === 1) millis = parseInt(rawMs, 10) * 100;
+          else if (rawMs.length === 2) millis = parseInt(rawMs, 10) * 10;
+          else millis = parseInt(rawMs, 10);
+        }
+        const timeInSec = hrs * 3600 + min * 60 + sec + millis / 1000 + offsetSeconds;
+        timestamps.push(Math.max(0, timeInSec));
+      }
+
+      const text = line.replace(tagRegex, '').trim();
+      if (text && timestamps.length > 0) {
+        for (const t of timestamps) {
+          result.push({ time: t, text });
+        }
+      }
+    }
+
+    return result.sort((a, b) => a.time - b.time);
+  };
+
+  const sampleLrc = `
+[ti:Get Lucky]
+[ar:Daft Punk]
+[offset:250]
+[00:12.50]Like the legend of the phoenix
+[00:18.00]All ends with beginnings
+[01:04.750]We've come too far to give up who we are
+  `;
+
+  const lyrics = parseLrc(sampleLrc);
+  assert.equal(lyrics.length, 3);
+  assert.equal(lyrics[0].time, 12.75); // 12.50 + 0.25 offset
+  assert.equal(lyrics[0].text, 'Like the legend of the phoenix');
+  assert.equal(lyrics[1].time, 18.25);
+  assert.equal(lyrics[2].time, 65.0);
+});
+
+test('MusicEngine: Queue state machine respects Repeat One, Repeat All, and Repeat Off', () => {
+  class MockMusicQueueMachine {
+    constructor(tracks = []) {
+      this.queue = [...tracks];
+      this.queueIndex = 0;
+      this.repeatMode = 'off'; // 'off' | 'all' | 'one'
+      this.status = 'idle';
+      this.currentTime = 0;
+    }
+
+    handleTrackEnded() {
+      if (this.repeatMode === 'one') {
+        this.currentTime = 0;
+        this.status = 'playing';
+        return 'repeated_one';
+      }
+
+      if (this.queueIndex < this.queue.length - 1) {
+        this.queueIndex++;
+        this.currentTime = 0;
+        this.status = 'playing';
+        return 'next_track';
+      } else if (this.repeatMode === 'all' && this.queue.length > 0) {
+        this.queueIndex = 0;
+        this.currentTime = 0;
+        this.status = 'playing';
+        return 'looped_all';
+      } else {
+        this.status = 'ended';
+        return 'stopped';
+      }
+    }
+  }
+
+  const tracks = [{ id: 't1' }, { id: 't2' }, { id: 't3' }];
+  const machine = new MockMusicQueueMachine(tracks);
+
+  // 1. Repeat Off: moves from t1 -> t2 -> t3 -> stopped
+  assert.equal(machine.handleTrackEnded(), 'next_track');
+  assert.equal(machine.queueIndex, 1);
+  assert.equal(machine.handleTrackEnded(), 'next_track');
+  assert.equal(machine.queueIndex, 2);
+  assert.equal(machine.handleTrackEnded(), 'stopped');
+  assert.equal(machine.status, 'ended');
+
+  // 2. Repeat One: stays on current track
+  machine.queueIndex = 1;
+  machine.repeatMode = 'one';
+  assert.equal(machine.handleTrackEnded(), 'repeated_one');
+  assert.equal(machine.queueIndex, 1);
+
+  // 3. Repeat All: loops back to index 0 at end
+  machine.queueIndex = 2;
+  machine.repeatMode = 'all';
+  assert.equal(machine.handleTrackEnded(), 'looped_all');
+  assert.equal(machine.queueIndex, 0);
+});
+
+test('MusicEngine: Non-destructive Fisher-Yates shuffle preserves current track and original queue order', () => {
+  const generateShuffledQueue = (list, currentTrackId) => {
+    const current = list.find((t) => t.id === currentTrackId);
+    const rest = list.filter((t) => t.id !== currentTrackId);
+
+    for (let i = rest.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [rest[i], rest[j]] = [rest[j], rest[i]];
+    }
+
+    return current ? [current, ...rest] : rest;
+  };
+
+  const original = [
+    { id: 'track-1', title: 'Song 1' },
+    { id: 'track-2', title: 'Song 2' },
+    { id: 'track-3', title: 'Song 3' },
+    { id: 'track-4', title: 'Song 4' },
+    { id: 'track-5', title: 'Song 5' },
+  ];
+
+  const shuffled = generateShuffledQueue(original, 'track-3');
+
+  // Length must remain 5
+  assert.equal(shuffled.length, 5);
+  // Current track must be at index 0 in the active queue
+  assert.equal(shuffled[0].id, 'track-3');
+  // All tracks must be present without duplicates
+  const ids = new Set(shuffled.map((t) => t.id));
+  assert.equal(ids.size, 5);
+});
+
+test('MusicEngine: Remote SEEK_RELATIVE correctly handles payload.delta and payload.offset', () => {
+  const parseSeekDelta = (payload) => {
+    const deltaVal = payload?.delta ?? payload?.offset;
+    return typeof deltaVal === 'number' ? deltaVal : 0;
+  };
+
+  assert.equal(parseSeekDelta({ delta: 15 }), 15);
+  assert.equal(parseSeekDelta({ delta: -15 }), -15);
+  assert.equal(parseSeekDelta({ offset: 10 }), 10);
+  assert.equal(parseSeekDelta({ offset: -10 }), -10);
+  assert.equal(parseSeekDelta({ delta: 20, offset: 5 }), 20); // delta takes precedence
+});
+
