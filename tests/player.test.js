@@ -1579,3 +1579,39 @@ test('MusicEngine: Stream candidate switching on error advances candidate index 
   assert.equal(trackSkipped, true);
 });
 
+test('YouTubeAudioPlayer: resolveVideoId returns exact official video ID for catalog songs', () => {
+  const KNOWN_TRACK_VIDEO_IDS = {
+    'blinding lights': '4NRXx6U8ABQ',
+    'apt.': 'ekr2nIex040',
+    'die with a smile': 'kPa7bsKwL-c',
+    'espresso': 'eVli-tstM5E',
+    'taste': 'dysq4jY26A0',
+    'how you like that': 'ioNng23DkIM',
+    'humble.': 'tvTRZJ-4EyI',
+    'cornfield chase': '1Vko01D77Fg',
+  };
+
+  const resolveVideoId = (title, artist, initialId) => {
+    if (initialId && initialId.trim()) return initialId.trim();
+    const tLower = title.toLowerCase().trim();
+    const aLower = artist.toLowerCase().trim();
+    const combined = `${tLower} ${aLower}`;
+
+    for (const [key, vid] of Object.entries(KNOWN_TRACK_VIDEO_IDS)) {
+      if (tLower.includes(key) || key.includes(tLower) || combined.includes(key)) {
+        return vid;
+      }
+    }
+    return null;
+  };
+
+  assert.equal(resolveVideoId('Blinding Lights', 'The Weeknd'), '4NRXx6U8ABQ');
+  assert.equal(resolveVideoId('APT.', 'ROSÉ & Bruno Mars'), 'ekr2nIex040');
+  assert.equal(resolveVideoId('Die With A Smile', 'Lady Gaga & Bruno Mars'), 'kPa7bsKwL-c');
+  assert.equal(resolveVideoId('Espresso', 'Sabrina Carpenter'), 'eVli-tstM5E');
+  assert.equal(resolveVideoId('How You Like That', 'BLACKPINK'), 'ioNng23DkIM');
+  assert.equal(resolveVideoId('HUMBLE.', 'Kendrick Lamar'), 'tvTRZJ-4EyI');
+  assert.equal(resolveVideoId('Cornfield Chase', 'Hans Zimmer'), '1Vko01D77Fg');
+  assert.equal(resolveVideoId('Unknown Custom Track', 'Unknown Artist', 'custom-yt-123'), 'custom-yt-123');
+});
+

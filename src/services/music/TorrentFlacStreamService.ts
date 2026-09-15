@@ -1,4 +1,4 @@
-﻿import { addonService } from '../addons/AddonService';
+import { addonService } from '../addons/AddonService';
 
 export interface TorrentAudioRelease {
   name: string;
@@ -11,60 +11,10 @@ export interface TorrentAudioRelease {
   provider: string;
 }
 
-// Verified Lossless FLAC & High-Bitrate Studio Audio CDNs (Open CORS, zero buffering)
-const LOSSLESS_AUDIO_POOL: Record<string, string[]> = {
-  // Synthesized and curated studio sound streams
-  'blinding lights': [
-    'https://cdn.pixabay.com/download/audio/2022/05/27/audio_1808fbf07a.mp3?filename=synthwave-80s-110045.mp3',
-    'https://files.freemusicarchive.org/storage-freemusicarchive-org/music/no_curator/Tours/Enthusiast/Tours_-_01_-_Enthusiast.mp3',
-  ],
-  'apt.': [
-    'https://cdn.pixabay.com/download/audio/2022/10/14/audio_9939f77230.mp3?filename=pop-rock-funk-123402.mp3',
-    'https://cdn.pixabay.com/download/audio/2022/01/18/audio_d0a13f69d2.mp3?filename=electronic-future-beats-117997.mp3',
-  ],
-  'die with a smile': [
-    'https://cdn.pixabay.com/download/audio/2022/03/15/audio_c8bbf73e97.mp3?filename=soft-piano-melodic-10886.mp3',
-    'https://cdn.pixabay.com/download/audio/2021/09/06/audio_8245cf7014.mp3?filename=cinematic-atmosphere-score-9377.mp3',
-  ],
-  'espresso': [
-    'https://cdn.pixabay.com/download/audio/2022/11/06/audio_c97e16f391.mp3?filename=tropical-house-summer-125028.mp3',
-    'https://cdn.pixabay.com/download/audio/2022/01/26/audio_d0c6ff1101.mp3?filename=summer-uplifting-pop-dance-119155.mp3',
-  ],
-  'starboy': [
-    'https://cdn.pixabay.com/download/audio/2022/01/18/audio_d0a13f69d2.mp3?filename=electronic-future-beats-117997.mp3',
-    'https://cdn.pixabay.com/download/audio/2022/05/27/audio_1808fbf07a.mp3?filename=synthwave-80s-110045.mp3',
-  ],
-  'get lucky': [
-    'https://cdn.pixabay.com/download/audio/2022/03/10/audio_c350170068.mp3?filename=disco-funk-groove-10779.mp3',
-    'https://cdn.pixabay.com/download/audio/2022/10/14/audio_9939f77230.mp3?filename=pop-rock-funk-123402.mp3',
-  ],
-  'humble.': [
-    'https://cdn.pixabay.com/download/audio/2022/08/02/audio_884fe92c21.mp3?filename=hard-trap-beat-116035.mp3',
-    'https://cdn.pixabay.com/download/audio/2022/03/24/audio_8027a08ecf.mp3?filename=urban-hip-hop-boom-bap-111162.mp3',
-  ],
-  'cornfield chase': [
-    'https://cdn.pixabay.com/download/audio/2022/03/15/audio_c8bbf73e97.mp3?filename=soft-piano-melodic-10886.mp3',
-    'https://cdn.pixabay.com/download/audio/2021/09/06/audio_8245cf7014.mp3?filename=cinematic-atmosphere-score-9377.mp3',
-  ],
-  'how you like that': [
-    'https://cdn.pixabay.com/download/audio/2022/08/02/audio_884fe92c21.mp3?filename=hard-trap-beat-116035.mp3',
-    'https://cdn.pixabay.com/download/audio/2022/01/26/audio_d0c6ff1101.mp3?filename=summer-uplifting-pop-dance-119155.mp3',
-  ],
-  'resonance': [
-    'https://cdn.pixabay.com/download/audio/2022/05/27/audio_1808fbf07a.mp3?filename=synthwave-80s-110045.mp3',
-    'https://cdn.pixabay.com/download/audio/2022/01/18/audio_d0a13f69d2.mp3?filename=electronic-future-beats-117997.mp3',
-  ],
-  'midnight city': [
-    'https://cdn.pixabay.com/download/audio/2022/05/27/audio_1808fbf07a.mp3?filename=synthwave-80s-110045.mp3',
-    'https://cdn.pixabay.com/download/audio/2022/01/26/audio_d0c6ff1101.mp3?filename=summer-uplifting-pop-dance-119155.mp3',
-  ],
-};
+// Lossless FLAC & Studio Audio Cache
+const LOSSLESS_AUDIO_POOL: Record<string, string[]> = {};
 
-const DEFAULT_LOSSLESS_FALLBACKS = [
-  'https://cdn.pixabay.com/download/audio/2022/05/27/audio_1808fbf07a.mp3?filename=synthwave-80s-110045.mp3',
-  'https://cdn.pixabay.com/download/audio/2022/01/18/audio_d0a13f69d2.mp3?filename=electronic-future-beats-117997.mp3',
-  'https://cdn.pixabay.com/download/audio/2022/10/14/audio_9939f77230.mp3?filename=pop-rock-funk-123402.mp3',
-  'https://cdn.pixabay.com/download/audio/2022/03/10/audio_c350170068.mp3?filename=disco-funk-groove-10779.mp3',
+const DEFAULT_LOSSLESS_FALLBACKS: string[] = [
   'https://files.freemusicarchive.org/storage-freemusicarchive-org/music/no_curator/Tours/Enthusiast/Tours_-_01_-_Enthusiast.mp3',
 ];
 

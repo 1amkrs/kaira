@@ -9,10 +9,12 @@ import {
 import { streamResolverService } from './StreamResolverService';
 import { lyricsService } from './LyricsService';
 import { torrentFlacStreamService } from './TorrentFlacStreamService';
+import { youTubeAudioPlayer } from './YouTubeAudioPlayer';
 
 class MusicEngine {
   private audioEl: HTMLAudioElement | null = null;
   private prefetchAudioEl: HTMLAudioElement | null = null;
+  private isYouTubeMode: boolean = false;
 
   // Web Audio API Graph
   private audioContext: AudioContext | null = null;
@@ -57,6 +59,38 @@ class MusicEngine {
   constructor() {
     this.loadPersistedSettings();
     this.initAudioElement();
+    this.initYouTubeBridge();
+  }
+
+  private initYouTubeBridge() {
+    youTubeAudioPlayer.setCallbacks(
+      (currentTime, duration) => {
+        if (this.isYouTubeMode) {
+          this.state.currentTime = currentTime;
+          if (duration > 0 && !isNaN(duration) && isFinite(duration)) {
+            this.state.duration = duration;
+          }
+          this.updateMediaSessionPosition();
+          this.notify();
+        }
+      },
+      (status) => {
+        if (this.isYouTubeMode) {
+          if (status === 'ended') {
+            this.handleTrackEnded();
+          } else {
+            this.state.status = status;
+            this.updateMediaSessionPlaybackState(status === 'playing' ? 'playing' : 'paused');
+            this.notify();
+          }
+        }
+      },
+      () => {
+        if (this.isYouTubeMode) {
+          this.handleStreamError();
+        }
+      }
+    );
   }
 
   private loadPersistedSettings() {
@@ -223,16 +257,40 @@ class MusicEngine {
   // ─── VISUALIZER AUDIO SPECTRUM EXPORT ───────────────────────────────────────
 
   public getFrequencyData(): Uint8Array | null {
-    if (this.analyserNode && this.freqDataBuffer) {
+    if (this.analyserNode && this.freqDataBuffer && !this.isYouTubeMode) {
       this.analyserNode.getByteFrequencyData(this.freqDataBuffer);
+      return this.freqDataBuffer;
+    }
+    if (this.isYouTubeMode && this.state.status === 'playing') {
+      if (!this.freqDataBuffer) {
+        this.freqDataBuffer = new Uint8Array(128);
+      }
+      const t = performance.now() / 150;
+      for (let i = 0; i < this.freqDataBuffer.length; i++) {
+        const wave1 = Math.sin(t + i * 0.25) * 0.5 + 0.5;
+        const wave2 = Math.cos(t * 1.5 + i * 0.4) * 0.3 + 0.5;
+        const decay = Math.exp(-i / 40);
+        this.freqDataBuffer[i] = Math.floor((wave1 * 0.6 + wave2 * 0.4) * decay * 220 * (this.state.volume || 1));
+      }
       return this.freqDataBuffer;
     }
     return null;
   }
 
   public getTimeDomainData(): Uint8Array | null {
-    if (this.analyserNode && this.timeDataBuffer) {
+    if (this.analyserNode && this.timeDataBuffer && !this.isYouTubeMode) {
       this.analyserNode.getByteTimeDomainData(this.timeDataBuffer);
+      return this.timeDataBuffer;
+    }
+    if (this.isYouTubeMode && this.state.status === 'playing') {
+      if (!this.timeDataBuffer) {
+        this.timeDataBuffer = new Uint8Array(256);
+      }
+      const t = performance.now() / 120;
+      for (let i = 0; i < this.timeDataBuffer.length; i++) {
+        const val = Math.sin(t + i * 0.1) * 40 + 128;
+        this.timeDataBuffer[i] = Math.floor(val);
+      }
       return this.timeDataBuffer;
     }
     return null;
@@ -241,7 +299,6 @@ class MusicEngine {
   public getBassEnergy(): number {
     const data = this.getFrequencyData();
     if (!data || data.length === 0) return 0;
-    // Average lowest 6 frequency bins (sub-bass / kick drum range)
     let sum = 0;
     const count = Math.min(6, data.length);
     for (let i = 0; i < count; i++) {
@@ -251,7 +308,7 @@ class MusicEngine {
   }
 
   public isWebAudioActive(): boolean {
-    return this.isWebAudioConnected && this.state.status === 'playing';
+    return (this.isWebAudioConnected || this.isYouTubeMode) && this.state.status === 'playing';
   }
 
   // ─── EQUALIZER & SOUND PRESETS ─────────────────────────────────────────────
@@ -350,37 +407,59 @@ class MusicEngine {
     this.updateMediaSessionMetadata(track);
     this.notify();
 
-    // 1. Resolve multi-candidate stream URLs (Torrent FLAC, Self-Debrid, Studio CDNs)
-    try {
-      this.streamCandidates = await torrentFlacStreamService.getStreamCandidates(
-        track.title,
-        track.artist,
-        track.audioUrl
-      );
-      this.currentCandidateIndex = 0;
-    } catch (e) {
-      this.streamCandidates = [track.audioUrl || ''];
-      this.currentCandidateIndex = 0;
-    }
+    // 1. Check if track can be played via official YouTube Audio/Video Engine
+    const ytId = youTubeAudioPlayer.resolveVideoId(track.title, track.artist, track.ytVideoId);
 
-    const streamUrl = this.streamCandidates[0] || track.audioUrl;
-
-    if (streamUrl) {
-      source.streamUrl = streamUrl;
+    if (ytId) {
+      this.isYouTubeMode = true;
+      if (this.audioEl) {
+        this.audioEl.pause();
+      }
+      source.ytVideoId = ytId;
+      source.streamUrl = `https://www.youtube.com/watch?v=${ytId}`;
       this.state.currentSource = source;
-      this.audioEl.src = streamUrl;
-      this.audioEl.currentTime = 0;
-
       try {
-        await this.audioEl.play();
+        await youTubeAudioPlayer.play(ytId, 0);
         this.state.status = 'playing';
       } catch (err) {
-        console.warn('[MusicEngine] Audio play call prevented by browser policy, waiting for user trigger:', err);
-        this.state.status = 'paused';
+        console.warn('[MusicEngine] YouTube player start notice:', err);
       }
     } else {
-      this.state.status = 'error';
-      this.state.error = 'Unable to resolve audio stream';
+      this.isYouTubeMode = false;
+      youTubeAudioPlayer.stop();
+
+      // Resolve multi-candidate stream URLs (Torrent FLAC, Self-Debrid, Studio CDNs)
+      try {
+        this.streamCandidates = await torrentFlacStreamService.getStreamCandidates(
+          track.title,
+          track.artist,
+          track.audioUrl
+        );
+        this.currentCandidateIndex = 0;
+      } catch (e) {
+        this.streamCandidates = [track.audioUrl || ''];
+        this.currentCandidateIndex = 0;
+      }
+
+      const streamUrl = this.streamCandidates[0] || track.audioUrl;
+
+      if (streamUrl) {
+        source.streamUrl = streamUrl;
+        this.state.currentSource = source;
+        this.audioEl.src = streamUrl;
+        this.audioEl.currentTime = 0;
+
+        try {
+          await this.audioEl.play();
+          this.state.status = 'playing';
+        } catch (err) {
+          console.warn('[MusicEngine] Audio play call prevented by browser policy, waiting for user trigger:', err);
+          this.state.status = 'paused';
+        }
+      } else {
+        this.state.status = 'error';
+        this.state.error = 'Unable to resolve audio stream';
+      }
     }
 
     // 2. Fetch synced lyrics asynchronously in background
@@ -414,6 +493,7 @@ class MusicEngine {
       trackNumber: 1,
       artwork: source.artwork || '',
       audioUrl: source.streamUrl,
+      ytVideoId: source.ytVideoId,
       lyrics: source.lyrics,
     };
 
@@ -429,6 +509,7 @@ class MusicEngine {
             trackNumber: idx + 1,
             artwork: s.artwork || '',
             audioUrl: s.streamUrl,
+            ytVideoId: s.ytVideoId,
             lyrics: s.lyrics,
           }))
         : [track];
@@ -438,6 +519,9 @@ class MusicEngine {
   }
 
   public pause(): void {
+    if (this.isYouTubeMode) {
+      youTubeAudioPlayer.pause();
+    }
     if (this.audioEl) {
       this.audioEl.pause();
     }
@@ -448,7 +532,9 @@ class MusicEngine {
 
   public resume(): void {
     this.resumeAudioContext();
-    if (this.audioEl && this.state.currentTrack) {
+    if (this.isYouTubeMode) {
+      youTubeAudioPlayer.resume();
+    } else if (this.audioEl && this.state.currentTrack) {
       this.audioEl.play().catch(() => {});
     }
     this.state.status = 'playing';
@@ -465,6 +551,9 @@ class MusicEngine {
   }
 
   public stop(): void {
+    if (this.isYouTubeMode) {
+      youTubeAudioPlayer.stop();
+    }
     if (this.audioEl) {
       this.audioEl.pause();
       this.audioEl.removeAttribute('src');
@@ -482,7 +571,9 @@ class MusicEngine {
 
   public seek(seconds: number): void {
     const target = Math.max(0, Math.min(this.state.duration || Infinity, seconds));
-    if (this.audioEl && !isNaN(target) && isFinite(target)) {
+    if (this.isYouTubeMode) {
+      youTubeAudioPlayer.seekTo(target);
+    } else if (this.audioEl && !isNaN(target) && isFinite(target)) {
       this.audioEl.currentTime = target;
     }
     this.state.currentTime = target;
@@ -648,6 +739,9 @@ class MusicEngine {
     const clamped = Math.max(0, Math.min(1, volume));
     this.state.volume = clamped;
     this.state.isMuted = clamped === 0;
+    if (this.isYouTubeMode) {
+      youTubeAudioPlayer.setVolume(clamped * 100);
+    }
     if (this.audioEl) {
       this.audioEl.volume = clamped;
     }
@@ -659,6 +753,13 @@ class MusicEngine {
 
   public toggleMute(): boolean {
     this.state.isMuted = !this.state.isMuted;
+    if (this.isYouTubeMode) {
+      if (this.state.isMuted) {
+        youTubeAudioPlayer.mute();
+      } else {
+        youTubeAudioPlayer.unMute();
+      }
+    }
     if (this.audioEl) {
       this.audioEl.muted = this.state.isMuted;
     }

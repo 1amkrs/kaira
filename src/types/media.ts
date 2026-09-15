@@ -180,6 +180,7 @@ export interface PlaybackSource {
   imdbId?: string;
   subtitles?: SubtitleTrack[];
   ytTrailerId?: string;
+  ytVideoId?: string;
   lyrics?: SyncedLyricLine[];
   artist?: string;
   album?: string;
