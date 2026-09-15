@@ -895,7 +895,7 @@ class LiveMediaProviderService implements MediaProvider {
         title: item.collectionName,
         artist: item.artistName,
         artistId: `artist-${item.artistId}`,
-        artwork: (item.artworkUrl100 || '').replace('100x100bb', '600x600bb'),
+        artwork: (item.artworkUrl100 || '').replace('100x100bb', '1000x1000bb'),
         year: item.releaseDate ? new Date(item.releaseDate).getFullYear() : 2023,
         genre: item.primaryGenreName,
         trackCount: item.trackCount || 10,
@@ -950,7 +950,7 @@ class LiveMediaProviderService implements MediaProvider {
         duration: this.formatMillis(s.trackTimeMillis || 210000),
         durationSeconds: Math.round((s.trackTimeMillis || 210000) / 1000),
         trackNumber: s.trackNumber || idx + 1,
-        artwork: (albumMeta.artworkUrl100 || '').replace('100x100bb', '600x600bb'),
+        artwork: (albumMeta.artworkUrl100 || '').replace('100x100bb', '1000x1000bb'),
         audioUrl: s.previewUrl || 'https://audio-ssl.itunes.apple.com/itunes-assets/AudioPreview116/v4/ce/15/b1/ce15b154-2b27-9d65-4d12-7736f3e029c2/mzaf_15463046040604482889.plus.aac.p.m4a',
       }));
 
@@ -959,7 +959,7 @@ class LiveMediaProviderService implements MediaProvider {
         title: albumMeta.collectionName,
         artist: albumMeta.artistName,
         artistId: `artist-${albumMeta.artistId}`,
-        artwork: (albumMeta.artworkUrl100 || '').replace('100x100bb', '600x600bb'),
+        artwork: (albumMeta.artworkUrl100 || '').replace('100x100bb', '1000x1000bb'),
         year: albumMeta.releaseDate ? new Date(albumMeta.releaseDate).getFullYear() : 2023,
         genre: albumMeta.primaryGenreName,
         trackCount: tracks.length,
@@ -1132,7 +1132,7 @@ class LiveMediaProviderService implements MediaProvider {
         id: `album-${a.collectionId}`,
         title: a.collectionName,
         artist: a.artistName,
-        artwork: (a.artworkUrl100 || '').replace('100x100bb', '600x600bb'),
+        artwork: (a.artworkUrl100 || '').replace('100x100bb', '1000x1000bb'),
         year: a.releaseDate ? new Date(a.releaseDate).getFullYear() : 2023,
         genre: a.primaryGenreName,
         trackCount: a.trackCount,
@@ -1150,7 +1150,7 @@ class LiveMediaProviderService implements MediaProvider {
         duration: this.formatMillis(s.trackTimeMillis || 200000),
         durationSeconds: Math.round((s.trackTimeMillis || 200000) / 1000),
         trackNumber: s.trackNumber || 1,
-        artwork: (s.artworkUrl100 || '').replace('100x100bb', '600x600bb'),
+        artwork: (s.artworkUrl100 || '').replace('100x100bb', '1000x1000bb'),
         audioUrl: s.previewUrl,
       }));
       result.tracks.push(...itunesTracks.slice(0, 8));
