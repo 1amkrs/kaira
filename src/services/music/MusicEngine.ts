@@ -8,6 +8,7 @@ import {
 } from './types';
 import { streamResolverService } from './StreamResolverService';
 import { lyricsService } from './LyricsService';
+import { torrentFlacStreamService } from './TorrentFlacStreamService';
 
 class MusicEngine {
   private audioEl: HTMLAudioElement | null = null;
@@ -50,6 +51,8 @@ class MusicEngine {
   private preloadedTrackId: string | null = null;
   private preloadedStreamUrl: string | null = null;
   private lastEndedTime: number = 0;
+  private streamCandidates: string[] = [];
+  private currentCandidateIndex: number = 0;
 
   constructor() {
     this.loadPersistedSettings();
@@ -347,19 +350,20 @@ class MusicEngine {
     this.updateMediaSessionMetadata(track);
     this.notify();
 
-    // 1. Resolve full-length stream URL (instant if cached / Audius)
-    let streamUrl = track.audioUrl;
-    if (!streamUrl || streamUrl.includes('preview') || streamUrl.includes('itunes.apple.com')) {
-      try {
-        streamUrl = await streamResolverService.resolveFullAudioStream(
-          track.title,
-          track.artist,
-          track.audioUrl
-        );
-      } catch (e) {
-        streamUrl = track.audioUrl;
-      }
+    // 1. Resolve multi-candidate stream URLs (Torrent FLAC, Self-Debrid, Studio CDNs)
+    try {
+      this.streamCandidates = await torrentFlacStreamService.getStreamCandidates(
+        track.title,
+        track.artist,
+        track.audioUrl
+      );
+      this.currentCandidateIndex = 0;
+    } catch (e) {
+      this.streamCandidates = [track.audioUrl || ''];
+      this.currentCandidateIndex = 0;
     }
+
+    const streamUrl = this.streamCandidates[0] || track.audioUrl;
 
     if (streamUrl) {
       source.streamUrl = streamUrl;
@@ -371,7 +375,7 @@ class MusicEngine {
         await this.audioEl.play();
         this.state.status = 'playing';
       } catch (err) {
-        console.warn('[MusicEngine] Audio play call prevented by browser policy:', err);
+        console.warn('[MusicEngine] Audio play call prevented by browser policy, waiting for user trigger:', err);
         this.state.status = 'paused';
       }
     } else {
@@ -710,8 +714,36 @@ class MusicEngine {
   }
 
   private handleStreamError(): void {
+    if (this.currentCandidateIndex < this.streamCandidates.length - 1) {
+      this.currentCandidateIndex++;
+      const nextCandidate = this.streamCandidates[this.currentCandidateIndex];
+      console.log(
+        `[MusicEngine] 🔄 Switching to next stream candidate (${this.currentCandidateIndex + 1}/${
+          this.streamCandidates.length
+        }):`,
+        nextCandidate
+      );
+      if (this.audioEl && nextCandidate) {
+        if (this.state.currentSource) {
+          this.state.currentSource.streamUrl = nextCandidate;
+        }
+        this.audioEl.src = nextCandidate;
+        this.audioEl.currentTime = 0;
+        this.audioEl
+          .play()
+          .then(() => {
+            this.state.status = 'playing';
+            this.notify();
+          })
+          .catch((err) => {
+            console.warn('[MusicEngine] Candidate play retry notice:', err);
+          });
+        return;
+      }
+    }
+
     if (this.state.queue.length > 1 && this.state.queueIndex < this.state.queue.length - 1) {
-      console.log('[MusicEngine] Attempting next track after stream failure...');
+      console.log('[MusicEngine] All candidates exhausted for track, moving to next in queue...');
       this.next();
     } else {
       this.state.status = 'error';

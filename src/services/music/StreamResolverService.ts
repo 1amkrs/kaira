@@ -1,4 +1,5 @@
 import { Track } from '../../types/media';
+import { torrentFlacStreamService } from './TorrentFlacStreamService';
 
 export interface StreamResolverConfig {
   audiusEnabled: boolean;
@@ -177,7 +178,16 @@ export class StreamResolverService {
       }
     }
 
-    // Tier 1: Audius Open Music Protocol (Instant 320kbps full stream)
+    // Tier 1: Torrent FLAC / Self-Debrid / Lossless Studio Stream (Instant Full Audio)
+    try {
+      const flacStream = await torrentFlacStreamService.resolveTorrentFlacStream(title, artist);
+      if (flacStream) {
+        this.streamCache.set(cleanKey, flacStream);
+        return flacStream;
+      }
+    } catch (e) {}
+
+    // Tier 2: Audius Open Music Protocol
     try {
       const audiusMatches = await this.searchAudius(`${title} ${artist}`, 3);
       if (audiusMatches.length > 0 && audiusMatches[0].audioUrl) {

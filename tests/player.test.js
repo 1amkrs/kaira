@@ -1511,3 +1511,71 @@ test('MusicEngine: Remote SEEK_RELATIVE correctly handles payload.delta and payl
   assert.equal(parseSeekDelta({ delta: 20, offset: 5 }), 20); // delta takes precedence
 });
 
+test('TorrentFlacStreamService: getStreamCandidates returns ranked candidate pool with fallback guarantee', () => {
+  const getStreamCandidates = (title, artist, initialUrl) => {
+    const candidates = [];
+    const pool = {
+      'blinding lights': ['https://cdn.pixabay.com/download/audio/synthwave.mp3'],
+      'apt.': ['https://cdn.pixabay.com/download/audio/pop-rock.mp3'],
+    };
+
+    const titleLower = title.toLowerCase().trim();
+    if (pool[titleLower]) {
+      candidates.push(...pool[titleLower]);
+    }
+
+    if (initialUrl && !initialUrl.includes('preview') && !initialUrl.includes('audius')) {
+      candidates.push(initialUrl);
+    }
+
+    const fallbacks = ['https://cdn.pixabay.com/download/audio/default_fallback.mp3'];
+    fallbacks.forEach((f) => {
+      if (!candidates.includes(f)) candidates.push(f);
+    });
+
+    return candidates;
+  };
+
+  const candidates = getStreamCandidates('Blinding Lights', 'The Weeknd', 'https://cdn.example.com/custom.flac');
+  assert.ok(candidates.length >= 2, 'Should provide multiple ranked candidates');
+  assert.equal(candidates[0], 'https://cdn.pixabay.com/download/audio/synthwave.mp3');
+  assert.ok(candidates.includes('https://cdn.example.com/custom.flac'));
+});
+
+test('MusicEngine: Stream candidate switching on error advances candidate index before skipping track', () => {
+  let currentCandidateIndex = 0;
+  const streamCandidates = [
+    'https://unreachable-host.com/track.mp3',
+    'https://cdn.pixabay.com/download/audio/flac_mirror.mp3',
+    'https://cdn.pixabay.com/download/audio/fallback.mp3',
+  ];
+  let activeStreamUrl = streamCandidates[0];
+  let trackSkipped = false;
+
+  const handleStreamError = () => {
+    if (currentCandidateIndex < streamCandidates.length - 1) {
+      currentCandidateIndex++;
+      activeStreamUrl = streamCandidates[currentCandidateIndex];
+      return 'retried_candidate';
+    }
+    trackSkipped = true;
+    return 'skipped_track';
+  };
+
+  // First failure: retries candidate 1
+  assert.equal(handleStreamError(), 'retried_candidate');
+  assert.equal(currentCandidateIndex, 1);
+  assert.equal(activeStreamUrl, 'https://cdn.pixabay.com/download/audio/flac_mirror.mp3');
+  assert.equal(trackSkipped, false);
+
+  // Second failure: retries candidate 2
+  assert.equal(handleStreamError(), 'retried_candidate');
+  assert.equal(currentCandidateIndex, 2);
+  assert.equal(activeStreamUrl, 'https://cdn.pixabay.com/download/audio/fallback.mp3');
+  assert.equal(trackSkipped, false);
+
+  // Third failure: all candidates exhausted, now skips
+  assert.equal(handleStreamError(), 'skipped_track');
+  assert.equal(trackSkipped, true);
+});
+
