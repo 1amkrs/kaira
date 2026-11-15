@@ -28,9 +28,9 @@
 }
 
 .tv-media-card.focused .tv-card-poster-container {
-  border-color: rgba(255, 255, 255, 0.35);
-  box-shadow: 0 12px 30px -4px rgba(0, 0, 0, 0.65);
-  filter: brightness(1.05);
+  border-color: var(--md-sys-color-focus-ring);
+  box-shadow: var(--focus-border-glow), 0 14px 32px -4px rgba(0, 0, 0, 0.72);
+  filter: brightness(1.06);
 }
 
 .tv-card-image {
@@ -49,7 +49,7 @@
   position: absolute;
   top: 8px;
   right: 8px;
-  background: rgba(0, 0, 0, 0.65);
+  background: rgba(14, 16, 20, 0.78);
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
   color: var(--text-primary);
@@ -57,7 +57,7 @@
   font-weight: 600;
   padding: 3px 8px;
   border-radius: var(--radius-sm);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.12);
   letter-spacing: 0.3px;
 }
 
@@ -69,12 +69,12 @@
   width: 46px;
   height: 46px;
   border-radius: 50%;
-  background-color: rgba(255, 255, 255, 0.95);
-  color: #0f0f0f;
+  background-color: var(--md-sys-color-primary);
+  color: var(--md-sys-color-on-primary);
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.6);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.6);
   animation: tvPlayBtnPop 180ms ease-out;
 }
 
@@ -94,7 +94,7 @@
 
 .tv-card-progress-fill {
   height: 100%;
-  background: var(--google-blue);
+  background: var(--md-sys-color-primary);
   border-radius: 0 2px 2px 0;
 }
 
@@ -117,6 +117,7 @@
   font-size: var(--font-caption);
   color: var(--text-secondary);
   margin-top: 2px;
+  font-variant-numeric: tabular-nums;
 }
 
 .tv-card-subtitle {
@@ -136,6 +137,17 @@
 .tv-card-meta-tag, .tv-card-genre {
   font-size: var(--font-caption);
   color: var(--text-secondary);
+}
+
+/* Tablet Media Card Sizing (769px – 1100px) */
+@media (min-width: 769px) and (max-width: 1100px) {
+  .tv-media-card-wrapper {
+    width: clamp(220px, 28vw, 300px);
+  }
+
+  .tv-media-card-wrapper.aspect-hero {
+    width: clamp(260px, 34vw, 360px);
+  }
 }
 
 /* Mobile Media Card Sizing (Screens <= 768px down to 350px) */

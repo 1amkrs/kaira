@@ -35,11 +35,11 @@ class SpatialNavigationEngine {
     // If autoFocus requested or initial state
     if (node.autoFocus || (!this.currentFocusedId && (node.groupId === 'top-nav' || node.priority))) {
       setTimeout(() => {
-        if (this.nodes.has(node.id) && this.isElementVisible(node.element)) {
-          const activeScope = this.getActiveScope();
-          if (!activeScope || activeScope.contains(node.element)) {
-            this.setFocus(node.id, true);
-          }
+        if (!this.nodes.has(node.id) || !this.isElementVisible(node.element)) return;
+        if (!node.autoFocus && this.currentFocusedId) return;
+        const activeScope = this.getActiveScope();
+        if (!activeScope || activeScope.contains(node.element)) {
+          this.setFocus(node.id, true);
         }
       }, 30);
     }

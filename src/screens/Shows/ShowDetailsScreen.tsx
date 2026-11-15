@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Play, Heart, Star, Calendar, ArrowLeft, Tv, Loader2, Volume2, VolumeX, Film, Layers, Sparkles } from 'lucide-react';
+import { Play, Heart, Star, Calendar, ArrowLeft, Tv, Loader2, Volume2, VolumeX, Layers } from 'lucide-react';
 import { Show, Episode } from '../../types/media';
 import { AddonStream } from '../../types/addons';
 import { mediaProvider } from '../../services/media/LiveMediaProvider';
@@ -211,8 +211,11 @@ export const ShowDetailsScreen: React.FC<ShowDetailsScreenProps> = ({
       <div className="tv-show-hero-content">
         {/* Genres Row */}
         <div className="tv-show-genres-row">
-          {detailedShow.genres.map((g) => (
-            <span key={g} className="tv-genre-pill">{g}</span>
+          {detailedShow.genres.map((g, idx) => (
+            <React.Fragment key={g}>
+              <span className="tv-genre-item">{g}</span>
+              {idx < detailedShow.genres.length - 1 && <span className="tv-meta-dot" aria-hidden="true" />}
+            </React.Fragment>
           ))}
         </div>
 
@@ -250,12 +253,6 @@ export const ShowDetailsScreen: React.FC<ShowDetailsScreenProps> = ({
               {detailedShow.network}
             </span>
           )}
-          {trailerId && isTrailerReady && (
-            <span className="tv-meta-badge trailer-live">
-              <Film size={14} />
-              <span>Official Trailer</span>
-            </span>
-          )}
         </div>
 
         {/* Plot Description */}
@@ -273,11 +270,7 @@ export const ShowDetailsScreen: React.FC<ShowDetailsScreenProps> = ({
             {detailedShow.cast && detailedShow.cast.length > 0 && (
               <div className="tv-credit-item cast-row">
                 <span className="label">Cast:</span>
-                <div className="tv-cast-chips-wrap">
-                  {detailedShow.cast.slice(0, 6).map((actor, idx) => (
-                    <span key={idx} className="tv-cast-chip">{actor}</span>
-                  ))}
-                </div>
+                <span className="tv-cast-inline">{detailedShow.cast.slice(0, 6).join(', ')}</span>
               </div>
             )}
           </div>
@@ -372,6 +365,9 @@ export const ShowDetailsScreen: React.FC<ShowDetailsScreenProps> = ({
               id={`season-tab-${season.number}`}
               groupId="season-tabs"
               indexInGroup={idx}
+              role="tab"
+              ariaSelected={selectedSeason === season.number}
+              ariaLabel={season.name || `Season ${season.number}`}
               className="tv-season-tab-focusable"
               scaleEffect={false}
               onSelect={() => setSelectedSeason(season.number)}

@@ -102,10 +102,6 @@
   transition: all var(--duration-base) var(--easing-standard);
 }
 
-.tv-modal-close-btn:hover:not(.focused) {
-  background-color: rgba(255, 255, 255, 0.16);
-}
-
 .tv-modal-close-btn.focused {
   background-color: #ffffff;
   color: #000000;
@@ -138,10 +134,6 @@
   border-radius: var(--radius-lg);
   transition: all var(--duration-base) var(--easing-standard);
   cursor: pointer;
-}
-
-.tv-stream-row:hover:not(.focused) {
-  background-color: rgba(255, 255, 255, 0.08);
 }
 
 .tv-stream-row.focused {

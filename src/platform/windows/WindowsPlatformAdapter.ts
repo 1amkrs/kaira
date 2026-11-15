@@ -333,6 +333,8 @@ export class WindowsPlatformAdapter implements IPlatformAdapter {
   public readonly platform: PlatformType = 'win32-x64';
   public readonly isLinux: boolean = false;
   public readonly isARM64: boolean = false;
+  public readonly isAndroid: boolean = false;
+  public readonly isAndroidTV: boolean = false;
 
   public readonly display: IDisplayAdapter = new WindowsDisplayAdapter();
   public readonly audio: IAudioAdapter = new WindowsAudioAdapter();

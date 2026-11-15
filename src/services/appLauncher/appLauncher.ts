@@ -1,6 +1,6 @@
 import { AppItem, MediaItem } from '../../types';
 import { APP_REGISTRY } from '../../data/apps/appRegistry';
-
+import { platform } from '../../platform';
 
 export interface LaunchFeedback {
   active: boolean;
@@ -40,16 +40,21 @@ class AppLauncherService {
   public async launchMedia(media: MediaItem): Promise<boolean> {
     const target = media.actionUrl || (media.source ? `${media.source.toLowerCase().replace(/\s+/g, '')}:` : '');
     console.log(`[AppLauncher] Launching media "${media.title}" -> ${target}`);
-    
+
     this.notifyLaunch({
       active: true,
       appName: media.title,
       target: target,
       status: 'launching',
-      message: `Opening on ${media.source || 'TV'}...`
+      message: `Opening on ${media.source || (platform.isAndroid ? 'Android' : 'TV')}...`
     });
 
-    const success = await this.launchTarget(target, media.type === 'game' ? 'uri' : (target.startsWith('http') ? 'web' : 'uri'));
+    const success = await this.launchTarget(
+      target,
+      media.type === 'game' ? 'uri' : (target.startsWith('http') ? 'web' : 'uri'),
+      undefined,
+      media.source?.toLowerCase()
+    );
 
     setTimeout(() => {
       this.notifyLaunch(null);
@@ -72,7 +77,7 @@ class AppLauncherService {
       message: `Launching ${app.name}...`
     });
 
-    const success = await this.launchTarget(app.target, app.launchType, app);
+    const success = await this.launchTarget(app.target, app.launchType, app, app.id);
 
     setTimeout(() => {
       this.notifyLaunch(null);
@@ -81,10 +86,25 @@ class AppLauncherService {
     return success;
   }
 
-  public async launchTarget(target: string, launchType: 'executable' | 'uri' | 'web', fullApp?: AppItem): Promise<boolean> {
+  public async launchTarget(
+    target: string,
+    launchType: 'executable' | 'uri' | 'web',
+    fullApp?: AppItem,
+    appId?: string
+  ): Promise<boolean> {
     if (!target) return false;
 
-    // 1. If running inside Electron Native Shell
+    // 1. If running on Android (APK WebView, Capacitor, or Android Browser/PWA)
+    if (platform.isAndroid) {
+      try {
+        const res = await platform.process.launchApp(target, launchType, fullApp?.id || appId);
+        return res.success;
+      } catch (err) {
+        console.error('[AppLauncher] Android launch error:', err);
+      }
+    }
+
+    // 2. If running inside Electron Native Shell
     if (window.electronAPI) {
       try {
         if (fullApp) {
@@ -102,13 +122,12 @@ class AppLauncherService {
       }
     }
 
-    // 2. Web / Browser fallback
+    // 3. Web / Browser fallback
     try {
       if (launchType === 'web' || target.startsWith('http://') || target.startsWith('https://')) {
         window.open(target, '_blank');
         return true;
       } else if (launchType === 'uri' || target.includes('://')) {
-        // Trigger URI protocol in Windows (e.g. steam://)
         const link = document.createElement('a');
         link.href = target;
         link.style.display = 'none';
@@ -117,8 +136,7 @@ class AppLauncherService {
         document.body.removeChild(link);
         return true;
       } else {
-        // Executable launch in browser simulation
-        console.log(`[AppLauncher] Simulated Windows executable launch: ${target}`);
+        console.log(`[AppLauncher] Simulated executable launch: ${target}`);
         return true;
       }
     } catch (e) {

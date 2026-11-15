@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Play, Heart, Star, Clock, Calendar, ArrowLeft, Loader2, Volume2, VolumeX, Film, Layers, Sparkles } from 'lucide-react';
+import { Play, Heart, Star, Clock, Calendar, ArrowLeft, Loader2, Volume2, VolumeX, Layers } from 'lucide-react';
 import { Movie } from '../../types/media';
 import { AddonStream } from '../../types/addons';
 import { mediaProvider } from '../../services/media/LiveMediaProvider';
@@ -170,8 +170,11 @@ export const MovieDetailsScreen: React.FC<MovieDetailsScreenProps> = ({
       <div className="tv-details-hero-content">
         {/* Genres Row */}
         <div className="tv-details-genres-row">
-          {detailedMovie.genres.map((g) => (
-            <span key={g} className="tv-genre-pill">{g}</span>
+          {detailedMovie.genres.map((g, idx) => (
+            <React.Fragment key={g}>
+              <span className="tv-genre-item">{g}</span>
+              {idx < detailedMovie.genres.length - 1 && <span className="tv-meta-dot" aria-hidden="true" />}
+            </React.Fragment>
           ))}
         </div>
 
@@ -203,12 +206,6 @@ export const MovieDetailsScreen: React.FC<MovieDetailsScreenProps> = ({
             <Clock size={15} />
             {detailedMovie.runtime}
           </span>
-          {trailerId && isTrailerReady && (
-            <span className="tv-meta-badge trailer-live">
-              <Film size={14} />
-              <span>Official Trailer</span>
-            </span>
-          )}
         </div>
 
         {/* Plot Description */}
@@ -225,11 +222,7 @@ export const MovieDetailsScreen: React.FC<MovieDetailsScreenProps> = ({
           {detailedMovie.cast && detailedMovie.cast.length > 0 && (
             <div className="tv-credit-item cast-row">
               <span className="label">Cast:</span>
-              <div className="tv-cast-chips-wrap">
-                {detailedMovie.cast.slice(0, 6).map((actor, idx) => (
-                  <span key={idx} className="tv-cast-chip">{actor}</span>
-                ))}
-              </div>
+              <span className="tv-cast-inline">{detailedMovie.cast.slice(0, 6).join(', ')}</span>
             </div>
           )}
         </div>

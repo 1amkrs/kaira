@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { Play, Sparkles, X, HardDrive, Volume2, ShieldCheck, Film } from 'lucide-react';
+import { Play, X, HardDrive, Volume2, ShieldCheck, Film } from 'lucide-react';
 import { AddonStream } from '../../types/addons';
 import { Focusable } from '../Focusable/Focusable';
 import { spatialNav } from '../../services/spatialNav/spatialNavEngine';
@@ -33,7 +33,7 @@ export const StreamSelectModal: React.FC<StreamSelectModalProps> = ({
         <div className="tv-stream-modal-header">
           <div className="tv-stream-title-col">
             <span className="tv-stream-badge-top">
-              <Sparkles size={14} /> Available Video Streams ({streams.length})
+              <Film size={14} /> Available Video Streams ({streams.length})
             </span>
             <h2 className="tv-stream-media-title text-truncate">{mediaTitle}</h2>
             {mediaSubtitle && <span className="tv-stream-media-sub">{mediaSubtitle}</span>}

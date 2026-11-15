@@ -17,6 +17,7 @@
     "build:arm64": "bash ./os/build/build-arm64-pi.sh",
     "build:iso": "python ./os/build/build-iso.py",
     "build:pi": "bash ./os/build/build-arm64-pi.sh",
+    "build:android": "npm run build && node scripts/sync-android-assets.mjs",
     "run:vm": "bash ./os/build/build-vm.sh"
   },
   "dependencies": {
@@ -42,6 +43,7 @@
     "electron": "^34.2.0",
     "typescript": "~5.7.2",
     "vite": "^6.1.0",
+    "vite-plugin-pwa": "^2.0.0",
     "wait-on": "^8.0.2"
   }
 }

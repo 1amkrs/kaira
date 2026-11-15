@@ -1,9 +1,19 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { ArrowRight, Key, Users, ArrowLeft, Lock } from 'lucide-react';
+import {
+  ArrowRight,
+  Users,
+  ArrowLeft,
+  Lock,
+  Eye,
+  EyeOff,
+  MapPin,
+  Check,
+} from 'lucide-react';
 import { profileService } from '../../services/profile/ProfileService';
 import { UserProfile } from '../../types/profile';
 import { renderAvatarIcon } from '../Profile/PinModal';
 import { spatialNav } from '../../services/spatialNav/spatialNavEngine';
+import { platform } from '../../platform';
 import './AerialScreensaver.css';
 
 interface AerialScreensaverProps {
@@ -24,60 +34,87 @@ const AERIAL_SHOTS: AerialShot[] = [
     id: 'sonoma',
     title: 'Sonoma Rolling Hills',
     location: 'California, USA',
-    videoUrl: 'https://assets.mixkit.co/videos/preview/mixkit-aerial-view-of-green-hills-and-mountains-41508-large.mp4',
-    fallbackImageUrl: 'https://images.unsplash.com/photo-1506744038136-46273834b3fb?auto=format&fit=crop&w=3840&q=85',
+    videoUrl:
+      'https://assets.mixkit.co/videos/preview/mixkit-aerial-view-of-green-hills-and-mountains-41508-large.mp4',
+    fallbackImageUrl:
+      'https://images.unsplash.com/photo-1506744038136-46273834b3fb?auto=format&fit=crop&w=2560&q=85',
   },
   {
     id: 'dubai',
-    title: 'Dubai Skyline & Marina at Night',
+    title: 'Dubai Skyline & Marina',
     location: 'United Arab Emirates',
-    videoUrl: 'https://assets.mixkit.co/videos/preview/mixkit-aerial-view-of-city-traffic-at-night-42173-large.mp4',
-    fallbackImageUrl: 'https://images.unsplash.com/photo-1512453979798-5ea266f8880c?auto=format&fit=crop&w=3840&q=85',
+    videoUrl:
+      'https://assets.mixkit.co/videos/preview/mixkit-aerial-view-of-city-traffic-at-night-42173-large.mp4',
+    fallbackImageUrl:
+      'https://images.unsplash.com/photo-1512453979798-5ea266f8880c?auto=format&fit=crop&w=2560&q=85',
   },
   {
     id: 'norway',
-    title: 'Glacial Fjords & Northern Lights',
+    title: 'Glacial Fjords & Aurora',
     location: 'Tromsø, Norway',
-    videoUrl: 'https://assets.mixkit.co/videos/preview/mixkit-aerial-view-of-snow-capped-mountains-41477-large.mp4',
-    fallbackImageUrl: 'https://images.unsplash.com/photo-1517411032315-54ef2cb783bb?auto=format&fit=crop&w=3840&q=85',
+    videoUrl:
+      'https://assets.mixkit.co/videos/preview/mixkit-aerial-view-of-snow-capped-mountains-41477-large.mp4',
+    fallbackImageUrl:
+      'https://images.unsplash.com/photo-1517411032315-54ef2cb783bb?auto=format&fit=crop&w=2560&q=85',
   },
   {
     id: 'tokyo',
-    title: 'Tokyo Neon Shinjuku District',
+    title: 'Shinjuku Night Horizon',
     location: 'Tokyo, Japan',
-    videoUrl: 'https://assets.mixkit.co/videos/preview/mixkit-night-skyline-of-a-big-city-42171-large.mp4',
-    fallbackImageUrl: 'https://images.unsplash.com/photo-1503899036084-c55cdd92da26?auto=format&fit=crop&w=3840&q=85',
+    videoUrl:
+      'https://assets.mixkit.co/videos/preview/mixkit-night-skyline-of-a-big-city-42171-large.mp4',
+    fallbackImageUrl:
+      'https://images.unsplash.com/photo-1503899036084-c55cdd92da26?auto=format&fit=crop&w=2560&q=85',
   },
   {
     id: 'hawaii',
-    title: 'Na Pali Coastline & Pacific Surf',
+    title: 'Na Pali Coastline',
     location: 'Kauai, Hawaii',
-    videoUrl: 'https://assets.mixkit.co/videos/preview/mixkit-waves-coming-to-the-beach-5016-large.mp4',
-    fallbackImageUrl: 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=3840&q=85',
+    videoUrl:
+      'https://assets.mixkit.co/videos/preview/mixkit-waves-coming-to-the-beach-5016-large.mp4',
+    fallbackImageUrl:
+      'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=2560&q=85',
   },
   {
     id: 'alps',
-    title: 'Matterhorn & Swiss Alpine Peaks',
+    title: 'Matterhorn Alpine Peaks',
     location: 'Zermatt, Switzerland',
-    videoUrl: 'https://assets.mixkit.co/videos/preview/mixkit-top-aerial-shot-of-snowy-mountains-41525-large.mp4',
-    fallbackImageUrl: 'https://images.unsplash.com/photo-1464822759023-fed622ff2c3b?auto=format&fit=crop&w=3840&q=85',
+    videoUrl:
+      'https://assets.mixkit.co/videos/preview/mixkit-top-aerial-shot-of-snowy-mountains-41525-large.mp4',
+    fallbackImageUrl:
+      'https://images.unsplash.com/photo-1464822759023-fed622ff2c3b?auto=format&fit=crop&w=2560&q=85',
   },
 ];
 
 export const AerialScreensaver: React.FC<AerialScreensaverProps> = ({ isActive, onWake }) => {
+  const isAndroid = platform.isAndroid;
+
   const [currentIndex, setCurrentIndex] = useState<number>(0);
   const [timeStr, setTimeStr] = useState<string>('');
+  const [periodStr, setPeriodStr] = useState<string>('');
   const [dateStr, setDateStr] = useState<string>('');
-  const [videoFailed, setVideoFailed] = useState<boolean>(false);
+  const [videoFailed, setVideoFailed] = useState<boolean>(isAndroid);
+
   const [profiles, setProfiles] = useState<UserProfile[]>(() => profileService.getProfiles());
-  const [selectedProfile, setSelectedProfile] = useState<UserProfile>(() => profileService.getActiveProfile());
+  const [selectedProfile, setSelectedProfile] = useState<UserProfile>(() =>
+    profileService.getActiveProfile()
+  );
   const [isUserPickerOpen, setIsUserPickerOpen] = useState<boolean>(false);
+  const [pickerFocusedIdx, setPickerFocusedIdx] = useState<number>(0);
+  const [actionFocusedIdx, setActionFocusedIdx] = useState<number>(0);
+
   const [password, setPassword] = useState<string>('');
+  const [showPin, setShowPin] = useState<boolean>(false);
   const [isShaking, setIsShaking] = useState<boolean>(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
 
-  // Push spatial navigation scope to isolate focus while screensaver is showing
+  const inputRef = useRef<HTMLInputElement>(null);
+  const continueBtnRef = useRef<HTMLButtonElement>(null);
+  const switchBtnRef = useRef<HTMLButtonElement>(null);
+
+  const hasPin = Boolean(selectedProfile?.pin?.trim());
+
+  // Isolate spatial navigation while Ambient Lockscreen is active
   useEffect(() => {
     if (!isActive) return;
     spatialNav.pushScope('screensaver-scope');
@@ -86,41 +123,50 @@ export const AerialScreensaver: React.FC<AerialScreensaverProps> = ({ isActive, 
     };
   }, [isActive]);
 
-  // Sync profiles and active profile
+  // Keep profiles synced
   useEffect(() => {
     if (!isActive) return;
-    const unsubProfile = profileService.subscribe((state) => {
+    return profileService.subscribe((state) => {
       setProfiles(state.profiles);
       const active = state.profiles.find((p) => p.id === state.activeProfileId);
       if (active) {
         setSelectedProfile((prev) => state.profiles.find((p) => p.id === prev.id) || active);
       }
     });
-    return unsubProfile;
   }, [isActive]);
 
-  // Focus and clear input when screensaver becomes active
+  // Reset state & restore initial focus on activation
   useEffect(() => {
-    if (isActive) {
-      setPassword('');
-      setErrorMsg(null);
-      setIsShaking(false);
-      setIsUserPickerOpen(false);
-      setSelectedProfile(profileService.getActiveProfile());
-      const timer = setTimeout(() => {
-        inputRef.current?.focus();
-      }, 100);
-      return () => clearTimeout(timer);
-    }
-  }, [isActive]);
+    if (!isActive) return;
+    const active = profileService.getActiveProfile();
+    setSelectedProfile(active);
+    setPassword('');
+    setShowPin(false);
+    setErrorMsg(null);
+    setIsShaking(false);
+    setIsUserPickerOpen(false);
+    setActionFocusedIdx(0);
+    setVideoFailed(isAndroid);
 
-  // Clock & Date updates (macOS Sonoma lockscreen typography)
+    const timer = setTimeout(() => {
+      if (active?.pin?.trim()) {
+        inputRef.current?.focus();
+      } else {
+        continueBtnRef.current?.focus();
+      }
+    }, 90);
+    return () => clearTimeout(timer);
+  }, [isActive, isAndroid]);
+
+  // Live Clock & Date updates
   useEffect(() => {
     const updateTime = () => {
       const now = new Date();
-      const hours = now.getHours() % 12 || 12;
+      const rawHours = now.getHours();
+      const hours = rawHours % 12 || 12;
       const minutes = String(now.getMinutes()).padStart(2, '0');
       setTimeStr(`${hours}:${minutes}`);
+      setPeriodStr(rawHours >= 12 ? 'PM' : 'AM');
       setDateStr(
         now.toLocaleDateString('en-US', {
           weekday: 'long',
@@ -135,37 +181,36 @@ export const AerialScreensaver: React.FC<AerialScreensaverProps> = ({ isActive, 
     return () => clearInterval(interval);
   }, []);
 
-  // Cycle aerial shots every 40 seconds
+  // Rotate Ambient scenes every 40 seconds
   useEffect(() => {
     if (!isActive) return;
     const cycle = setInterval(() => {
-      setVideoFailed(false);
+      setVideoFailed(isAndroid);
       setCurrentIndex((prev) => (prev + 1) % AERIAL_SHOTS.length);
     }, 40000);
     return () => clearInterval(cycle);
-  }, [isActive]);
+  }, [isActive, isAndroid]);
 
-  // Handle switching to a specific user profile
-  const handleSelectUser = (prof: UserProfile) => {
-    setSelectedProfile(prof);
-    setPassword('');
-    setErrorMsg(null);
-    setIsShaking(false);
-    setIsUserPickerOpen(false);
+  const handleSelectUser = useCallback(
+    (prof: UserProfile) => {
+      setSelectedProfile(prof);
+      setPassword('');
+      setShowPin(false);
+      setErrorMsg(null);
+      setIsShaking(false);
+      setIsUserPickerOpen(false);
+      setActionFocusedIdx(0);
 
-    if (!prof.pin) {
-      // Direct login for unpinned profiles
-      profileService.setActiveProfile(prof.id);
-      onWake();
-    } else {
-      // Focus password field for PIN-protected profiles
-      setTimeout(() => {
-        inputRef.current?.focus();
-      }, 100);
-    }
-  };
+      if (!prof.pin?.trim()) {
+        profileService.setActiveProfile(prof.id);
+        onWake();
+      } else {
+        setTimeout(() => inputRef.current?.focus(), 90);
+      }
+    },
+    [onWake]
+  );
 
-  // Password Unlock Submission Handler
   const handleUnlockSubmit = useCallback(
     (e?: React.FormEvent) => {
       if (e) {
@@ -174,22 +219,20 @@ export const AerialScreensaver: React.FC<AerialScreensaverProps> = ({ isActive, 
       }
 
       const targetPin = selectedProfile?.pin?.trim();
-
       if (targetPin) {
         if (password.trim() === targetPin) {
           profileService.setActiveProfile(selectedProfile.id, password.trim());
           onWake();
         } else {
           setIsShaking(true);
-          setErrorMsg('Incorrect Password');
+          setErrorMsg('Incorrect PIN. Please try again.');
           setPassword('');
           setTimeout(() => {
             setIsShaking(false);
             inputRef.current?.focus();
-          }, 450);
+          }, 420);
         }
       } else {
-        // No PIN configured on profile: log in directly
         profileService.setActiveProfile(selectedProfile.id);
         onWake();
       }
@@ -197,32 +240,86 @@ export const AerialScreensaver: React.FC<AerialScreensaverProps> = ({ isActive, 
     [selectedProfile, password, onWake]
   );
 
-  // Global Keydown Handler: redirect keystrokes to password input & support Enter / Escape
+  const openUserPicker = useCallback(() => {
+    const idx = Math.max(
+      0,
+      profiles.findIndex((p) => p.id === selectedProfile?.id)
+    );
+    setPickerFocusedIdx(idx);
+    setIsUserPickerOpen(true);
+  }, [profiles, selectedProfile?.id]);
+
+  // Keyboard & D-Pad Navigation inside Ambient Screen
   useEffect(() => {
     if (!isActive) return;
 
     const handleWindowKeyDown = (e: KeyboardEvent) => {
+      if (isUserPickerOpen) {
+        if (e.key === 'ArrowDown' || e.key === 'ArrowRight') {
+          e.preventDefault();
+          e.stopPropagation();
+          setPickerFocusedIdx((prev) => (prev + 1) % Math.max(1, profiles.length));
+          return;
+        }
+        if (e.key === 'ArrowUp' || e.key === 'ArrowLeft') {
+          e.preventDefault();
+          e.stopPropagation();
+          setPickerFocusedIdx((prev) => (prev - 1 + Math.max(1, profiles.length)) % Math.max(1, profiles.length));
+          return;
+        }
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          e.stopPropagation();
+          const chosen = profiles[pickerFocusedIdx] || selectedProfile;
+          if (chosen) handleSelectUser(chosen);
+          return;
+        }
+        if (e.key === 'Escape' || e.key === 'Backspace') {
+          e.preventDefault();
+          e.stopPropagation();
+          setIsUserPickerOpen(false);
+          setTimeout(() => {
+            if (hasPin) inputRef.current?.focus();
+            else continueBtnRef.current?.focus();
+          }, 80);
+          return;
+        }
+        return;
+      }
+
+      if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
+        if (profiles.length > 1 && document.activeElement !== inputRef.current) {
+          e.preventDefault();
+          e.stopPropagation();
+          const next = actionFocusedIdx === 0 ? 1 : 0;
+          setActionFocusedIdx(next);
+          if (next === 0) {
+            if (hasPin) inputRef.current?.focus();
+            else continueBtnRef.current?.focus();
+          } else {
+            switchBtnRef.current?.focus();
+          }
+          return;
+        }
+      }
+
       if (e.key === 'Enter') {
+        if (document.activeElement === switchBtnRef.current) {
+          e.preventDefault();
+          e.stopPropagation();
+          openUserPicker();
+          return;
+        }
         e.preventDefault();
         e.stopPropagation();
-        if (isUserPickerOpen) {
-          // If in user picker and pressing enter, select currently focused or selected profile
-          handleSelectUser(selectedProfile);
-        } else {
-          handleUnlockSubmit();
-        }
+        handleUnlockSubmit();
         return;
       }
 
       if (e.key === 'Escape') {
         e.preventDefault();
         e.stopPropagation();
-        if (isUserPickerOpen) {
-          setIsUserPickerOpen(false);
-          setTimeout(() => inputRef.current?.focus(), 80);
-        } else if (profiles.length > 1) {
-          setIsUserPickerOpen(true);
-        } else if (!selectedProfile?.pin) {
+        if (!hasPin) {
           onWake();
         } else {
           setPassword('');
@@ -231,8 +328,7 @@ export const AerialScreensaver: React.FC<AerialScreensaverProps> = ({ isActive, 
         return;
       }
 
-      // If user picker is closed and typing printable characters, focus password input
-      if (!isUserPickerOpen && document.activeElement !== inputRef.current) {
+      if (hasPin && document.activeElement !== inputRef.current) {
         if (e.key.length === 1 && !e.ctrlKey && !e.altKey && !e.metaKey) {
           inputRef.current?.focus();
         }
@@ -240,28 +336,37 @@ export const AerialScreensaver: React.FC<AerialScreensaverProps> = ({ isActive, 
     };
 
     window.addEventListener('keydown', handleWindowKeyDown);
-    return () => {
-      window.removeEventListener('keydown', handleWindowKeyDown);
-    };
-  }, [isActive, isUserPickerOpen, selectedProfile, profiles.length, handleUnlockSubmit, onWake]);
+    return () => window.removeEventListener('keydown', handleWindowKeyDown);
+  }, [
+    isActive,
+    isUserPickerOpen,
+    profiles,
+    pickerFocusedIdx,
+    selectedProfile,
+    actionFocusedIdx,
+    hasPin,
+    handleSelectUser,
+    handleUnlockSubmit,
+    openUserPicker,
+    onWake,
+  ]);
 
-  // Backdrop click handler
   const handleBackdropClick = (e: React.MouseEvent) => {
-    if (
-      (e.target as HTMLElement).closest('.tv-macos-lock-input-pill') ||
-      (e.target as HTMLElement).closest('button') ||
-      (e.target as HTMLElement).closest('.tv-macos-user-card')
-    ) {
+    const target = e.target as HTMLElement;
+    if (target.closest('.tv-ambient-auth-card')) {
       return;
     }
 
     if (isUserPickerOpen) {
       setIsUserPickerOpen(false);
-      setTimeout(() => inputRef.current?.focus(), 80);
+      setTimeout(() => {
+        if (hasPin) inputRef.current?.focus();
+        else continueBtnRef.current?.focus();
+      }, 80);
       return;
     }
 
-    if (!selectedProfile?.pin) {
+    if (!hasPin) {
       onWake();
     } else {
       inputRef.current?.focus();
@@ -272,16 +377,19 @@ export const AerialScreensaver: React.FC<AerialScreensaverProps> = ({ isActive, 
 
   const currentShot = AERIAL_SHOTS[currentIndex];
   const displayName = selectedProfile?.name || 'Primary User';
-  const avatarColor = selectedProfile?.avatarColor || 'linear-gradient(135deg, #e50914, #ff453a)';
+  const avatarColor = selectedProfile?.avatarColor || 'var(--md-sys-color-primary-container)';
   const avatarIcon = selectedProfile?.avatarIcon || 'user';
+  const profileBadge = selectedProfile?.badge?.trim();
 
   return (
     <div
-      className="tv-screensaver-container tv-macos-lockscreen"
-      role="presentation"
+      className="tv-ambient-container"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Kaira Ambient Lock Screen"
       onClick={handleBackdropClick}
     >
-      {/* 4K Aerial Video Layer or High-Res Photographic Fallback (Sonoma signature) */}
+      {/* Full-Bleed Backdrop Layer */}
       {!videoFailed ? (
         <video
           key={currentShot.videoUrl}
@@ -291,157 +399,234 @@ export const AerialScreensaver: React.FC<AerialScreensaverProps> = ({ isActive, 
           loop
           muted
           playsInline
-          className="tv-screensaver-video"
-          onError={() => {
-            console.warn(`[AerialScreensaver] Video playback failed for ${currentShot.id}, falling back to photographic backdrop`);
-            setVideoFailed(true);
-          }}
+          className="tv-ambient-media"
+          onError={() => setVideoFailed(true)}
         />
       ) : (
         <div
-          className="tv-screensaver-video tv-screensaver-photo-fallback"
+          className="tv-ambient-media tv-ambient-photo-fallback"
           style={{ backgroundImage: `url(${currentShot.fallbackImageUrl})` }}
         />
       )}
 
-      {/* Cinematic Vignette Overlay */}
-      <div className="tv-screensaver-scrim" />
+      {/* Directional M3 Scrim */}
+      <div className="tv-ambient-scrim" aria-hidden="true" />
 
-      {/* macOS Lockscreen Shell (Distraction-Free Centered Layout) */}
-      <div className="tv-macos-lock-content">
-        {/* Hero Clock & Date */}
-        <main className="tv-macos-lock-center">
-          <div className="tv-macos-lock-clock-box">
-            <div className="tv-macos-lock-date">{dateStr}</div>
-            <h1 className="tv-macos-lock-time">{timeStr}</h1>
+      {/* Bottom-Anchored Asymmetric Ambient Stage */}
+      <div className="tv-ambient-stage">
+        {/* Left: Editorial Time, Date & Scene Credit */}
+        <div className="tv-ambient-clock-col">
+          <div className="tv-ambient-date">{dateStr}</div>
+          <h1 className="tv-ambient-time tabular-nums">
+            {timeStr}
+            <span className="tv-ambient-period">{periodStr}</span>
+          </h1>
+          <div className="tv-ambient-credit">
+            <MapPin size={14} aria-hidden="true" />
+            <span>{currentShot.title}</span>
+            <span className="tv-meta-dot" aria-hidden="true" />
+            <span>{currentShot.location}</span>
           </div>
+        </div>
 
+        {/* Right: M3 Tonal Profile & Unlock Card */}
+        <div className="tv-ambient-auth-card">
           {!isUserPickerOpen ? (
-            /* 1. Selected User Login Card */
-            <div className="tv-macos-lock-auth-pod">
-              <div
-                className="tv-macos-lock-avatar"
-                style={{ background: avatarColor }}
-                onClick={() => {
-                  if (profiles.length > 1) {
-                    setIsUserPickerOpen(true);
-                  } else if (!selectedProfile?.pin) {
-                    onWake();
-                  } else {
-                    inputRef.current?.focus();
-                  }
-                }}
-                title={profiles.length > 1 ? `Switch User (${displayName})` : displayName}
-              >
-                {renderAvatarIcon(avatarIcon, 38, '#ffffff')}
-              </div>
-              <div className="tv-macos-lock-username">{displayName}</div>
-
-              {/* Typable Frosted Password Form & Pill */}
-              <form onSubmit={handleUnlockSubmit} className="tv-macos-lock-form">
+            <>
+              <div className="tv-ambient-profile-row">
                 <div
-                  className={`tv-macos-lock-input-pill ${isShaking ? 'shake-anim' : ''}`}
-                  onClick={() => inputRef.current?.focus()}
+                  className="tv-ambient-avatar"
+                  style={{ background: avatarColor }}
                 >
-                  <div className="tv-macos-lock-pill-icon">
-                    <Key size={14} />
-                  </div>
-                  <input
-                    ref={inputRef}
-                    type="password"
-                    value={password}
-                    onChange={(e) => {
-                      setPassword(e.target.value);
-                      setErrorMsg(null);
-                    }}
-                    placeholder={selectedProfile?.pin ? 'Enter PIN or Password' : 'Enter Password'}
-                    className={`tv-macos-lock-input-field ${password ? 'has-text' : ''}`}
-                    autoComplete="off"
-                    spellCheck={false}
-                    autoFocus
-                  />
-                  <button
-                    type="submit"
-                    className={`tv-macos-lock-pill-btn ${password ? 'active' : ''}`}
-                    aria-label="Unlock"
-                  >
-                    <ArrowRight size={13} strokeWidth={2.5} />
-                  </button>
+                  {renderAvatarIcon(avatarIcon, 24, '#ffffff')}
+                  {hasPin && (
+                    <span className="tv-ambient-avatar-lock" aria-hidden="true">
+                      <Lock size={10} />
+                    </span>
+                  )}
                 </div>
 
-                {errorMsg ? (
-                  <div className="tv-macos-lock-error-hint">{errorMsg}</div>
-                ) : (
-                  <div className="tv-macos-lock-wake-hint">
-                    {selectedProfile?.pin
-                      ? 'Enter password and press Return to unlock'
-                      : 'Press Return or click to unlock'}
+                <div className="tv-ambient-profile-info">
+                  <div className="tv-ambient-profile-name">{displayName}</div>
+                  <div className="tv-ambient-profile-meta">
+                    {profileBadge ? (
+                      <>
+                        <span>{profileBadge}</span>
+                        <span className="tv-meta-dot" aria-hidden="true" />
+                      </>
+                    ) : null}
+                    <span>{hasPin ? 'PIN required to unlock' : 'Ready to resume'}</span>
                   </div>
-                )}
-              </form>
+                </div>
+              </div>
 
-              {/* Switch User Button (visible when multiple profiles exist) */}
-              {profiles.length > 1 && (
+              {hasPin ? (
+                <form onSubmit={handleUnlockSubmit} className="tv-ambient-form">
+                  <div
+                    className={`tv-ambient-pin-row ${isShaking ? 'shake-anim' : ''}`}
+                    onClick={() => inputRef.current?.focus()}
+                  >
+                    <Lock size={16} className="tv-ambient-pin-icon" aria-hidden="true" />
+                    <input
+                      ref={inputRef}
+                      type={showPin ? 'text' : 'password'}
+                      inputMode="numeric"
+                      value={password}
+                      onChange={(e) => {
+                        setPassword(e.target.value);
+                        setErrorMsg(null);
+                      }}
+                      placeholder="Enter profile PIN"
+                      aria-label="Enter profile PIN"
+                      className="tv-ambient-pin-input tabular-nums"
+                      autoComplete="off"
+                      spellCheck={false}
+                      autoFocus
+                    />
+                    <button
+                      type="button"
+                      className="tv-ambient-pin-toggle"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setShowPin((prev) => !prev);
+                        inputRef.current?.focus();
+                      }}
+                      aria-label={showPin ? 'Hide PIN' : 'Show PIN'}
+                    >
+                      {showPin ? <EyeOff size={16} /> : <Eye size={16} />}
+                    </button>
+                  </div>
+
+                  {errorMsg && (
+                    <div className="tv-ambient-error" role="alert">
+                      {errorMsg}
+                    </div>
+                  )}
+
+                  <div className="tv-ambient-actions">
+                    <button
+                      ref={continueBtnRef}
+                      type="submit"
+                      className={`tv-ambient-btn-primary ${actionFocusedIdx === 0 ? 'dpad-active' : ''}`}
+                    >
+                      <span>Unlock</span>
+                      <ArrowRight size={17} />
+                    </button>
+
+                    {profiles.length > 1 && (
+                      <button
+                        ref={switchBtnRef}
+                        type="button"
+                        className={`tv-ambient-btn-secondary ${actionFocusedIdx === 1 ? 'dpad-active' : ''}`}
+                        onClick={openUserPicker}
+                      >
+                        <Users size={16} />
+                        <span>Switch Profile</span>
+                      </button>
+                    )}
+                  </div>
+                </form>
+              ) : (
+                <div className="tv-ambient-actions">
+                  <button
+                    ref={continueBtnRef}
+                    type="button"
+                    className={`tv-ambient-btn-primary ${actionFocusedIdx === 0 ? 'dpad-active' : ''}`}
+                    onClick={() => handleUnlockSubmit()}
+                  >
+                    <span>Continue</span>
+                    <ArrowRight size={17} />
+                  </button>
+
+                  {profiles.length > 1 && (
+                    <button
+                      ref={switchBtnRef}
+                      type="button"
+                      className={`tv-ambient-btn-secondary ${actionFocusedIdx === 1 ? 'dpad-active' : ''}`}
+                      onClick={openUserPicker}
+                    >
+                      <Users size={16} />
+                      <span>Switch Profile</span>
+                    </button>
+                  )}
+                </div>
+              )}
+
+              <div className="tv-ambient-helper">
+                {hasPin
+                  ? 'Enter your PIN and select Unlock'
+                  : 'Tap Continue or press Enter to resume'}
+              </div>
+            </>
+          ) : (
+            <div className="tv-ambient-picker">
+              <div className="tv-ambient-picker-header">
+                <span className="tv-ambient-picker-title">Switch Profile</span>
                 <button
                   type="button"
-                  className="tv-macos-switch-user-btn"
-                  onClick={() => setIsUserPickerOpen(true)}
-                  title="Select user login"
+                  className="tv-ambient-picker-back"
+                  onClick={() => {
+                    setIsUserPickerOpen(false);
+                    setTimeout(() => {
+                      if (hasPin) inputRef.current?.focus();
+                      else continueBtnRef.current?.focus();
+                    }, 80);
+                  }}
                 >
-                  <Users size={13} />
-                  <span>Switch User</span>
+                  <ArrowLeft size={16} />
+                  <span>Back</span>
                 </button>
-              )}
-            </div>
-          ) : (
-            /* 2. Select User Login Picker (macOS Sonoma Multi-User Grid) */
-            <div className="tv-macos-lock-auth-pod tv-macos-user-picker-pod">
-              <div className="tv-macos-user-picker-title">Select User to Log In</div>
-              <div className="tv-macos-user-picker-grid">
-                {profiles.map((prof) => {
-                  const isSelected = prof.id === selectedProfile?.id;
+              </div>
+
+              <div className="tv-ambient-picker-list" role="listbox" aria-label="User Profiles">
+                {profiles.map((prof, idx) => {
+                  const isCurrent = prof.id === selectedProfile?.id;
+                  const isHighlighted = idx === pickerFocusedIdx;
                   return (
                     <button
                       key={prof.id}
                       type="button"
-                      className={`tv-macos-user-card ${isSelected ? 'selected' : ''}`}
+                      role="option"
+                      aria-selected={isCurrent}
+                      className={`tv-ambient-user-item ${isCurrent ? 'selected' : ''} ${
+                        isHighlighted ? 'focused' : ''
+                      }`}
                       onClick={() => handleSelectUser(prof)}
-                      title={`Log in as ${prof.name}`}
                     >
-                      <div className="tv-macos-user-card-avatar-wrapper">
-                        <div
-                          className="tv-macos-user-card-avatar"
-                          style={{ background: prof.avatarColor }}
-                        >
-                          {renderAvatarIcon(prof.avatarIcon || 'user', 32, '#ffffff')}
-                        </div>
-                        {prof.pin && (
-                          <div className="tv-macos-user-card-lock-badge" title="PIN Protected">
-                            <Lock size={9} />
-                          </div>
-                        )}
+                      <div
+                        className="tv-ambient-user-avatar"
+                        style={{ background: prof.avatarColor }}
+                      >
+                        {renderAvatarIcon(prof.avatarIcon || 'user', 20, '#ffffff')}
                       </div>
-                      <span className="tv-macos-user-card-name">{prof.name}</span>
-                      <span className="tv-macos-user-card-badge">{prof.badge}</span>
+
+                      <div className="tv-ambient-user-text">
+                        <span className="tv-ambient-user-name">{prof.name}</span>
+                        <span className="tv-ambient-user-meta">
+                          {prof.badge}
+                          {prof.pin && (
+                            <>
+                              <span className="tv-meta-dot" aria-hidden="true" />
+                              <span>PIN Protected</span>
+                            </>
+                          )}
+                        </span>
+                      </div>
+
+                      <div className="tv-ambient-user-trailing" aria-hidden="true">
+                        {prof.pin ? (
+                          <Lock size={15} />
+                        ) : isCurrent ? (
+                          <Check size={17} />
+                        ) : null}
+                      </div>
                     </button>
                   );
                 })}
               </div>
-
-              <button
-                type="button"
-                className="tv-macos-user-picker-back"
-                onClick={() => {
-                  setIsUserPickerOpen(false);
-                  setTimeout(() => inputRef.current?.focus(), 80);
-                }}
-              >
-                <ArrowLeft size={13} />
-                <span>Back</span>
-              </button>
             </div>
           )}
-        </main>
+        </div>
       </div>
     </div>
   );

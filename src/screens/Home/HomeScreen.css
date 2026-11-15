@@ -37,16 +37,16 @@
   inset: 0;
   background: linear-gradient(
     90deg,
-    rgba(13, 14, 18, 0.94) 0%,
-    rgba(13, 14, 18, 0.72) 36%,
-    rgba(13, 14, 18, 0.2) 65%,
-    rgba(13, 14, 18, 0) 85%
+    rgba(14, 16, 20, 0.95) 0%,
+    rgba(14, 16, 20, 0.75) 38%,
+    rgba(14, 16, 20, 0.24) 68%,
+    rgba(14, 16, 20, 0) 88%
   ),
   linear-gradient(
     180deg,
-    rgba(13, 14, 18, 0.15) 0%,
-    rgba(13, 14, 18, 0) 30%,
-    rgba(13, 14, 18, 0.85) 85%,
+    rgba(14, 16, 20, 0.22) 0%,
+    rgba(14, 16, 20, 0) 30%,
+    rgba(14, 16, 20, 0.88) 85%,
     var(--bg-app) 100%
   );
 }
@@ -63,26 +63,17 @@
 .tv-hero-badge-row {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: var(--space-sm);
   margin-bottom: 6px;
 }
 
-.tv-hero-badge-pill {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  background: rgba(26, 115, 232, 0.16);
-  border: 1px solid rgba(138, 180, 248, 0.3);
-  color: var(--google-blue-light);
+.tv-hero-format-tag {
+  color: var(--md-sys-color-primary);
   font-size: var(--font-caption);
-  font-weight: 600;
-  padding: 4px 12px;
-  border-radius: var(--radius-pill);
-  letter-spacing: 0.3px;
-}
-
-.badge-icon {
-  color: var(--google-blue-light);
+  font-weight: 700;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
 }
 
 .tv-hero-source {
@@ -97,14 +88,16 @@
   color: var(--text-primary);
   line-height: 1.15;
   letter-spacing: -0.5px;
-  text-shadow: 0 4px 20px rgba(0, 0, 0, 0.7);
+  text-shadow: 0 4px 20px rgba(0, 0, 0, 0.72);
+  text-wrap: balance;
 }
 
 .tv-hero-subtitle {
   font-size: var(--font-title-sm);
   font-weight: 500;
-  color: var(--google-blue-light);
+  color: var(--md-sys-color-primary);
   margin-top: 4px;
+  font-variant-numeric: tabular-nums;
 }
 
 .tv-hero-rating-score {
@@ -156,31 +149,26 @@
 }
 
 .tv-hero-btn.primary-btn .tv-btn-inner {
-  background-color: #ffffff;
-  color: #0b1528;
-  transition: background-color var(--duration-base) var(--easing-standard),
-              color var(--duration-base) var(--easing-standard);
+  background-color: var(--md-sys-color-on-surface);
+  color: var(--md-sys-color-background);
 }
 
-.tv-hero-btn.primary-btn .tv-btn-inner.focused,
-.tv-hero-btn.primary-btn:hover .tv-btn-inner {
-  background-color: var(--google-blue);
-  color: #ffffff;
-  box-shadow: 0 4px 14px rgba(26, 115, 232, 0.35);
+.tv-hero-btn.primary-btn .tv-btn-inner.focused {
+  background-color: var(--md-sys-color-primary);
+  color: var(--md-sys-color-on-primary);
+  box-shadow: 0 0 0 2px var(--md-sys-color-focus-ring), 0 8px 20px rgba(0, 0, 0, 0.45);
 }
 
 .tv-hero-btn.secondary-btn .tv-btn-inner {
-  background-color: rgba(255, 255, 255, 0.12);
+  background-color: var(--md-sys-color-surface-container-high);
   color: var(--text-primary);
-  border: 1px solid var(--border-subtle);
-  transition: background-color var(--duration-base) var(--easing-standard),
-              border-color var(--duration-base) var(--easing-standard);
+  border: 1px solid var(--border-medium);
 }
 
-.tv-hero-btn.secondary-btn .tv-btn-inner.focused,
-.tv-hero-btn.secondary-btn:hover .tv-btn-inner {
-  background-color: rgba(255, 255, 255, 0.22);
-  border-color: rgba(138, 180, 248, 0.5);
+.tv-hero-btn.secondary-btn .tv-btn-inner.focused {
+  background-color: var(--md-sys-color-surface-container-highest);
+  border-color: var(--md-sys-color-focus-ring);
+  box-shadow: 0 0 0 2px var(--md-sys-color-focus-ring);
 }
 
 
@@ -378,8 +366,24 @@
 }
 
 /* ==========================================================================
-   Mobile Responsive Adjustments (Screens <= 768px down to 350px)
+   Tablet & Mobile Responsive Adjustments
    ========================================================================== */
+
+@media (min-width: 769px) and (max-width: 1100px) {
+  .tv-hero-section {
+    min-height: 44vh;
+    margin-bottom: 28px;
+  }
+
+  .tv-hero-title {
+    font-size: clamp(1.75rem, 3.6vw, 2.5rem);
+  }
+
+  .tv-btn-inner {
+    height: 46px;
+    padding: 0 22px;
+  }
+}
 
 @media (max-width: 768px) {
   .desktop-only-hero,
@@ -444,11 +448,6 @@
     gap: 6px;
   }
 
-  .tv-hero-badge-pill {
-    padding: 3px 8px;
-    font-size: 11px;
-  }
-
   .tv-hero-title {
     font-size: 1.35rem;
   }
@@ -459,8 +458,8 @@
   }
 
   .tv-btn-inner {
-    height: 40px;
-    padding: 0 16px;
+    height: 44px;
+    padding: 0 18px;
     font-size: 13px;
   }
 }

@@ -35,17 +35,44 @@ import { playbackService } from './services/playback/PlaybackService';
 import { addonService } from './services/addons/AddonService';
 import { MediaItem } from './types';
 import { Loader2, Gamepad, Volume2, VolumeX, Smartphone } from 'lucide-react';
+import { OfflineIndicator } from './components/PWA/PWAInstallBanner';
+import { platform } from './platform';
+import { AndroidOnboarding } from './components/Onboarding/AndroidOnboarding';
+import {
+  shouldShowAndroidOnboarding,
+  isRemoteFeatureEnabled,
+  isAndroidOnboardingCompleted,
+} from './components/Onboarding/onboardingState';
 import './App.css';
 
 const TABS: NavigationTab[] = ['for-you', 'movies', 'shows', 'music', 'library'];
 
 export const App: React.FC = () => {
-  const [showSplash, setShowSplash] = useState<boolean>(true);
+  const isRemoteEnabled = isRemoteFeatureEnabled(platform.isAndroid);
+  const [showSplash, setShowSplash] = useState<boolean>(() => {
+    const params = new URLSearchParams(window.location.search);
+    return params.get('autostart') !== '1';
+  });
+  const [showOnboarding, setShowOnboarding] = useState<boolean>(() =>
+    shouldShowAndroidOnboarding({
+      isAndroid: platform.isAndroid,
+      search: window.location.search,
+      completed: isAndroidOnboardingCompleted(),
+    })
+  );
   const [currentTab, setCurrentTab] = useState<NavigationTab>('for-you');
   const [tabDirection, setTabDirection] = useState<'forward' | 'backward'>('forward');
   const [activeModal, setActiveModal] = useState<'search' | 'settings' | null>(null);
   const [isQuickSettingsOpen, setIsQuickSettingsOpen] = useState<boolean>(false);
-  const [isProfileModalOpen, setIsProfileModalOpen] = useState<boolean>(() => profileService.getState().promptOnLaunch);
+  const [isProfileModalOpen, setIsProfileModalOpen] = useState<boolean>(
+    () =>
+      profileService.getState().promptOnLaunch &&
+      !shouldShowAndroidOnboarding({
+        isAndroid: platform.isAndroid,
+        search: window.location.search,
+        completed: isAndroidOnboardingCompleted(),
+      })
+  );
   const [isSleepModalOpen, setIsSleepModalOpen] = useState<boolean>(false);
   const [isRemoteModalOpen, setIsRemoteModalOpen] = useState<boolean>(false);
   const [activeProfile, setActiveProfile] = useState<UserProfile>(() => profileService.getActiveProfile());
@@ -609,23 +636,32 @@ export const App: React.FC = () => {
       }
     });
 
-    const unsubRemote = remoteService.subscribeClientCount((count) => {
-      if (count > 0) {
-        setRemoteToast({ message: `Phone Remote Connected (${count})`, count });
-        setTimeout(() => setRemoteToast(null), 3200);
-      }
-    });
+    const unsubRemote = isRemoteEnabled
+      ? remoteService.subscribeClientCount((count) => {
+          if (count > 0) {
+            setRemoteToast({ message: `Phone Remote Connected (${count})`, count });
+            setTimeout(() => setRemoteToast(null), 3200);
+          }
+        })
+      : () => {};
 
-    remoteService.init({
-      onSetTab: handleSelectTab,
-      onOpenSearch: () => setActiveModal('search'),
-      onOpenSettings: handleOpenSettings,
-      onOpenQuickSettings: () => setIsQuickSettingsOpen((prev) => !prev),
-      onOpenSleepTimer: () => setIsSleepModalOpen(true),
-      onOpenRemoteModal: () => setIsRemoteModalOpen(true),
-      onBack: handleBack,
-      onTriggerScreensaver: () => screensaverService.trigger(),
-    });
+    if (isRemoteEnabled) {
+      remoteService.init({
+        onSetTab: handleSelectTab,
+        onOpenSearch: () => setActiveModal('search'),
+        onOpenSettings: handleOpenSettings,
+        onOpenQuickSettings: () => setIsQuickSettingsOpen((prev) => !prev),
+        onOpenSleepTimer: () => setIsSleepModalOpen(true),
+        onOpenRemoteModal: () => setIsRemoteModalOpen(true),
+        onBack: handleBack,
+        onTriggerScreensaver: () => screensaverService.trigger(),
+      });
+    }
+
+    const handleOpenOnboarding = () => {
+      setShowOnboarding(true);
+    };
+    window.addEventListener('kaira:open-onboarding', handleOpenOnboarding);
 
     const handleMouseMove = () => {
       document.body.classList.remove('hide-cursor');
@@ -643,16 +679,18 @@ export const App: React.FC = () => {
       cleanup();
       unsubGamepadActions();
       unsubRemote();
+      window.removeEventListener('kaira:open-onboarding', handleOpenOnboarding);
       window.removeEventListener('keydown', handleVolumeKeys);
       window.removeEventListener('mousemove', handleMouseMove);
       unsubLaunch();
       unsubProfile();
     };
 
-  }, [handleBack, handleOpenSearch, handleOpenSettings, handleSelectTab, handleTabPrev, handleTabNext]);
+  }, [handleBack, handleOpenSearch, handleOpenSettings, handleSelectTab, handleTabPrev, handleTabNext, isRemoteEnabled]);
 
-  // Sync TV UI state with companion remote
+  // Sync TV UI state with companion remote (non-Android only)
   useEffect(() => {
+    if (!isRemoteEnabled) return;
     const modalType = isRemoteModalOpen
       ? 'remote'
       : isQuickSettingsOpen
@@ -663,7 +701,7 @@ export const App: React.FC = () => {
       ? 'sleep'
       : activeModal;
     remoteService.updateUIState(currentTab, modalType as any);
-  }, [currentTab, activeModal, isQuickSettingsOpen, isProfileModalOpen, isSleepModalOpen, isRemoteModalOpen]);
+  }, [currentTab, activeModal, isQuickSettingsOpen, isProfileModalOpen, isSleepModalOpen, isRemoteModalOpen, isRemoteEnabled]);
 
   // Update Gamepad & Remote callbacks on navigation state change
   useEffect(() => {
@@ -674,29 +712,80 @@ export const App: React.FC = () => {
       onTabPrev: handleTabPrev,
       onTabNext: handleTabNext,
     });
-    remoteService.setCallbacks({
-      onSetTab: handleSelectTab,
-      onOpenSearch: () => setActiveModal('search'),
-      onOpenSettings: handleOpenSettings,
-      onOpenQuickSettings: () => setIsQuickSettingsOpen((prev) => !prev),
-      onOpenSleepTimer: () => setIsSleepModalOpen(true),
-      onOpenRemoteModal: () => setIsRemoteModalOpen(true),
-      onBack: handleBack,
-      onTriggerScreensaver: () => screensaverService.trigger(),
-    });
-  }, [handleBack, handleOpenSearch, handleOpenSettings, handleSelectTab, handleTabPrev, handleTabNext]);
+    if (isRemoteEnabled) {
+      remoteService.setCallbacks({
+        onSetTab: handleSelectTab,
+        onOpenSearch: () => setActiveModal('search'),
+        onOpenSettings: handleOpenSettings,
+        onOpenQuickSettings: () => setIsQuickSettingsOpen((prev) => !prev),
+        onOpenSleepTimer: () => setIsSleepModalOpen(true),
+        onOpenRemoteModal: () => setIsRemoteModalOpen(true),
+        onBack: handleBack,
+        onTriggerScreensaver: () => screensaverService.trigger(),
+      });
+    }
+  }, [handleBack, handleOpenSearch, handleOpenSettings, handleSelectTab, handleTabPrev, handleTabNext, isRemoteEnabled]);
+
+  // Android hardware back / system gesture navigation bridge
+  useEffect(() => {
+    if (!platform.isAndroid && !window.matchMedia('(max-width: 768px)').matches) return;
+
+    const onPopState = () => {
+      const hasOverlay =
+        isStandbyActive ||
+        isScreensaverActive ||
+        isRemoteModalOpen ||
+        isQuickSettingsOpen ||
+        isProfileModalOpen ||
+        isSleepModalOpen ||
+        Boolean(activeVideoSource) ||
+        Boolean(pipVideoSource) ||
+        isMusicPlayerOpen ||
+        Boolean(activeModal) ||
+        Boolean(selectedMovie) ||
+        Boolean(selectedShow) ||
+        Boolean(selectedAlbum) ||
+        currentTab !== 'for-you';
+
+      if (hasOverlay) {
+        handleBack();
+        window.history.pushState({ kairaNav: true }, '');
+      }
+    };
+
+    window.history.pushState({ kairaNav: true }, '');
+    window.addEventListener('popstate', onPopState);
+    return () => window.removeEventListener('popstate', onPopState);
+  }, [
+    handleBack,
+    isStandbyActive,
+    isScreensaverActive,
+    isRemoteModalOpen,
+    isQuickSettingsOpen,
+    isProfileModalOpen,
+    isSleepModalOpen,
+    activeVideoSource,
+    pipVideoSource,
+    isMusicPlayerOpen,
+    activeModal,
+    selectedMovie,
+    selectedShow,
+    selectedAlbum,
+    currentTab,
+  ]);
 
   return (
-    <div className="tv-app-shell">
-      {/* Top Google TV Navigation Bar (hidden on detail views) */}
-      {!isDetailOpen && (
+    <div className={`tv-app-shell ${platform.isAndroid ? 'is-android' : ''} ${platform.isAndroidTV ? 'is-android-tv' : ''}`}>
+      <OfflineIndicator />
+      {/* Top Google TV Navigation Bar (hidden on detail views and full-screen modals) */}
+      {!isDetailOpen && !activeModal && (
         <TopNav
           activeScreen={activeModal || currentTab}
           onSelectTab={handleSelectTab}
           onOpenSearch={handleOpenSearch}
           onOpenSettings={handleOpenSettings}
           onOpenProfile={() => setIsProfileModalOpen(true)}
-          onOpenRemoteModal={() => setIsRemoteModalOpen(true)}
+          onOpenRemoteModal={isRemoteEnabled ? () => setIsRemoteModalOpen(true) : undefined}
           activeProfile={activeProfile}
           activeProfileName={activeProfile.name}
         />
@@ -873,7 +962,7 @@ export const App: React.FC = () => {
       {isQuickSettingsOpen && (
         <QuickSettingsModal
           onClose={() => setIsQuickSettingsOpen(false)}
-          onOpenRemoteModal={() => setIsRemoteModalOpen(true)}
+          onOpenRemoteModal={isRemoteEnabled ? () => setIsRemoteModalOpen(true) : undefined}
         />
       )}
 
@@ -894,8 +983,8 @@ export const App: React.FC = () => {
         <SleepTimerModal onClose={() => setIsSleepModalOpen(false)} />
       )}
 
-      {/* Companion Phone Remote Modal */}
-      {isRemoteModalOpen && (
+      {/* Companion Phone Remote Modal (disabled on Android) */}
+      {isRemoteEnabled && isRemoteModalOpen && (
         <CompanionRemoteModal onClose={() => setIsRemoteModalOpen(false)} />
       )}
 
@@ -919,8 +1008,8 @@ export const App: React.FC = () => {
         </div>
       )}
 
-      {/* Phone Remote Connection HUD Notification */}
-      {remoteToast && (
+      {/* Phone Remote Connection HUD Notification (disabled on Android) */}
+      {isRemoteEnabled && remoteToast && (
         <div className="tv-gamepad-status-banner animate-fade-in" role="status">
           <Smartphone size={20} color="#81c995" />
           <span>{remoteToast.message}</span>
@@ -954,6 +1043,14 @@ export const App: React.FC = () => {
 
       {/* Startup Splash Animation */}
       {showSplash && <SplashScreen onFinish={() => setShowSplash(false)} />}
+
+      {/* Initial Android Onboarding Flow (Android TV & Mobile/Tablet) */}
+      {!showSplash && showOnboarding && (
+        <AndroidOnboarding
+          onComplete={() => setShowOnboarding(false)}
+          onProfileChanged={(prof) => setActiveProfile(prof)}
+        />
+      )}
     </div>
   );
 };

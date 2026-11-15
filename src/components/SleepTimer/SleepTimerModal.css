@@ -94,10 +94,6 @@
   flex-shrink: 0;
 }
 
-.tv-modal-close-pill:hover:not(.focused) {
-  background-color: rgba(255, 255, 255, 0.16);
-}
-
 .tv-modal-close-pill.focused {
   background-color: #ffffff;
   color: #000000;
@@ -179,10 +175,6 @@
   transition: all var(--duration-base) var(--easing-standard);
 }
 
-.tv-sleep-preset-card:hover:not(.focused) {
-  background: rgba(255, 255, 255, 0.08);
-}
-
 .tv-sleep-preset-card.focused {
   background: rgba(255, 255, 255, 0.16);
   border-color: rgba(255, 255, 255, 0.4);
@@ -242,10 +234,6 @@
   line-height: 1;
   cursor: pointer;
   transition: all var(--duration-base) var(--easing-standard);
-}
-
-.tv-sleep-instant-btn:hover:not(.focused) {
-  background: rgba(255, 255, 255, 0.15);
 }
 
 .tv-sleep-instant-btn.focused {

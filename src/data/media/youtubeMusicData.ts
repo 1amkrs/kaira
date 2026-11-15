@@ -556,7 +556,7 @@ export const YOUTUBE_MUSIC_VIDEOS: MusicVideo[] = [
     id: 'mv-1',
     title: 'Creepy Nuts - Bling-Bang-Bang-Born (Official Video)',
     artist: 'Creepy Nuts',
-    thumbnail: 'https://i.ytimg.com/vi/mLW35ymz1gk/hqdefault.jpg',
+    thumbnail: 'https://is1-ssl.mzstatic.com/image/thumb/Music116/v4/12/81/dc/1281dc28-48e6-5ff7-642d-6cf4d487d9e0/4547366660890.jpg/1000x1000bb.jpg',
     duration: '2:52',
     durationSeconds: 172,
     viewsCount: '420M views',

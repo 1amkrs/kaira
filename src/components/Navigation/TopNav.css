@@ -1,11 +1,12 @@
 /* ==========================================================================
-   Google TV Header Navigation Bar — Material Design 3 (M3)
+   Kaira Navigation Bar — Material Design 3 for Android TV, Tablet & Mobile
    ========================================================================== */
 
 .tv-topnav-container {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 24px;
   height: var(--top-nav-height);
   padding: 0 var(--screen-padding-x);
   position: absolute;
@@ -13,21 +14,26 @@
   left: 0;
   right: 0;
   z-index: 100;
-  background: transparent;
+  background: linear-gradient(
+    180deg,
+    rgba(14, 16, 20, 0.88) 0%,
+    rgba(14, 16, 20, 0.48) 58%,
+    rgba(14, 16, 20, 0) 100%
+  );
   pointer-events: none;
 }
 
 /* --------------------------------------------------------------------------
-   Left Cluster: Profile + Nav Capsule + Actions Capsule
+   Zone 1: Profile Trigger (No Double Outer Ring)
    -------------------------------------------------------------------------- */
-.tv-gtv-left-cluster {
+.tv-gtv-brand-zone {
   display: flex;
   align-items: center;
-  gap: 14px;
+  gap: 12px;
+  flex-shrink: 0;
   pointer-events: auto;
 }
 
-/* 1. Profile Avatar (M3 Surface) */
 .tv-gtv-profile-focusable {
   border-radius: 50%;
   outline: none;
@@ -35,24 +41,17 @@
 
 .tv-gtv-avatar-btn {
   position: relative;
-  width: 44px;
-  height: 44px;
+  width: 40px;
+  height: 40px;
   border-radius: 50%;
-  padding: 2.5px;
-  background-color: rgba(255, 255, 255, 0.12);
-  border: 1px solid rgba(255, 255, 255, 0.18);
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  transition: all 180ms cubic-bezier(0.2, 0, 0, 1);
-}
-
-.tv-gtv-avatar-img {
-  width: 100%;
-  height: 100%;
-  border-radius: 50%;
-  object-fit: cover;
+  border: 2px solid transparent;
+  transition:
+    border-color var(--duration-base) var(--easing-standard),
+    box-shadow var(--duration-base) var(--easing-standard);
 }
 
 .tv-gtv-avatar-fallback {
@@ -66,181 +65,176 @@
 
 .tv-gtv-avatar-lock {
   position: absolute;
-  bottom: -1px;
-  right: -1px;
-  width: 14px;
-  height: 14px;
+  bottom: -2px;
+  right: -2px;
+  width: 15px;
+  height: 15px;
   border-radius: 50%;
-  background-color: #ea4335;
-  border: 1.5px solid #0f0f14;
+  background-color: var(--md-sys-color-surface-container-highest);
+  border: 1.5px solid var(--md-sys-color-background);
   display: flex;
   align-items: center;
   justify-content: center;
 }
 
 .tv-gtv-avatar-btn.focused {
-  background-color: rgba(255, 255, 255, 0.22);
-  border-color: rgba(138, 180, 248, 0.7);
-  box-shadow: 0 0 0 1.5px rgba(138, 180, 248, 0.55);
+  border-color: var(--md-sys-color-focus-ring);
+  box-shadow: 0 0 0 2px var(--md-sys-color-focus-ring);
 }
 
-/* 2. Main Navigation Capsule (M3 Surface Container) */
-.tv-gtv-nav-capsule {
+/* --------------------------------------------------------------------------
+   Zone 2: Clean Typographic / Tonal Tab Strip (No Outer Capsule Cage)
+   -------------------------------------------------------------------------- */
+.tv-gtv-nav-strip {
   display: flex;
   align-items: center;
-  gap: 4px;
-  padding: 5px 8px;
-  border-radius: 9999px;
-  background-color: rgba(255, 255, 255, 0.12);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+  gap: 6px;
+  pointer-events: auto;
+  min-width: 0;
 }
 
-/* Search inside Capsule */
-.tv-gtv-search-focusable {
-  border-radius: 50%;
-  outline: none;
-}
-
-.tv-gtv-search-btn {
-  width: 38px;
-  height: 38px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: rgba(255, 255, 255, 0.85);
-  transition: all 180ms cubic-bezier(0.2, 0, 0, 1);
-  cursor: pointer;
-}
-
-.tv-gtv-search-btn.focused,
-.tv-gtv-search-btn:hover {
-  background-color: rgba(255, 255, 255, 0.2);
-  color: #ffffff;
-}
-
-/* Navigation Tabs (M3 Segmented Pill Navigation) */
 .tv-gtv-tab-focusable {
-  border-radius: 9999px;
+  border-radius: var(--radius-pill);
   outline: none;
+  flex-shrink: 0;
 }
 
 .tv-gtv-tab-pill {
-  padding: 9px 20px;
-  border-radius: 9999px;
+  padding: 9px 18px;
+  min-height: 40px;
+  border-radius: var(--radius-pill);
   font-size: 15px;
   font-weight: 500;
-  color: rgba(255, 255, 255, 0.8);
-  letter-spacing: 0.2px;
+  color: var(--md-sys-color-on-surface-variant);
+  letter-spacing: 0.15px;
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: all 180ms cubic-bezier(0.2, 0, 0, 1);
+  border: 1px solid transparent;
+  transition:
+    background-color var(--duration-base) var(--easing-standard),
+    color var(--duration-base) var(--easing-standard),
+    border-color var(--duration-base) var(--easing-standard),
+    box-shadow var(--duration-base) var(--easing-standard);
   cursor: pointer;
   user-select: none;
+  white-space: nowrap;
 }
 
-/* Active Tab: M3 Primary Container Pill with Google Blue subtle glow when focused */
 .tv-gtv-tab-pill.active {
-  background-color: #ffffff;
-  color: #0b1528;
-  font-weight: 700;
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
+  background-color: var(--md-sys-color-secondary-container);
+  color: var(--md-sys-color-on-secondary-container);
+  font-weight: 600;
 }
 
-/* Focus States */
-.tv-gtv-tab-pill.focused:not(.active),
-.tv-gtv-tab-pill:hover:not(.active) {
-  background-color: rgba(138, 180, 248, 0.18);
-  color: #ffffff;
-  box-shadow: 0 0 0 1.5px rgba(138, 180, 248, 0.45);
+.tv-gtv-tab-pill.focused:not(.active) {
+  background-color: var(--md-sys-color-surface-container-highest);
+  color: var(--md-sys-color-on-surface);
+  border-color: var(--md-sys-color-focus-ring);
+  box-shadow: 0 0 0 2px var(--md-sys-color-focus-ring);
 }
 
-.tv-gtv-tab-pill.active.focused,
-.tv-gtv-tab-pill.active:hover {
-  background-color: #ffffff;
-  color: #0b1528;
-  box-shadow: 0 0 0 1.5px rgba(138, 180, 248, 0.55), 0 2px 10px rgba(0, 0, 0, 0.3);
+.tv-gtv-tab-pill.active.focused {
+  background-color: var(--md-sys-color-primary);
+  color: var(--md-sys-color-on-primary);
+  border-color: var(--md-sys-color-focus-ring);
+  box-shadow: 0 0 0 2px var(--md-sys-color-focus-ring);
 }
 
-/* 3. Secondary Actions Capsule (M3 Surface Container) */
-.tv-gtv-actions-capsule {
+/* --------------------------------------------------------------------------
+   Zone 3: Utility Icon Buttons & Clock (No Capsule Box)
+   -------------------------------------------------------------------------- */
+.tv-gtv-right-cluster {
   display: flex;
   align-items: center;
-  gap: 4px;
-  padding: 5px 8px;
-  border-radius: 9999px;
-  background-color: rgba(255, 255, 255, 0.12);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+  gap: 6px;
+  flex-shrink: 0;
+  pointer-events: auto;
 }
 
 .tv-gtv-action-focusable {
   border-radius: 50%;
   outline: none;
+  flex-shrink: 0;
 }
 
 .tv-gtv-action-btn {
-  width: 38px;
-  height: 38px;
+  width: 40px;
+  height: 40px;
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
-  color: rgba(255, 255, 255, 0.85);
-  position: relative;
-  transition: all 180ms cubic-bezier(0.2, 0, 0, 1);
+  color: var(--md-sys-color-on-surface-variant);
+  background-color: transparent;
+  border: 1px solid transparent;
+  transition:
+    background-color var(--duration-base) var(--easing-standard),
+    color var(--duration-base) var(--easing-standard),
+    border-color var(--duration-base) var(--easing-standard),
+    box-shadow var(--duration-base) var(--easing-standard);
   cursor: pointer;
 }
 
-.tv-gtv-action-btn.active-sleep {
-  color: var(--google-blue-light);
+.tv-gtv-action-btn.connected {
+  color: var(--accent-green);
 }
 
-.tv-gtv-sleep-badge {
-  position: absolute;
-  top: -2px;
-  right: -2px;
-  font-size: 9px;
-  font-weight: 700;
-  background-color: var(--google-blue);
-  color: #ffffff;
-  padding: 0 4px;
-  border-radius: 4px;
-}
-
-.tv-gtv-action-btn.focused,
-.tv-gtv-action-btn:hover {
-  background-color: rgba(138, 180, 248, 0.18);
-  color: #ffffff;
-  box-shadow: 0 0 0 1.5px rgba(138, 180, 248, 0.45);
-}
-
-/* --------------------------------------------------------------------------
-   Right Cluster: Time only (Clean & Minimal)
-   -------------------------------------------------------------------------- */
-.tv-gtv-right-cluster {
-  display: flex;
-  align-items: center;
-  pointer-events: auto;
+.tv-gtv-action-btn.focused {
+  background-color: var(--md-sys-color-surface-container-highest);
+  color: var(--md-sys-color-on-surface);
+  border-color: var(--md-sys-color-focus-ring);
+  box-shadow: 0 0 0 2px var(--md-sys-color-focus-ring);
 }
 
 .tv-gtv-time {
-  color: rgba(255, 255, 255, 0.9);
-  font-size: 15px;
+  margin-left: 10px;
+  padding-left: 14px;
+  border-left: 1px solid var(--md-sys-color-outline-variant);
+  color: var(--md-sys-color-on-surface-variant);
+  font-size: 14.5px;
   font-weight: 500;
-  letter-spacing: 0.3px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 /* ==========================================================================
-   Mobile Responsive Navigation (Screens <= 768px down to 350px)
+   Tablet & Compact Desktop (769px – 1100px)
    ========================================================================== */
+@media (min-width: 769px) and (max-width: 1100px) {
+  .tv-topnav-container {
+    gap: 14px;
+  }
 
+  .tv-gtv-avatar-btn {
+    width: 38px;
+    height: 38px;
+  }
+
+  .tv-gtv-nav-strip {
+    gap: 2px;
+  }
+
+  .tv-gtv-tab-pill {
+    padding: 8px 14px;
+    font-size: 13.5px;
+  }
+
+  .tv-gtv-action-btn {
+    width: 38px;
+    height: 38px;
+  }
+
+  .tv-gtv-time {
+    margin-left: 6px;
+    padding-left: 10px;
+    font-size: 13px;
+  }
+}
+
+/* ==========================================================================
+   Mobile Responsive Navigation (<= 768px down to 350px)
+   ========================================================================== */
 .tv-mobile-top-bar {
   display: none;
 }
@@ -249,54 +243,12 @@
   display: none;
 }
 
-/* Tablet & Compact Desktop Navigation (769px – 1080px) */
-@media (min-width: 769px) and (max-width: 1080px) {
-  .tv-gtv-left-cluster {
-    gap: 8px;
-  }
-
-  .tv-gtv-avatar-btn {
-    width: 38px;
-    height: 38px;
-  }
-
-  .tv-gtv-nav-capsule {
-    padding: 4px 6px;
-    gap: 2px;
-  }
-
-  .tv-gtv-search-btn {
-    width: 34px;
-    height: 34px;
-  }
-
-  .tv-gtv-tab-pill {
-    padding: 7px 12px;
-    font-size: 13px;
-  }
-
-  .tv-gtv-actions-capsule {
-    padding: 4px 6px;
-    gap: 2px;
-  }
-
-  .tv-gtv-action-btn {
-    width: 34px;
-    height: 34px;
-  }
-
-  .tv-gtv-time {
-    font-size: 13px;
-  }
-}
-
 @media (max-width: 768px) {
-  /* Hide Desktop Top Navigation */
   .tv-desktop-nav {
     display: none !important;
   }
 
-  /* Mobile Top Bar */
+  /* Compact Mobile Top Bar */
   .tv-mobile-top-bar {
     display: flex;
     align-items: center;
@@ -305,12 +257,14 @@
     top: 0;
     left: 0;
     right: 0;
-    height: calc(54px + env(safe-area-inset-top, 0px));
-    padding: env(safe-area-inset-top, 0px) 16px 0 16px;
-    background: linear-gradient(180deg, rgba(13, 14, 18, 0.75) 0%, rgba(13, 14, 18, 0) 100%);
-    backdrop-filter: none;
-    -webkit-backdrop-filter: none;
-    border-bottom: none;
+    height: calc(52px + env(safe-area-inset-top, 0px));
+    padding: env(safe-area-inset-top, 0px) 12px 0 12px;
+    background: linear-gradient(
+      180deg,
+      rgba(14, 16, 20, 0.9) 0%,
+      rgba(14, 16, 20, 0.52) 70%,
+      rgba(14, 16, 20, 0) 100%
+    );
     z-index: 990;
     box-sizing: border-box;
     pointer-events: none;
@@ -319,12 +273,15 @@
   .tv-mobile-top-left {
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: 8px;
     pointer-events: auto;
+    min-width: 0;
   }
 
   .tv-mobile-avatar-btn {
     position: relative;
+    width: 44px;
+    height: 44px;
     background: transparent;
     border: none;
     padding: 0;
@@ -332,6 +289,7 @@
     display: flex;
     align-items: center;
     justify-content: center;
+    flex-shrink: 0;
   }
 
   .tv-mobile-avatar-fallback {
@@ -341,97 +299,78 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    border: 1.5px solid rgba(255, 255, 255, 0.4);
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
   }
 
   .tv-mobile-avatar-lock {
     position: absolute;
-    bottom: -1px;
-    right: -1px;
-    background: #000;
+    bottom: 5px;
+    right: 5px;
+    width: 14px;
+    height: 14px;
+    background: var(--md-sys-color-surface-container-highest);
+    border: 1.5px solid var(--md-sys-color-background);
     border-radius: 50%;
-    padding: 2px;
     display: flex;
     align-items: center;
     justify-content: center;
   }
 
   .tv-mobile-profile-name {
-    font-size: 13px;
+    font-size: 13.5px;
     font-weight: 600;
     color: var(--text-primary);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-    max-width: 120px;
-    text-shadow: 0 1px 4px rgba(0, 0, 0, 0.8);
+    max-width: min(54vw, 220px);
   }
 
   .tv-mobile-top-right {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 4px;
     pointer-events: auto;
   }
 
   .tv-mobile-icon-btn {
-    position: relative;
-    width: 36px;
-    height: 36px;
+    width: 44px;
+    height: 44px;
     border-radius: 50%;
-    background: rgba(20, 22, 28, 0.6);
-    backdrop-filter: blur(16px);
-    -webkit-backdrop-filter: blur(16px);
-    border: 1px solid rgba(255, 255, 255, 0.12);
+    background-color: rgba(29, 33, 43, 0.72);
+    border: 1px solid var(--md-sys-color-outline-variant);
     color: var(--text-primary);
     display: flex;
     align-items: center;
     justify-content: center;
     cursor: pointer;
     padding: 0;
-    transition: background-color 150ms ease, transform 150ms ease;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    transition: background-color 140ms ease;
+  }
+
+  .tv-mobile-icon-btn.connected {
+    color: var(--accent-green);
+    border-color: rgba(129, 201, 149, 0.45);
   }
 
   .tv-mobile-icon-btn:active {
-    background: rgba(255, 255, 255, 0.2);
-    transform: scale(0.94);
+    background-color: var(--md-sys-color-surface-container-highest);
   }
 
-  .tv-mobile-sleep-badge {
-    position: absolute;
-    top: -2px;
-    right: -2px;
-    font-size: 8px;
-    font-weight: 700;
-    background: var(--google-blue);
-    color: #fff;
-    padding: 1px 4px;
-    border-radius: 4px;
-  }
-
-  /* Floating Glass Pill Mobile Bottom Navigation Bar */
+  /* Docked M3 Bottom Navigation Bar */
   .tv-mobile-bottom-bar {
     display: flex;
     align-items: center;
     justify-content: space-around;
     position: fixed;
-    bottom: calc(14px + env(safe-area-inset-bottom, 0px));
-    left: 16px;
-    right: 16px;
-    max-width: 400px;
-    margin: 0 auto;
-    height: 64px;
-    padding: 0 8px;
-    background: rgba(26, 28, 36, 0.78);
-    backdrop-filter: blur(30px);
-    -webkit-backdrop-filter: blur(30px);
-    border: 1px solid rgba(255, 255, 255, 0.12);
-    border-radius: 34px;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: calc(60px + env(safe-area-inset-bottom, 0px));
+    padding: 4px 8px env(safe-area-inset-bottom, 4px) 8px;
+    background-color: var(--md-sys-color-surface-container);
+    border-top: 1px solid var(--md-sys-color-outline-variant);
     z-index: 1000;
     box-sizing: border-box;
-    box-shadow: 0 10px 32px rgba(0, 0, 0, 0.65), 0 2px 8px rgba(0, 0, 0, 0.4);
   }
 
   .tv-mobile-tab-btn {
@@ -439,30 +378,35 @@
     flex-direction: column;
     align-items: center;
     justify-content: center;
+    gap: 3px;
     background: transparent;
     border: none;
-    color: rgba(255, 255, 255, 0.65);
+    color: var(--md-sys-color-on-surface-variant);
     cursor: pointer;
-    padding: 0;
+    padding: 2px 0;
     flex: 1;
-    height: 100%;
+    min-width: 0;
     min-height: 48px;
-    transition: color 150ms ease;
+    transition: color 140ms ease;
   }
 
-  .tv-mobile-tab-capsule {
+  .tv-mobile-tab-indicator {
     display: flex;
-    flex-direction: column;
     align-items: center;
     justify-content: center;
-    gap: 3px;
-    padding: 6px 14px;
-    border-radius: 20px;
-    transition: background 180ms ease, color 180ms ease, transform 150ms ease;
+    width: 56px;
+    height: 28px;
+    border-radius: var(--radius-pill);
+    transition: background-color 140ms ease, color 140ms ease;
+  }
+
+  .tv-mobile-tab-btn.active .tv-mobile-tab-indicator {
+    background-color: var(--md-sys-color-secondary-container);
+    color: var(--md-sys-color-on-secondary-container);
   }
 
   .tv-mobile-tab-label {
-    font-size: 10.5px;
+    font-size: 11px;
     font-weight: 500;
     letter-spacing: 0.1px;
     white-space: nowrap;
@@ -472,61 +416,29 @@
     color: inherit;
   }
 
-  .tv-mobile-tab-btn.active .tv-mobile-tab-capsule {
-    background: rgba(255, 255, 255, 0.15);
-    color: #ffffff;
-  }
-
   .tv-mobile-tab-btn.active {
-    color: #ffffff;
+    color: var(--md-sys-color-on-surface);
   }
 
   .tv-mobile-tab-btn.active .tv-mobile-tab-label {
     font-weight: 600;
-    color: #ffffff;
-  }
-
-  .tv-mobile-profile-avatar-pill {
-    width: 20px;
-    height: 20px;
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    border: 1px solid rgba(255, 255, 255, 0.4);
-    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
-  }
-
-  .tv-mobile-tab-btn:active {
-    transform: scale(0.92);
   }
 }
 
 @media (max-width: 380px) {
   .tv-mobile-top-bar {
-    padding: 0 10px;
+    padding: env(safe-area-inset-top, 0px) 8px 0 8px;
   }
 
   .tv-mobile-profile-name {
     display: none;
   }
 
-  .tv-mobile-top-right {
-    gap: 6px;
-  }
-
-  .tv-mobile-icon-btn {
-    width: 34px;
-    height: 34px;
+  .tv-mobile-tab-indicator {
+    width: 48px;
   }
 
   .tv-mobile-tab-label {
-    font-size: 9px;
-  }
-
-  .tv-mobile-tab-icon-wrap {
-    width: 28px;
-    height: 24px;
+    font-size: 10px;
   }
 }
-

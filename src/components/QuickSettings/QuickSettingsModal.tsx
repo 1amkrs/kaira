@@ -24,6 +24,7 @@ import { networkService } from '../../services/network/NetworkService';
 import { systemService } from '../../services/system/SystemService';
 import { remoteService } from '../../services/remote/RemoteService';
 import { sleepTimerService } from '../../services/sleep/sleepTimerService';
+import { platform } from '../../platform';
 import { AmbientState, DisplaySettings } from '../../types';
 import './QuickSettingsModal.css';
 
@@ -39,7 +40,8 @@ export const QuickSettingsModal: React.FC<QuickSettingsModalProps> = ({ onClose,
   const [displaySettings, setDisplaySettings] = useState<DisplaySettings>(() => displayService.getSettings());
   const [networkState, setNetworkState] = useState(() => networkService.getState());
   const [diagnostics, setDiagnostics] = useState(() => systemService.getCachedDiagnostics());
-  const [clientCount, setClientCount] = useState<number>(() => remoteService.getConnectedClients());
+  const isRemoteEnabled = !platform.isAndroid && Boolean(onOpenRemoteModal);
+  const [clientCount, setClientCount] = useState<number>(() => (isRemoteEnabled ? remoteService.getConnectedClients() : 0));
 
   useEffect(() => {
     spatialNav.pushScope('quick-settings-modal');
@@ -52,14 +54,14 @@ export const QuickSettingsModal: React.FC<QuickSettingsModalProps> = ({ onClose,
     const unsubAmbient = ambientService.subscribe(setAmbientState);
     const unsubNetwork = networkService.subscribe(setNetworkState);
     const unsubDiag = systemService.subscribe(setDiagnostics);
-    const unsubRemote = remoteService.subscribeClientCount(setClientCount);
+    const unsubRemote = isRemoteEnabled ? remoteService.subscribeClientCount(setClientCount) : () => {};
     return () => {
       unsubAmbient();
       unsubNetwork();
       unsubDiag();
       unsubRemote();
     };
-  }, []);
+  }, [isRemoteEnabled]);
 
   const handleVolumeChange = (delta: number) => {
     const next = Math.max(0, Math.min(100, volume + delta));
@@ -224,42 +226,44 @@ export const QuickSettingsModal: React.FC<QuickSettingsModalProps> = ({ onClose,
             </div>
           </div>
 
-          {/* 4. Phone Companion Remote Card */}
-          <div className="tv-qs-card">
-            <div className="tv-qs-card-header">
-              <div className="tv-qs-card-icon">
-                <Smartphone size={20} color="#81c995" />
+          {/* 4. Phone Companion Remote Card (Desktop/Linux/Windows only; hidden on Android) */}
+          {isRemoteEnabled && (
+            <div className="tv-qs-card">
+              <div className="tv-qs-card-header">
+                <div className="tv-qs-card-icon">
+                  <Smartphone size={20} color="#81c995" />
+                </div>
+                <div className="tv-qs-card-info">
+                  <span className="tv-qs-card-title">Companion Remote</span>
+                  <span className="tv-qs-card-sub">
+                    {clientCount > 0 ? `${clientCount} Phone${clientCount > 1 ? 's' : ''} Connected` : 'Pair phone to control TV'}
+                  </span>
+                </div>
               </div>
-              <div className="tv-qs-card-info">
-                <span className="tv-qs-card-title">Companion Remote</span>
-                <span className="tv-qs-card-sub">
-                  {clientCount > 0 ? `🟢 ${clientCount} Phone${clientCount > 1 ? 's' : ''} Connected` : 'Pair phone to control TV'}
-                </span>
-              </div>
-            </div>
 
-            {onOpenRemoteModal && (
-              <div className="tv-qs-stepper-row" style={{ marginTop: '10px' }}>
-                <Focusable
-                  id="qs-open-remote-modal"
-                  groupId="qs-remote"
-                  indexInGroup={0}
-                  className="tv-qs-step-btn"
-                  onSelect={() => {
-                    onClose();
-                    onOpenRemoteModal();
-                  }}
-                >
-                  {(isFocused) => (
-                    <div className={`tv-qs-btn-inner ${isFocused ? 'focused' : ''}`} style={{ width: '100%', justifyContent: 'center' }}>
-                      <QrCode size={15} />
-                      <span>Show Pairing QR Code</span>
-                    </div>
-                  )}
-                </Focusable>
-              </div>
-            )}
-          </div>
+              {onOpenRemoteModal && (
+                <div className="tv-qs-stepper-row" style={{ marginTop: '10px' }}>
+                  <Focusable
+                    id="qs-open-remote-modal"
+                    groupId="qs-remote"
+                    indexInGroup={0}
+                    className="tv-qs-step-btn"
+                    onSelect={() => {
+                      onClose();
+                      onOpenRemoteModal();
+                    }}
+                  >
+                    {(isFocused) => (
+                      <div className={`tv-qs-btn-inner ${isFocused ? 'focused' : ''}`} style={{ width: '100%', justifyContent: 'center' }}>
+                        <QrCode size={15} />
+                        <span>Show Pairing QR Code</span>
+                      </div>
+                    )}
+                  </Focusable>
+                </div>
+              )}
+            </div>
+          )}
 
           {/* 5. Controller & Network Card */}
           <div className="tv-qs-card">
@@ -268,8 +272,10 @@ export const QuickSettingsModal: React.FC<QuickSettingsModalProps> = ({ onClose,
                 <Gamepad size={20} color="#c58af9" />
               </div>
               <div className="tv-qs-card-info">
-                <span className="tv-qs-card-title">Xbox Controller</span>
-                <span className="tv-qs-card-sub">{diagnostics?.controllerName || 'Xbox Wireless Controller (Connected)'}</span>
+                <span className="tv-qs-card-title">{platform.isAndroid ? 'Controller & Gamepad' : 'Xbox Controller'}</span>
+                <span className="tv-qs-card-sub">
+                  {diagnostics?.controllerName || (platform.isAndroid ? 'D-Pad / Bluetooth Gamepad' : 'Xbox Wireless Controller (Connected)')}
+                </span>
               </div>
             </div>
 

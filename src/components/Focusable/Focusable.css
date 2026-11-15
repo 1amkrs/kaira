@@ -4,7 +4,6 @@
   cursor: pointer;
   transform-origin: center center;
   transition: transform var(--focus-duration) var(--focus-easing),
-              box-shadow var(--focus-duration) var(--focus-easing),
               background-color var(--duration-base) var(--easing-standard),
               border-color var(--duration-base) var(--easing-standard),
               opacity var(--duration-base) var(--easing-standard),
@@ -13,11 +12,28 @@
   overflow: visible;
 }
 
+.tv-focusable:focus,
+.tv-focusable:focus-visible {
+  outline: none;
+}
+
 .tv-focusable.tv-focus-scale.is-focused {
   transform: scale(var(--focus-scale));
-  z-index: 10;
-  box-shadow: var(--focus-shadow);
+  z-index: 12;
   isolation: isolate;
+}
+
+/* Clear M3 TV stacking for non-scaled focusables */
+.tv-focusable:not(.tv-focus-scale).is-focused {
+  z-index: 10;
+}
+
+/* On pure touch devices (phones/tablets without D-pad), skip resting scale lift */
+@media (hover: none) and (pointer: coarse) {
+  .tv-focusable.tv-focus-scale.is-focused {
+    transform: none;
+    box-shadow: none;
+  }
 }
 
 .tv-focusable.is-disabled {
@@ -25,5 +41,3 @@
   pointer-events: none;
   cursor: default;
 }
-
-

@@ -78,12 +78,11 @@ export const MobileShowcaseRails: React.FC<MobileShowcaseRailsProps> = ({
               }
 
               return (
-                <div
+                <button
+                  type="button"
                   key={`mobile-cw-${item.id}`}
                   className="mobile-continue-card"
                   onClick={() => onSelectContinueItem(item)}
-                  role="button"
-                  tabIndex={0}
                   aria-label={`Resume ${item.title}`}
                 >
                   <div className="mobile-continue-artwork-wrap">
@@ -92,16 +91,24 @@ export const MobileShowcaseRails: React.FC<MobileShowcaseRailsProps> = ({
                       alt={item.title}
                       className="mobile-continue-img"
                       loading="lazy"
+                      referrerPolicy="no-referrer"
                       onError={(e) => {
                         const target = e.target as HTMLImageElement;
-                        if (item.poster && target.src !== item.poster) {
+                        if (item.poster && target.src !== item.poster && !target.dataset.triedPoster) {
+                          target.dataset.triedPoster = '1';
                           target.src = item.poster;
+                          return;
+                        }
+                        if (!target.dataset.fallbackApplied) {
+                          target.dataset.fallbackApplied = '1';
+                          target.src =
+                            'data:image/svg+xml;charset=UTF-8,%3Csvg%20width%3D%22400%22%20height%3D%22225%22%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%3E%3Crect%20width%3D%22100%25%22%20height%3D%22100%25%22%20fill%3D%22%23191d24%22%2F%3E%3C%2Fsvg%3E';
                         }
                       }}
                     />
                     <div className="mobile-continue-gradient" />
 
-                    {/* Remaining duration pill in top-right */}
+                    {/* Remaining duration label in top-right */}
                     {remainingText && (
                       <div className="mobile-continue-duration-pill">
                         {remainingText}
@@ -127,29 +134,28 @@ export const MobileShowcaseRails: React.FC<MobileShowcaseRailsProps> = ({
                       </div>
                     </div>
                   </div>
-                </div>
+                </button>
               );
             })}
           </div>
         </section>
       )}
 
-      {/* ─── 2. Popular - Series Section (Real Series from Catalog) ─── */}
+      {/* ─── 2. Popular Series Section (Real Series from Catalog) ─── */}
       <section className="mobile-showcase-rail" aria-label="Popular Series">
         <div className="mobile-rail-header">
-          <h2 className="mobile-rail-title">Popular - Series</h2>
+          <h2 className="mobile-rail-title">Popular Series</h2>
         </div>
 
         <div className="mobile-rail-scroll-row">
           {seriesList.slice(0, 10).map((item) => {
             const posterImg = (item as any).poster || (item as any).posterUrl || (item as any).backdrop || (item as any).backdropUrl;
             return (
-              <div
+              <button
+                type="button"
                 key={`mobile-series-${item.id}`}
                 className="mobile-series-card"
                 onClick={() => handleSelectSeries(item)}
-                role="button"
-                tabIndex={0}
                 aria-label={`View series ${item.title}`}
               >
                 <div className="mobile-series-poster-wrap">
@@ -158,17 +164,26 @@ export const MobileShowcaseRails: React.FC<MobileShowcaseRailsProps> = ({
                     alt={item.title}
                     className="mobile-series-poster-img"
                     loading="lazy"
+                    referrerPolicy="no-referrer"
                     onError={(e) => {
                       const target = e.target as HTMLImageElement;
-                      if ((item as any).backdrop && target.src !== (item as any).backdrop) {
-                        target.src = (item as any).backdrop;
+                      const altBackdrop = (item as any).backdrop || (item as any).backdropUrl;
+                      if (altBackdrop && target.src !== altBackdrop && !target.dataset.triedBackdrop) {
+                        target.dataset.triedBackdrop = '1';
+                        target.src = altBackdrop;
+                        return;
+                      }
+                      if (!target.dataset.fallbackApplied) {
+                        target.dataset.fallbackApplied = '1';
+                        target.src =
+                          'data:image/svg+xml;charset=UTF-8,%3Csvg%20width%3D%22300%22%20height%3D%22450%22%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%3E%3Crect%20width%3D%22100%25%22%20height%3D%22100%25%22%20fill%3D%22%23191d24%22%2F%3E%3Ctext%20x%3D%2250%25%22%20y%3D%2250%25%22%20fill%3D%22%23a8c7fa%22%20font-family%3D%22sans-serif%22%20font-size%3D%2218%22%20text-anchor%3D%22middle%22%3ESeries%3C%2Ftext%3E%3C%2Fsvg%3E';
                       }
                     }}
                   />
                   <div className="mobile-series-poster-gradient" />
                   <h3 className="mobile-series-card-title">{item.title}</h3>
                 </div>
-              </div>
+              </button>
             );
           })}
         </div>

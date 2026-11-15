@@ -18,7 +18,6 @@ import {
   Minimize2,
   RefreshCw,
   Zap,
-  Sparkles,
   Loader2,
 } from 'lucide-react';
 import { PlayerEngineController, PlayerEngineState } from '../../services/player/PlayerEngineController';
@@ -937,7 +936,7 @@ export const VideoPlayerScreen: React.FC<VideoPlayerScreenProps> = ({
             >
               {(isFocused) => (
                 <div className={`tv-btn-inner ${isFocused ? 'focused' : ''}`}>
-                  <Sparkles size={18} />
+                  <Layers size={18} />
                   <span>VidSrc Server 2</span>
                 </div>
               )}
@@ -1829,7 +1828,7 @@ export const VideoPlayerScreen: React.FC<VideoPlayerScreenProps> = ({
             {source.mediaType === 'episode' && nextEpisode ? (
               <>
                 <div className="tv-end-badge">
-                  <Sparkles size={14} className="tv-end-badge-icon" />
+                  <Play size={14} className="tv-end-badge-icon" />
                   <span>UP NEXT</span>
                 </div>
 

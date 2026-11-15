@@ -30,9 +30,9 @@
 }
 
 .tv-album-card.focused .tv-album-artwork-box {
-  border-color: rgba(255, 255, 255, 0.35);
-  box-shadow: 0 12px 30px -4px rgba(0, 0, 0, 0.65);
-  filter: brightness(1.05);
+  border-color: var(--md-sys-color-focus-ring);
+  box-shadow: var(--focus-border-glow), 0 14px 32px -4px rgba(0, 0, 0, 0.72);
+  filter: brightness(1.06);
 }
 
 .tv-album-img {
@@ -93,6 +93,13 @@
 
 .tv-album-dot {
   color: var(--text-tertiary);
+}
+
+/* Tablet Album Card Sizing (769px – 1100px) */
+@media (min-width: 769px) and (max-width: 1100px) {
+  .tv-album-card-wrapper {
+    width: clamp(148px, 18vw, 190px);
+  }
 }
 
 /* ==========================================================================

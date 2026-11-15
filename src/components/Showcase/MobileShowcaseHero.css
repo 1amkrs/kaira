@@ -52,7 +52,7 @@
   left: 0;
   right: 0;
   height: 90px;
-  background: linear-gradient(180deg, rgba(13, 14, 18, 0.8) 0%, rgba(13, 14, 18, 0) 100%);
+  background: linear-gradient(180deg, rgba(14, 16, 20, 0.84) 0%, rgba(14, 16, 20, 0) 100%);
   pointer-events: none;
 }
 
@@ -61,13 +61,13 @@
   left: 0;
   right: 0;
   bottom: 0;
-  height: 75%;
+  height: 82%;
   background: linear-gradient(
     180deg,
-    rgba(13, 14, 18, 0) 0%,
-    rgba(13, 14, 18, 0.35) 40%,
-    rgba(13, 14, 18, 0.85) 75%,
-    rgba(13, 14, 18, 1) 100%
+    rgba(14, 16, 20, 0) 0%,
+    rgba(14, 16, 20, 0.52) 38%,
+    rgba(14, 16, 20, 0.92) 74%,
+    rgba(14, 16, 20, 1) 100%
   );
   pointer-events: none;
 }
@@ -88,63 +88,63 @@
 }
 
 .mobile-showcase-title {
-  font-size: 32px;
+  font-size: 30px;
   font-weight: 800;
   letter-spacing: -0.5px;
-  color: #ffffff;
+  color: var(--md-sys-color-on-surface);
   margin: 0 0 6px 0;
   line-height: 1.15;
   text-shadow: 0 2px 16px rgba(0, 0, 0, 0.8);
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  font-family: var(--font-family);
+  text-wrap: balance;
 }
 
 .mobile-showcase-meta {
   font-size: 13.5px;
   font-weight: 500;
-  color: rgba(255, 255, 255, 0.78);
+  color: var(--md-sys-color-on-surface-variant);
   margin: 0 0 16px 0;
   letter-spacing: 0.2px;
   text-shadow: 0 1px 6px rgba(0, 0, 0, 0.7);
+  font-variant-numeric: tabular-nums;
 }
 
 .mobile-showcase-action-btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  background: #ffffff;
-  color: #121318;
+  min-height: 44px;
+  background: var(--md-sys-color-primary);
+  color: var(--md-sys-color-on-primary);
   font-size: 14px;
-  font-weight: 600;
+  font-weight: 700;
   padding: 10px 26px;
   border-radius: 9999px;
   border: none;
   cursor: pointer;
-  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.4);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.45);
   transition: transform 150ms ease, background-color 150ms ease, box-shadow 150ms ease;
-  margin-bottom: 20px;
+  margin-bottom: 16px;
   -webkit-tap-highlight-color: transparent;
-}
-
-.mobile-showcase-action-btn:hover {
-  background: #f0f0f4;
-  transform: scale(1.03);
 }
 
 .mobile-showcase-action-btn:active {
   transform: scale(0.96);
-  background: #e2e2e8;
+  opacity: 0.92;
 }
 
-/* Dots Carousel Navigation */
+/* Dots Carousel Navigation (compact indicator dot with accessible 44x44 tap target) */
 .mobile-showcase-dots {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 7px;
-  height: 14px;
+  gap: 8px;
+  min-height: 44px;
+  margin-bottom: -14px;
 }
 
 .mobile-dot {
+  position: relative;
   width: 6px;
   height: 6px;
   border-radius: 50%;
@@ -152,7 +152,17 @@
   border: none;
   padding: 0;
   cursor: pointer;
-  transition: all 250ms ease;
+  transition: width 200ms ease, background-color 200ms ease;
+}
+
+.mobile-dot::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 44px;
+  height: 44px;
 }
 
 .mobile-dot.active {

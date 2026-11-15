@@ -38,15 +38,18 @@ export const ShowCard: React.FC<ShowCardProps> = ({
               alt={show.title}
               className="tv-show-img"
               loading="lazy"
+              referrerPolicy="no-referrer"
               onError={(e) => {
                 const target = e.target as HTMLImageElement;
+                if (target.dataset.fallbackApplied) return;
                 const imdb = show.imdbId || (show.id.startsWith('tt') ? show.id : null);
                 if (imdb && !target.src.includes('metahub.space')) {
                   target.src = aspectRatio === 'poster'
                     ? `https://images.metahub.space/poster/medium/${imdb}/img`
                     : `https://images.metahub.space/background/medium/${imdb}/img`;
                 } else {
-                  target.src = 'data:image/svg+xml;charset=UTF-8,%3Csvg%20width%3D%22300%22%20height%3D%22450%22%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%3E%3Crect%20width%3D%22100%25%22%20height%3D%22100%25%22%20fill%3D%22%231a1a1e%22%2F%3E%3Ctext%20x%3D%2250%25%22%20y%3D%2250%25%22%20fill%3D%22%238ab4f8%22%20font-family%3D%22sans-serif%22%20font-size%3D%2218%22%20text-anchor%3D%22middle%22%3E%F0%9F%93%BA%20Series%3C%2Ftext%3E%3C%2Fsvg%3E';
+                  target.dataset.fallbackApplied = '1';
+                  target.src = 'data:image/svg+xml;charset=UTF-8,%3Csvg%20width%3D%22300%22%20height%3D%22450%22%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%3E%3Crect%20width%3D%22100%25%22%20height%3D%22100%25%22%20fill%3D%22%231a1a1e%22%2F%3E%3Ctext%20x%3D%2250%25%22%20y%3D%2250%25%22%20fill%3D%22%23a8c7fa%22%20font-family%3D%22sans-serif%22%20font-size%3D%2218%22%20text-anchor%3D%22middle%22%3ESeries%3C%2Ftext%3E%3C%2Fsvg%3E';
                 }
               }}
             />

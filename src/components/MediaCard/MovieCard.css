@@ -46,9 +46,9 @@
 }
 
 .tv-movie-card.focused .tv-movie-poster-box {
-  border-color: rgba(255, 255, 255, 0.35);
-  box-shadow: 0 12px 30px -4px rgba(0, 0, 0, 0.65);
-  filter: brightness(1.05);
+  border-color: var(--md-sys-color-focus-ring);
+  box-shadow: var(--focus-border-glow), 0 14px 32px -4px rgba(0, 0, 0, 0.72);
+  filter: brightness(1.06);
 }
 
 .tv-movie-img {
@@ -72,15 +72,16 @@
   position: absolute;
   top: 8px;
   right: 8px;
-  background: rgba(13, 14, 18, 0.82);
+  background: rgba(14, 16, 20, 0.85);
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
-  color: var(--google-blue-light);
+  color: var(--md-sys-color-primary);
   font-size: var(--font-caption);
   font-weight: 700;
+  font-variant-numeric: tabular-nums;
   padding: 3px 7px;
   border-radius: var(--radius-sm);
-  border: 1px solid rgba(138, 180, 248, 0.25);
+  border: 1px solid rgba(168, 199, 250, 0.28);
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
 }
 
@@ -92,12 +93,12 @@
   width: 46px;
   height: 46px;
   border-radius: 50%;
-  background-color: var(--google-blue);
-  color: #ffffff;
+  background-color: var(--md-sys-color-primary);
+  color: var(--md-sys-color-on-primary);
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 4px 18px rgba(26, 115, 232, 0.5);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.55);
   animation: tvPlayBtnPop var(--duration-exit) var(--easing-enter);
 }
 
@@ -112,7 +113,7 @@
 
 .tv-card-progress-fill {
   height: 100%;
-  background: var(--google-blue-light);
+  background: var(--md-sys-color-primary);
   border-radius: 0 2px 2px 0;
 }
 
@@ -130,14 +131,42 @@
 .tv-movie-subrow {
   display: flex;
   align-items: center;
+  flex-wrap: nowrap;
+  white-space: nowrap;
+  overflow: hidden;
   gap: var(--space-xs);
   font-size: var(--font-caption);
   color: var(--text-secondary);
   margin-top: 3px;
+  font-variant-numeric: tabular-nums;
+}
+
+.tv-movie-year,
+.tv-movie-runtime,
+.tv-movie-dot {
+  flex-shrink: 0;
+}
+
+.tv-movie-genre {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .tv-movie-dot {
   color: var(--text-tertiary);
+}
+
+/* Tablet Movie Card Sizing (769px – 1100px) */
+@media (min-width: 769px) and (max-width: 1100px) {
+  .tv-movie-card-wrapper.ratio-poster {
+    width: clamp(148px, 18vw, 190px);
+  }
+
+  .tv-movie-card-wrapper.ratio-16\:9 {
+    width: clamp(220px, 28vw, 310px);
+  }
 }
 
 /* ==========================================================================

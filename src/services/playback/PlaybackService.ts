@@ -1,5 +1,6 @@
 import { PlaybackSource, PlaybackState } from '../../types/media';
 import { musicEngine } from '../music/MusicEngine';
+import { mediaSessionBridge } from './mediaSessionBridge';
 
 export interface IVideoPlaybackDelegate {
   seek(seconds: number): void;
@@ -27,6 +28,16 @@ class PlaybackService {
 
   constructor() {
     this.initEngineBridge();
+    mediaSessionBridge.bindActions({
+      onPlay: () => this.resume(),
+      onPause: () => this.pause(),
+      onSeekBackward: () => this.seekRelative(-10),
+      onSeekForward: () => this.seekRelative(10),
+      onSeekTo: (sec) => this.seek(sec),
+      onPrevious: () => this.previous(),
+      onNext: () => this.next(),
+      onStop: () => this.stop(),
+    });
   }
 
   public setVideoDelegate(delegate: IVideoPlaybackDelegate | null): void {
@@ -85,6 +96,7 @@ class PlaybackService {
 
   private notify() {
     const s = this.getState();
+    mediaSessionBridge.syncState(s);
     this.listeners.forEach((fn) => fn(s));
   }
 

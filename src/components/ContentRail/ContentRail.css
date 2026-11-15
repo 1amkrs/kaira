@@ -72,12 +72,13 @@
   transition: all var(--duration-base) var(--easing-standard);
 }
 
-.tv-rail-nav-btn:hover:not(.disabled) {
-  background: #ffffff;
-  color: #0b1528;
-  border-color: #ffffff;
-  transform: scale(1.08);
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5), 0 0 12px rgba(255, 255, 255, 0.3);
+.tv-rail-nav-btn:focus-visible:not(.disabled) {
+  outline: none;
+  background: var(--md-sys-color-primary, #a8c7fa);
+  color: var(--md-sys-color-on-primary, #062e6f);
+  border-color: var(--md-sys-color-focus-ring, #e8eefc);
+  transform: scale(1.06);
+  box-shadow: 0 0 0 2px var(--md-sys-color-focus-ring, #e8eefc);
 }
 
 .tv-rail-nav-btn:active:not(.disabled) {
@@ -211,6 +212,10 @@
 
   .tv-rail-header {
     margin-bottom: 2px;
+  }
+
+  .tv-rail-header-nav {
+    display: none;
   }
 
   .tv-rail-title {

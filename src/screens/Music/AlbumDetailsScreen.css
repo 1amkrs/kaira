@@ -139,8 +139,7 @@
               transform var(--duration-micro) var(--easing-enter);
 }
 
-.tv-album-actions-row .tv-details-play-btn.focused,
-.tv-album-actions-row .tv-details-play-btn:hover {
+.tv-album-actions-row .tv-details-play-btn.focused {
   background-color: var(--google-blue);
   color: #ffffff;
   box-shadow: 0 4px 16px rgba(26, 115, 232, 0.4);
@@ -170,8 +169,7 @@
               transform var(--duration-micro) var(--easing-enter);
 }
 
-.tv-album-actions-row .tv-details-fav-btn.focused,
-.tv-album-actions-row .tv-details-fav-btn:hover {
+.tv-album-actions-row .tv-details-fav-btn.focused {
   background-color: rgba(255, 255, 255, 0.22);
   border-color: rgba(138, 180, 248, 0.5);
 }

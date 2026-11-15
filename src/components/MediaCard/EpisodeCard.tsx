@@ -36,6 +36,7 @@ export const EpisodeCard: React.FC<EpisodeCardProps> = ({
               alt={episode.title}
               className="tv-episode-img"
               loading="lazy"
+              referrerPolicy="no-referrer"
               onError={(e) => {
                 const target = e.target as HTMLImageElement;
                 const cleanShow = episode.showId ? episode.showId.replace(/^show-/, '') : null;

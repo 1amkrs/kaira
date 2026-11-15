@@ -108,6 +108,15 @@ a {
   overflow: hidden;
 }
 
+h1, h2, h3,
+.tv-screen-page-title {
+  text-wrap: balance;
+}
+
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
 /* ─── Screen Page Header (Apps, Library, etc.) ─────────────────────────── */
 .tv-screen-page-header {
   display: flex;
@@ -161,7 +170,6 @@ a {
 }
 
 /* ─── Meta Separator Dot ────────────────────────────────────────────────── */
-/* Replace raw Unicode • chars with this styled element */
 .tv-meta-dot {
   display: inline-block;
   width: 3px;
@@ -174,8 +182,7 @@ a {
   flex-shrink: 0;
 }
 
-/* ─── Shared Action Button Base Classes ─────────────────────────────────── */
-/* Primary CTA (Play, Explore, etc.) — used across Home/Movies/Shows */
+/* ─── M3 TV Action Button Base Classes ──────────────────────────────────── */
 .tv-btn-primary {
   display: inline-flex;
   align-items: center;
@@ -187,8 +194,8 @@ a {
   line-height: 1;
   white-space: nowrap;
   border-radius: var(--radius-pill);
-  background-color: #ffffff;
-  color: #0f0f0f;
+  background-color: var(--md-sys-color-on-surface);
+  color: var(--md-sys-color-background);
   font-size: var(--font-body);
   font-weight: 700;
   letter-spacing: 0.2px;
@@ -201,11 +208,11 @@ a {
 
 .tv-btn-primary.focused {
   transform: scale(var(--focus-scale));
-  background-color: var(--google-blue-hover);
+  background-color: var(--md-sys-color-primary);
+  color: var(--md-sys-color-on-primary);
   box-shadow: var(--focus-shadow);
 }
 
-/* Secondary CTA (More Info, Details, etc.) */
 .tv-btn-secondary {
   display: inline-flex;
   align-items: center;
@@ -217,7 +224,7 @@ a {
   line-height: 1;
   white-space: nowrap;
   border-radius: var(--radius-pill);
-  background-color: rgba(255, 255, 255, 0.15);
+  background-color: var(--md-sys-color-surface-container-high);
   color: var(--text-primary);
   font-size: var(--font-body);
   font-weight: 600;
@@ -231,12 +238,12 @@ a {
 
 .tv-btn-secondary.focused {
   transform: scale(var(--focus-scale));
-  background-color: rgba(255, 255, 255, 0.25);
-  border-color: var(--border-focus);
+  background-color: var(--md-sys-color-surface-container-highest);
+  border-color: var(--md-sys-color-focus-ring);
   box-shadow: var(--focus-shadow);
 }
 
-/* ─── Universal Apple tvOS Pill Back Button ─────────────────────────────── */
+/* ─── Universal Back Pill Button ────────────────────────────────────────── */
 .tv-back-focusable {
   display: inline-flex;
   width: fit-content;
@@ -248,8 +255,9 @@ a {
   display: inline-flex;
   align-items: center;
   gap: 8px;
+  min-height: 44px;
   padding: 8px 18px;
-  background-color: rgba(0, 0, 0, 0.65);
+  background-color: var(--md-sys-color-surface-container);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
   border: 1px solid var(--border-subtle);
@@ -267,23 +275,16 @@ a {
     box-shadow var(--duration-base) var(--easing-standard);
 }
 
-.tv-back-btn:hover {
-  background-color: rgba(255, 255, 255, 0.15);
-  color: var(--text-primary);
-  border-color: rgba(255, 255, 255, 0.3);
-}
-
 .tv-back-btn.focused {
-  background-color: var(--google-blue);
-  color: #ffffff;
-  border-color: var(--border-focus);
+  background-color: var(--md-sys-color-primary);
+  color: var(--md-sys-color-on-primary);
+  border-color: var(--md-sys-color-focus-ring);
   transform: scale(var(--focus-scale));
   box-shadow: var(--focus-shadow);
 }
 
 /* ============================================================
  * Responsive Resolution Scaling
- * Keeps typography crisp and prevents bloat on larger desktop/TV monitors.
  * ============================================================ */
 
 /* 4K / UHD – 3840×2160 */
@@ -304,16 +305,32 @@ a {
   :root { --screen-padding-x: 48px; --screen-padding-y: 28px; }
 }
 
-/* HD Ready – 1280×720 */
-@media screen and (min-width: 900px) and (max-width: 1399px) {
-  html, body { font-size: 14px; }
+/* HD Ready / Large Tablet Landscape – 1101px to 1399px */
+@media screen and (min-width: 1101px) and (max-width: 1399px) {
+  html, body { font-size: 15px; }
   :root { --screen-padding-x: 36px; --screen-padding-y: 20px; }
 }
 
-/* Tablets / Compact windows */
-@media screen and (min-width: 769px) and (max-width: 899px) {
-  html, body { font-size: 13px; }
-  :root { --screen-padding-x: 24px; --screen-padding-y: 16px; }
+/* Tablets (Portrait 820px & Compact Landscape 1024px) */
+@media screen and (min-width: 769px) and (max-width: 1100px) {
+  html, body { font-size: 14px; }
+  :root {
+    --screen-padding-x: 28px;
+    --screen-padding-y: 16px;
+    --top-nav-height: 76px;
+  }
+
+  .tv-main-viewport {
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .tv-scroll-container,
+  .tv-horizontal-scroll,
+  .tv-rail-scroll-track {
+    -webkit-overflow-scrolling: touch;
+    touch-action: pan-x;
+  }
 }
 
 /* Mobile Screens (<= 768px down to 350px) */
@@ -348,7 +365,7 @@ a {
   }
 
   .tv-screen-bottom-spacer {
-    height: 120px;
+    height: 112px;
   }
 
   .tv-main-viewport {
@@ -383,4 +400,113 @@ a {
   }
 }
 
+/* ============================================================
+ * Android Version: Reduced Motion & Clean M3 Flat Surfaces
+ * (Applies to Android TV, Tablet & Mobile via body.android-mode)
+ * ============================================================ */
+body.android-mode {
+  --focus-scale: 1;
+  --focus-duration: 90ms;
+  --duration-micro: 75ms;
+  --duration-base: 100ms;
+  --duration-expand: 120ms;
+  --duration-exit: 90ms;
+  --focus-border-glow: 0 0 0 2px var(--md-sys-color-focus-ring);
+  --focus-shadow: 0 8px 20px rgba(0, 0, 0, 0.55), 0 0 0 2px var(--md-sys-color-focus-ring);
+}
+
+@keyframes tvAndroidQuietFade {
+  from { opacity: 0.78; }
+  to { opacity: 1; }
+}
+
+body.android-mode .tv-tab-transition-wrapper.slide-forward,
+body.android-mode .tv-tab-transition-wrapper.slide-backward {
+  animation: tvAndroidQuietFade 110ms ease-out forwards;
+}
+
+/* Eliminate pop/pulse/zoom/fade keyframes on overlays, buttons & hero slides */
+body.android-mode .tv-splash-ambient-glow,
+body.android-mode .tv-music-backdrop-glow,
+body.android-mode .tv-buffering-glow {
+  display: none !important;
+}
+
+body.android-mode .tv-splash-overlay {
+  transition: opacity 150ms ease;
+}
+
+body.android-mode .tv-splash-overlay.fade-out {
+  transform: none;
+}
+
+body.android-mode .tv-splash-brand,
+body.android-mode .tv-card-focus-play-btn,
+body.android-mode .tv-card-play-overlay,
+body.android-mode .tv-settings-screen,
+body.android-mode .tv-search-screen,
+body.android-mode .tv-launch-toast-banner,
+body.android-mode .tv-gamepad-status-banner,
+body.android-mode .tv-volume-hud-pill,
+body.android-mode .tv-playing-pulse,
+body.android-mode .tv-track-playing-icon,
+body.android-mode .tv-details-title-logo,
+body.android-mode .tv-quick-settings-backdrop,
+body.android-mode .tv-quick-settings-drawer,
+body.android-mode .mobile-showcase-img {
+  animation: none !important;
+}
+
+body.android-mode .tv-splash-logo-img {
+  filter: none;
+}
+
+body.android-mode .mobile-showcase-img {
+  transition: opacity 180ms ease;
+}
+
+body.android-mode .mobile-dot {
+  transition: width 120ms ease, background-color 120ms ease;
+}
+
+body.android-mode .mobile-dot.active {
+  box-shadow: none;
+}
+
+/* Solid Material Design 3 tonal surfaces instead of translucent frosted glass */
+body.android-mode .tv-mobile-bottom-bar,
+body.android-mode .tv-mobile-icon-btn,
+body.android-mode .tv-back-btn,
+body.android-mode .tv-details-icon-btn,
+body.android-mode .tv-details-audio-btn,
+body.android-mode .tv-details-fav-btn,
+body.android-mode .tv-quick-settings-backdrop,
+body.android-mode .mobile-continue-duration-pill,
+body.android-mode .tv-episode-code-badge,
+body.android-mode .tv-search-icon-btn,
+body.android-mode .tv-search-input-box,
+body.android-mode .tv-search-keyboard-container,
+body.android-mode .tv-launch-toast-banner,
+body.android-mode .tv-gamepad-status-banner,
+body.android-mode .tv-volume-hud-pill,
+body.android-mode .tv-movie-rating-badge,
+body.android-mode .tv-show-rating-badge,
+body.android-mode .tv-show-network-tag,
+body.android-mode .tv-card-source-tag {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+body.android-mode .tv-mobile-bottom-bar {
+  background-color: var(--md-sys-color-surface-container);
+}
+
+body.android-mode .mobile-showcase-action-btn,
+body.android-mode .tv-hero-btn.primary-btn .tv-btn-inner.focused {
+  box-shadow: none;
+}
+
+body.android-mode .mobile-showcase-action-btn:active {
+  transform: none;
+}
 

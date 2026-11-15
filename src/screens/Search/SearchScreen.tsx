@@ -5,7 +5,6 @@ import {
   Film,
   Tv,
   Music,
-  Sparkles,
   TrendingUp,
   ArrowLeft,
   Loader2,
@@ -279,9 +278,9 @@ export const SearchScreen: React.FC<SearchScreenProps> = ({
           {searchQuery.trim().length === 0 ? (
             /* Idle Screen */
             <div className="tv-search-idle-state">
-              <Sparkles size={48} className="idle-icon" />
-              <h3>Looking for something to watch?</h3>
-              <p>Search by title, actor, or genre, or pick from popular searches on the left.</p>
+              <SearchIcon size={40} className="idle-icon" />
+              <h3>Search library and catalogs</h3>
+              <p>Type a title, actor, or genre, or choose one of the trending queries.</p>
             </div>
           ) : isSearching ? (
             /* Loading State */

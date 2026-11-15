@@ -1,4 +1,4 @@
-﻿.tv-mv-card-wrapper {
+.tv-mv-card-wrapper {
   flex: 0 0 auto;
   width: clamp(240px, 20vw, 340px);
   border-radius: var(--radius-md);
@@ -26,8 +26,8 @@
 }
 
 .tv-mv-card.focused .tv-mv-thumbnail-box {
-  border-color: rgba(255, 255, 255, 0.4);
-  box-shadow: 0 12px 30px -4px rgba(0, 0, 0, 0.7);
+  border-color: var(--md-sys-color-focus-ring);
+  box-shadow: var(--focus-border-glow), 0 12px 30px -4px rgba(0, 0, 0, 0.7);
   filter: brightness(1.05);
 }
 

@@ -1,4 +1,10 @@
-export type PlatformType = 'linux-x64' | 'linux-arm64' | 'win32-x64' | 'browser-fallback';
+export type PlatformType =
+  | 'linux-x64'
+  | 'linux-arm64'
+  | 'win32-x64'
+  | 'android-mobile'
+  | 'android-tv'
+  | 'browser-fallback';
 
 export interface DisplayInfo {
   id: number | string;
@@ -53,11 +59,11 @@ export interface SystemDiagnostics {
   gpuModel: string;
   gpuDriver: string;
   hardwareVideoDecode: string;
-  displayServer: 'wayland' | 'x11' | 'windows-dwm' | 'web';
+  displayServer: 'wayland' | 'x11' | 'windows-dwm' | 'android-hwc' | 'web';
   activeDisplay: DisplayInfo;
-  audioServer: 'pipewire' | 'pulseaudio' | 'wasapi' | 'web-audio';
+  audioServer: 'pipewire' | 'pulseaudio' | 'wasapi' | 'aaudio' | 'web-audio';
   activeAudioDevice: AudioDeviceInfo;
-  networkType: 'ethernet' | 'wifi' | 'offline' | 'unknown';
+  networkType: 'ethernet' | 'wifi' | 'cellular' | 'offline' | 'unknown';
   ipAddress: string;
   controllerConnected: boolean;
   controllerName: string;
@@ -100,20 +106,22 @@ export interface ISystemAdapter {
 }
 
 export interface IProcessAdapter {
-  launchApp(target: string, launchType: 'executable' | 'uri' | 'web'): Promise<{ success: boolean; error?: string }>;
+  launchApp(target: string, launchType: 'executable' | 'uri' | 'web', appId?: string): Promise<{ success: boolean; error?: string }>;
   openExternal(url: string): Promise<void>;
   openPath(filePath: string): Promise<string>;
 }
 
 export interface INetworkAdapter {
-  getNetworkStatus(): Promise<{ connected: boolean; type: 'ethernet' | 'wifi' | 'offline'; ip: string }>;
-  subscribe(listener: (status: { connected: boolean; type: 'ethernet' | 'wifi' | 'offline'; ip: string }) => void): () => void;
+  getNetworkStatus(): Promise<{ connected: boolean; type: 'ethernet' | 'wifi' | 'cellular' | 'offline'; ip: string }>;
+  subscribe(listener: (status: { connected: boolean; type: 'ethernet' | 'wifi' | 'cellular' | 'offline'; ip: string }) => void): () => void;
 }
 
 export interface IPlatformAdapter {
   readonly platform: PlatformType;
   readonly isLinux: boolean;
   readonly isARM64: boolean;
+  readonly isAndroid: boolean;
+  readonly isAndroidTV: boolean;
   readonly display: IDisplayAdapter;
   readonly audio: IAudioAdapter;
   readonly controller: IControllerAdapter;

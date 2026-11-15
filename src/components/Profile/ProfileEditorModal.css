@@ -97,10 +97,6 @@
   flex-shrink: 0;
 }
 
-.tv-editor-close-btn:hover:not(.focused) {
-  background: rgba(255, 255, 255, 0.16);
-}
-
 .tv-editor-close-btn.focused {
   background: #ffffff;
   color: #000000;
@@ -265,10 +261,6 @@
   cursor: pointer;
   transition: background-color 150ms ease;
   flex-shrink: 0;
-}
-
-.tv-editor-clear-name-btn:hover {
-  background: rgba(255, 255, 255, 0.25);
 }
 
 /* OSK Toggle Pill */
@@ -672,10 +664,6 @@
   transition: all 180ms ease;
 }
 
-.tv-btn-primary:hover:not(.focused) {
-  background: var(--google-blue-hover, #1b66c9);
-}
-
 .tv-btn-primary.focused {
   background: #ffffff;
   color: #000000;
@@ -704,10 +692,6 @@
   transition: all 180ms ease;
 }
 
-.tv-btn-secondary:hover:not(.focused) {
-  background: rgba(255, 255, 255, 0.15);
-}
-
 .tv-btn-secondary.focused {
   background: #ffffff;
   color: #000000;
@@ -734,10 +718,6 @@
   box-sizing: border-box;
   line-height: 1;
   transition: all 180ms ease;
-}
-
-.tv-btn-danger:hover:not(.focused) {
-  background: rgba(234, 67, 53, 0.25);
 }
 
 .tv-btn-danger.focused {

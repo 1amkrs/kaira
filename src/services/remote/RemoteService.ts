@@ -19,6 +19,7 @@ import {
   RemoteClientMessage,
 } from './remoteTypes';
 import { NavigationTab } from '../../types';
+import { platform } from '../../platform';
 
 export interface RemoteCallbacks {
   onSetTab?: (tab: NavigationTab) => void;
@@ -60,10 +61,19 @@ class RemoteService {
   private peerConnections: Set<DataConnection> = new Set();
 
   constructor() {
-    this.initBroadcastChannel();
+    if (this.isSupported()) {
+      this.initBroadcastChannel();
+    }
+  }
+
+  public isSupported(): boolean {
+    return !platform.isAndroid;
   }
 
   public init(callbacks: RemoteCallbacks): () => void {
+    if (!this.isSupported()) {
+      return () => {};
+    }
     this.callbacks = callbacks;
     if (!this.isInitialized) {
       this.isInitialized = true;
@@ -81,10 +91,12 @@ class RemoteService {
   }
 
   public setCallbacks(callbacks: RemoteCallbacks): void {
+    if (!this.isSupported()) return;
     this.callbacks = { ...this.callbacks, ...callbacks };
   }
 
   public updateUIState(activeTab: NavigationTab, activeModal: 'search' | 'settings' | 'quick-settings' | 'profile' | 'sleep' | 'remote' | null): void {
+    if (!this.isSupported()) return;
     this.activeTab = activeTab;
     this.activeModal = activeModal;
     this.broadcastState();
@@ -93,7 +105,7 @@ class RemoteService {
   // ─── WEBRTC PEERJS INITIALIZATION (Serverless P2P) ─────────────────────────
 
   private initWebRTCPeer(): void {
-    if (typeof window === 'undefined') return;
+    if (!this.isSupported() || typeof window === 'undefined') return;
 
     try {
       // Generate or retrieve persistent short TV Room ID
@@ -171,6 +183,7 @@ class RemoteService {
   }
 
   public async discoverServerInfo(): Promise<void> {
+    if (!this.isSupported()) return;
     // 1. Try Electron API
     if (window.electronAPI?.getRemoteServerInfo) {
       try {
@@ -555,6 +568,7 @@ class RemoteService {
   // ─── BROADCAST & SYNCHRONIZATION ───────────────────────────────────────────
 
   public broadcastState(): void {
+    if (!this.isSupported()) return;
     const snapshot = this.getTVState();
 
     // 1. Notify local React listeners
@@ -633,7 +647,7 @@ class RemoteService {
   }
 
   private initBrowserReceiver(): void {
-    if (typeof window === 'undefined' || window.electronAPI?.onRemoteCommand || window.location.hostname.includes('github.io')) return;
+    if (!this.isSupported() || typeof window === 'undefined' || window.electronAPI?.onRemoteCommand || window.location.hostname.includes('github.io')) return;
 
     try {
       if (this.sseReceiver) {

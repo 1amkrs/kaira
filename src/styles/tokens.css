@@ -1,51 +1,73 @@
 /**
- * Google TV & Kaira Design Tokens
- * Scaled for 10-foot viewing experience (1080p / 1440p / 4K / Desktop)
+ * Material Design 3 for Android TV & Kaira Design Tokens
+ * Adapted from developer.android.com/design/ui/tv (10-foot viewing, tablet & mobile)
  */
 
 :root {
-  /* Surface Colors */
-  --bg-app: #0d0e12;
-  --bg-surface-1: #13151b;
-  --bg-surface-2: #1a1d26;
-  --bg-surface-3: #242834;
-  --bg-surface-card: #161820;
-  --bg-surface-card-hover: #222632;
-  --bg-overlay: rgba(13, 14, 18, 0.88);
+  /* Material Design 3 Tonal Surface Roles (Dark Cinema Palette) */
+  --md-sys-color-background: #0e1014;
+  --md-sys-color-surface: #12141a;
+  --md-sys-color-surface-container-low: #171a22;
+  --md-sys-color-surface-container: #1d212b;
+  --md-sys-color-surface-container-high: #262b38;
+  --md-sys-color-surface-container-highest: #313747;
+  --md-sys-color-on-surface: #e6e8ee;
+  --md-sys-color-on-surface-variant: #c4c7d0;
+  --md-sys-color-outline: #8e919d;
+  --md-sys-color-outline-variant: rgba(255, 255, 255, 0.12);
+
+  /* M3 Primary & Accent Roles */
+  --md-sys-color-primary: #a8c7fa;
+  --md-sys-color-on-primary: #062e6f;
+  --md-sys-color-primary-container: #0842a0;
+  --md-sys-color-on-primary-container: #d3e3fd;
+  --md-sys-color-secondary: #bec6dc;
+  --md-sys-color-secondary-container: #3a4457;
+  --md-sys-color-on-secondary-container: #dce2f9;
+  --md-sys-color-focus-ring: #e8eefc;
+
+  /* Mapped Application Surface Tokens */
+  --bg-app: var(--md-sys-color-background);
+  --bg-surface-1: var(--md-sys-color-surface);
+  --bg-surface-2: var(--md-sys-color-surface-container);
+  --bg-surface-3: var(--md-sys-color-surface-container-high);
+  --bg-surface-card: var(--md-sys-color-surface-container-low);
+  --bg-surface-card-hover: var(--md-sys-color-surface-container-high);
+  --bg-overlay: rgba(14, 16, 20, 0.9);
 
   /* Text Colors */
-  --text-primary: rgba(255, 255, 255, 0.96);
-  --text-secondary: rgba(255, 255, 255, 0.68);
-  --text-tertiary: rgba(255, 255, 255, 0.42);
-  --text-inverse: #0d0e12;
+  --text-primary: var(--md-sys-color-on-surface);
+  --text-secondary: var(--md-sys-color-on-surface-variant);
+  --text-tertiary: rgba(230, 232, 238, 0.48);
+  --text-inverse: var(--md-sys-color-on-primary);
 
-  /* Google Blue & Functional Accents */
+  /* Functional & Brand Accents */
   --google-blue: #1a73e8;
-  --google-blue-hover: #1b66c9;
+  --google-blue-hover: #4c8df6;
   --google-blue-active: #174ea6;
-  --google-blue-light: #8ab4f8;
-  --google-blue-subtle: rgba(26, 115, 232, 0.15);
-  --google-blue-glow: rgba(138, 180, 248, 0.35);
-  
-  --accent-primary: #1a73e8;
-  --accent-primary-hover: #8ab4f8;
-  --accent-primary-active: #174ea6;
-  --accent-primary-glow: rgba(26, 115, 232, 0.35);
+  --google-blue-light: var(--md-sys-color-primary);
+  --google-blue-subtle: rgba(168, 199, 250, 0.16);
+  --google-blue-glow: rgba(168, 199, 250, 0.35);
+
+  --accent-primary: var(--md-sys-color-primary);
+  --accent-primary-hover: var(--md-sys-color-on-primary-container);
+  --accent-primary-active: var(--md-sys-color-primary-container);
+  --accent-primary-glow: rgba(168, 199, 250, 0.35);
   --accent-green: #81c995;
   --accent-yellow: #fdd663;
-  --accent-red: #ea4335;
+  --accent-red: #f28b82;
 
   /* Border & Separator */
-  --border-subtle: rgba(255, 255, 255, 0.08);
-  --border-medium: rgba(255, 255, 255, 0.16);
-  --border-focus: rgba(255, 255, 255, 0.35);
+  --border-subtle: var(--md-sys-color-outline-variant);
+  --border-medium: rgba(255, 255, 255, 0.22);
+  --border-focus: var(--md-sys-color-focus-ring);
 
-  /* Focus Dynamics (Clean elevation & natural scaling without harsh strokes) */
-  --focus-scale: 1.025;
-  --focus-duration: 220ms;
-  --focus-easing: cubic-bezier(0.16, 1, 0.3, 1);
-  --focus-shadow: 0 14px 36px -4px rgba(0, 0, 0, 0.7);
-  --focus-border-glow: none;
+  /* M3 TV Focus Dynamics (Scale + Crisp Focus Ring + Tonal Elevation) */
+  --focus-scale: 1.04;
+  --focus-duration: 210ms;
+  --focus-easing: cubic-bezier(0.2, 0.0, 0, 1.0);
+  --focus-shadow: 0 18px 38px -6px rgba(0, 0, 0, 0.78), 0 0 0 2px var(--md-sys-color-focus-ring);
+  --focus-border-glow: 0 0 0 2px var(--md-sys-color-focus-ring), 0 0 22px rgba(168, 199, 250, 0.26);
 
   /* Spacing Scale - Airy & Uncongested */
   --space-xs: 4px;
@@ -60,30 +82,30 @@
   --screen-padding-x: clamp(36px, 5vw, 84px);
   --screen-padding-top: 24px;
   --screen-padding-bottom: 56px;
-  --top-nav-height: 88px;
+  --top-nav-height: 84px;
 
-  /* Typography Scale */
+  /* 10-Foot & Adaptive Typography Scale */
   --font-family: "Google Sans", "Roboto", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  --font-display: clamp(2rem, 3.2vw, 3.6rem);     /* Hero/detail titles */
-  --font-title-hero: clamp(1.8rem, 2.6vw, 3rem);
+  --font-display: clamp(2rem, 3.2vw, 3.5rem);
+  --font-title-hero: clamp(1.85rem, 2.7vw, 3.1rem);
   --font-title-lg: clamp(1.3rem, 1.8vw, 2rem);
   --font-title-md: clamp(1.05rem, 1.3vw, 1.4rem);
-  --font-title-sm: clamp(0.9rem, 1vw, 1.15rem);
-  --font-body-lg: clamp(0.95rem, 1.05vw, 1.1rem);    /* Larger body for detail descriptions */
+  --font-title-sm: clamp(0.9rem, 1vw, 1.12rem);
+  --font-body-lg: clamp(0.95rem, 1.05vw, 1.1rem);
   --font-body: clamp(0.85rem, 0.95vw, 1rem);
   --font-caption: clamp(0.75rem, 0.8vw, 0.88rem);
 
-  /* Motion & Easing Tokens */
-  --easing-enter: cubic-bezier(0.16, 1, 0.3, 1);    /* Spring-like: fast start, soft land */
-  --easing-exit: cubic-bezier(0.4, 0, 1, 1);         /* Snappy ease-in for dismissal */
-  --easing-standard: cubic-bezier(0.2, 0.0, 0.2, 1); /* Standard for state changes */
-  --duration-micro: 150ms;   /* Press/hover feedback */
-  --duration-base: 200ms;    /* State transitions */
-  --duration-expand: 280ms;  /* Modal/overlay entrance */
-  --duration-exit: 180ms;    /* Exits shorter than enters */
+  /* Motion & Easing Tokens (M3 Emphasized / Standard) */
+  --easing-enter: cubic-bezier(0.05, 0.7, 0.1, 1.0);
+  --easing-exit: cubic-bezier(0.3, 0.0, 0.8, 0.15);
+  --easing-standard: cubic-bezier(0.2, 0.0, 0.0, 1.0);
+  --duration-micro: 150ms;
+  --duration-base: 210ms;
+  --duration-expand: 280ms;
+  --duration-exit: 180ms;
 
-  /* Border Radii */
-  --radius-sm: 6px;
+  /* Border Radii (M3 Shape Scale) */
+  --radius-sm: 8px;
   --radius-md: 12px;
   --radius-lg: 16px;
   --radius-xl: 24px;

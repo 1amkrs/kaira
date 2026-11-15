@@ -1,6 +1,5 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { spatialNav, SpatialNode } from '../../services/spatialNav/spatialNavEngine';
-import { gamepadManager } from '../../services/controller/gamepadManager';
 import './Focusable.css';
 
 export interface FocusableProps {
@@ -20,6 +19,9 @@ export interface FocusableProps {
   autoFocus?: boolean;
   scaleEffect?: boolean;
   as?: React.ElementType;
+  role?: React.AriaRole;
+  ariaLabel?: string;
+  ariaSelected?: boolean;
 }
 
 export const Focusable: React.FC<FocusableProps> = ({
@@ -39,6 +41,9 @@ export const Focusable: React.FC<FocusableProps> = ({
   autoFocus = false,
   scaleEffect = true,
   as: Component = 'div',
+  role,
+  ariaLabel,
+  ariaSelected,
 }) => {
   const elementRef = useRef<HTMLElement>(null);
   const [isFocused, setIsFocused] = useState<boolean>(() => spatialNav.getFocusedId() === id);
@@ -64,6 +69,7 @@ export const Focusable: React.FC<FocusableProps> = ({
       groupId,
       indexInGroup,
       priority,
+      autoFocus,
       onSelect: () => {
         if (onSelectRef.current) onSelectRef.current();
         else if (onClickRef.current) onClickRef.current();
@@ -95,13 +101,6 @@ export const Focusable: React.FC<FocusableProps> = ({
     };
   }, [id, groupId, indexInGroup, priority, disabled, autoFocus]);
 
-  const handlePointerEnter = () => {
-    if (!disabled && id) {
-      if (gamepadManager.isGamepadActive()) return;
-      spatialNav.setFocus(id, false);
-    }
-  };
-
   const handleClick = (e: React.MouseEvent) => {
     if (disabled) return;
     e.stopPropagation();
@@ -125,8 +124,10 @@ export const Focusable: React.FC<FocusableProps> = ({
       tabIndex={disabled ? -1 : 0}
       className={combinedClassName}
       style={style}
-      onPointerEnter={handlePointerEnter}
       onClick={handleClick}
+      role={role}
+      aria-label={ariaLabel}
+      aria-selected={ariaSelected}
       aria-disabled={disabled}
     >
       {typeof children === 'function' ? children(isFocused) : children}

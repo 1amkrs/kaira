@@ -6,7 +6,6 @@ import {
   SkipForward,
   ArrowLeft,
   Mic2,
-  Sparkles,
   Music,
   ListMusic,
   Waves,
@@ -511,8 +510,8 @@ export const MusicPlayerScreen: React.FC<MusicPlayerScreenProps> = ({ onClose })
           {showLyrics && lyrics.length > 0 ? (
             <>
               <div className="tv-lyrics-header-badge">
-                <Sparkles size={14} />
-                <span>LRCLIB Synced Karaoke</span>
+                <ListMusic size={14} />
+                <span>LRCLIB Synced Lyrics</span>
               </div>
 
               <div className="tv-music-lyrics-scroller" ref={lyricsContainerRef}>

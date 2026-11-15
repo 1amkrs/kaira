@@ -2,7 +2,7 @@ import { platform } from '../../platform';
 
 export interface NetworkState {
   connected: boolean;
-  type: 'ethernet' | 'wifi' | 'offline';
+  type: 'ethernet' | 'wifi' | 'cellular' | 'offline';
   ip: string;
 }
 

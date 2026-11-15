@@ -2,7 +2,7 @@
 .mobile-showcase-rails-container {
   display: none; /* Hidden on TV / Desktop */
   width: 100%;
-  padding-bottom: 90px; /* Space for floating bottom bar */
+  padding-bottom: 8px;
   box-sizing: border-box;
 }
 
@@ -25,10 +25,10 @@
 .mobile-rail-title {
   font-size: 18px;
   font-weight: 700;
-  color: #ffffff;
+  color: var(--md-sys-color-on-surface, #ffffff);
   margin: 0;
   letter-spacing: -0.2px;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  font-family: var(--font-family);
 }
 
 .mobile-rail-scroll-row {
@@ -53,7 +53,10 @@
   border-radius: 14px;
   overflow: hidden;
   position: relative;
-  background: #191b22;
+  background: var(--md-sys-color-surface-container, #191b22);
+  border: none;
+  padding: 0;
+  text-align: left;
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
   transition: transform 150ms ease, opacity 150ms ease;
@@ -171,7 +174,10 @@
   border-radius: 12px;
   overflow: hidden;
   position: relative;
-  background: #191b22;
+  background: var(--md-sys-color-surface-container, #191b22);
+  border: none;
+  padding: 0;
+  text-align: left;
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
   transition: transform 150ms ease, opacity 150ms ease;

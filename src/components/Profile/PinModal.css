@@ -96,10 +96,6 @@
   cursor: pointer;
 }
 
-.tv-pin-cancel-btn:hover:not(.focused) {
-  background: rgba(255, 255, 255, 0.16);
-}
-
 .tv-pin-cancel-btn.focused {
   background: #ffffff;
   color: #000000;
@@ -243,11 +239,6 @@
   transition: all 160ms cubic-bezier(0.16, 1, 0.3, 1);
   cursor: pointer;
   user-select: none;
-}
-
-.tv-pin-key-btn:hover {
-  background: rgba(255, 255, 255, 0.12);
-  border-color: rgba(255, 255, 255, 0.25);
 }
 
 .tv-pin-key-btn.focused {

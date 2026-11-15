@@ -62,7 +62,10 @@ export const ShowsScreen: React.FC<ShowsScreenProps> = ({ onSelectShow, onPlaySh
             <h1 className="tv-show-hero-title">{featured.title}</h1>
             <div className="tv-show-hero-meta">
               {featured.rating && (
-                <span className="rating-pill">{featured.rating.replace('★', '').trim()}</span>
+                <>
+                  <span className="tv-show-hero-rating">★ {featured.rating.replace('★', '').trim()}</span>
+                  <span className="tv-meta-dot" aria-hidden="true" />
+                </>
               )}
               <span>{featured.year}</span>
               <span className="tv-meta-dot" aria-hidden="true" />

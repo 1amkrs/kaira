@@ -1,4 +1,4 @@
-﻿import React from 'react';
+import React from 'react';
 import { Play } from 'lucide-react';
 import { CommunityPlaylist } from '../../types/media';
 import { Focusable } from '../Focusable/Focusable';
@@ -46,6 +46,15 @@ export const CommunityPlaylistCard: React.FC<CommunityPlaylistCardProps> = ({
                   alt={`Artwork ${idx + 1}`}
                   className="tv-comm-pl-quad-img"
                   loading="lazy"
+                  referrerPolicy="no-referrer"
+                  onError={(e) => {
+                    const target = e.target as HTMLImageElement;
+                    if (!target.dataset.fallbackApplied) {
+                      target.dataset.fallbackApplied = '1';
+                      target.src =
+                        'data:image/svg+xml;charset=UTF-8,%3Csvg%20width%3D%22200%22%20height%3D%22200%22%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%3E%3Crect%20width%3D%22100%25%22%20height%3D%22100%25%22%20fill%3D%22%23191d24%22%2F%3E%3C%2Fsvg%3E';
+                    }
+                  }}
                 />
               ))}
             </div>
@@ -57,6 +66,10 @@ export const CommunityPlaylistCard: React.FC<CommunityPlaylistCardProps> = ({
                   alt={playlist.creator}
                   className="tv-comm-pl-avatar-img"
                   loading="lazy"
+                  referrerPolicy="no-referrer"
+                  onError={(e) => {
+                    (e.target as HTMLImageElement).style.display = 'none';
+                  }}
                 />
               </div>
             )}

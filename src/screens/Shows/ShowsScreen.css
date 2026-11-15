@@ -65,25 +65,24 @@
   font-weight: 700;
   color: var(--text-primary);
   line-height: 1.1;
+  text-wrap: balance;
   text-shadow: 0 4px 16px rgba(0, 0, 0, 0.8);
 }
 
 .tv-show-hero-meta {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: var(--space-sm);
   font-size: var(--font-body);
   color: var(--text-secondary);
   font-weight: 500;
+  font-variant-numeric: tabular-nums;
 }
 
-.tv-show-hero-meta .rating-pill {
-  background: rgba(13, 14, 18, 0.85);
+.tv-show-hero-rating {
   color: #fdd663;
   font-weight: 700;
-  padding: 3px 8px;
-  border-radius: 4px;
-  border: 1px solid rgba(253, 214, 99, 0.25);
 }
 
 .tv-show-hero-desc {
@@ -117,8 +116,8 @@
   line-height: 1;
   white-space: nowrap;
   border-radius: var(--radius-pill);
-  background-color: #ffffff;
-  color: #0b1528;
+  background-color: var(--md-sys-color-on-surface);
+  color: var(--md-sys-color-background);
   font-size: var(--font-body);
   font-weight: 700;
   letter-spacing: 0.2px;
@@ -129,11 +128,10 @@
               transform var(--duration-micro) var(--easing-enter);
 }
 
-.tv-hero-play-btn.focused,
-.tv-hero-play-btn:hover {
-  background-color: var(--google-blue);
-  color: #ffffff;
-  box-shadow: 0 4px 14px rgba(26, 115, 232, 0.35);
+.tv-hero-play-btn.focused {
+  background-color: var(--md-sys-color-primary);
+  color: var(--md-sys-color-on-primary);
+  box-shadow: 0 0 0 2px var(--md-sys-color-focus-ring), 0 8px 20px rgba(0, 0, 0, 0.45);
 }
 
 .tv-hero-info-btn {
@@ -146,10 +144,10 @@
   box-sizing: border-box;
   line-height: 1;
   white-space: nowrap;
-  background-color: rgba(255, 255, 255, 0.12);
+  background-color: var(--md-sys-color-surface-container-high);
   color: var(--text-primary);
   border-radius: var(--radius-pill);
-  border: 1px solid var(--border-subtle);
+  border: 1px solid var(--border-medium);
   font-size: var(--font-body);
   font-weight: 600;
   cursor: pointer;
@@ -158,16 +156,29 @@
               transform var(--duration-micro) var(--easing-enter);
 }
 
-.tv-hero-info-btn.focused,
-.tv-hero-info-btn:hover {
-  background-color: rgba(255, 255, 255, 0.22);
-  border-color: rgba(138, 180, 248, 0.5);
+.tv-hero-info-btn.focused {
+  background-color: var(--md-sys-color-surface-container-highest);
+  border-color: var(--md-sys-color-focus-ring);
+  box-shadow: 0 0 0 2px var(--md-sys-color-focus-ring);
 }
 
 
 .tv-shows-rails-container {
   display: flex;
   flex-direction: column;
+}
+
+@media (min-width: 769px) and (max-width: 1100px) {
+  .tv-show-hero-billboard {
+    height: auto;
+    min-height: 360px;
+  }
+
+  .tv-hero-play-btn,
+  .tv-hero-info-btn {
+    height: 46px;
+    padding: 0 22px;
+  }
 }
 
 @media (max-width: 768px) {
@@ -197,7 +208,7 @@
 
   .tv-hero-play-btn,
   .tv-hero-info-btn {
-    height: 42px;
+    height: 44px;
     padding: 0 18px;
     font-size: 13px;
   }

@@ -1,28 +1,20 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  Tv, 
-  Gamepad, 
-  Grid, 
-  Lightbulb, 
-  Monitor, 
-  Power, 
-  ChevronRight, 
-  Check, 
-  X, 
-  Volume2, 
-  Sliders, 
+import {
+  Tv,
+  Gamepad,
+  Lightbulb,
+  Monitor,
+  Power,
+  Check,
+  X,
+  Volume2,
   ShieldCheck,
-  Shield,
-  ShieldAlert,
   Blocks,
   Plus,
   Trash2,
-  ToggleLeft,
-  ToggleRight,
   ExternalLink,
   ArrowLeft,
   RotateCcw,
-  Sparkles,
   Users,
   Lock,
   Unlock,
@@ -30,7 +22,6 @@ import {
   Moon,
   Zap,
   Smartphone,
-  QrCode
 } from 'lucide-react';
 import { Focusable } from '../../components/Focusable/Focusable';
 import { spatialNav } from '../../services/spatialNav/spatialNavEngine';
@@ -50,6 +41,9 @@ import { remoteService } from '../../services/remote/RemoteService';
 import { generateQRCodeSVG } from '../../utils/qrCodeGenerator';
 import { gamepadManager, GamepadActionDiagnostic } from '../../services/controller/gamepadManager';
 import { SystemDiagnostics } from '../../platform/types';
+import { platform } from '../../platform';
+import { PWAInstallButton } from '../../components/PWA/PWAInstallBanner';
+import { isRemoteFeatureEnabled, resetAndroidOnboarding } from '../../components/Onboarding/onboardingState';
 import { AmbientState, DisplaySettings } from '../../types';
 import { InstalledAddon, DebridConfig } from '../../types/addons';
 import './SettingsScreen.css';
@@ -58,7 +52,55 @@ interface SettingsScreenProps {
   onClose: () => void;
 }
 
-type SettingsCategory = 'profiles' | 'addons' | 'ublock' | 'display' | 'controller' | 'remote' | 'ambient' | 'tv-mode' | 'system';
+type SettingsCategory =
+  | 'profiles'
+  | 'addons'
+  | 'ublock'
+  | 'display'
+  | 'controller'
+  | 'remote'
+  | 'ambient'
+  | 'tv-mode'
+  | 'system';
+
+interface M3SwitchProps {
+  id: string;
+  groupId: string;
+  indexInGroup: number;
+  checked: boolean;
+  label: string;
+  onToggle: () => void;
+}
+
+const M3Switch: React.FC<M3SwitchProps> = ({
+  id,
+  groupId,
+  indexInGroup,
+  checked,
+  label,
+  onToggle,
+}) => (
+  <Focusable
+    id={id}
+    groupId={groupId}
+    indexInGroup={indexInGroup}
+    className="tv-switch-focusable"
+    scaleEffect={false}
+    role="switch"
+    ariaLabel={label}
+    ariaSelected={checked}
+    onSelect={onToggle}
+  >
+    {(isFocused) => (
+      <div
+        className={`tv-m3-switch ${checked ? 'checked' : ''} ${isFocused ? 'focused' : ''}`}
+        aria-checked={checked}
+      >
+        <span className="tv-m3-switch-thumb" />
+      </div>
+    )}
+  </Focusable>
+);
 
 export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onClose }) => {
   const [activeCategory, setActiveCategory] = useState<SettingsCategory>('profiles');
@@ -67,8 +109,9 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onClose }) => {
   const [ublockState, setUblockState] = useState<UBlockState>(() => ublockService.getState());
   const [activeGamepads, setActiveGamepads] = useState<string[]>([]);
   const [sfxEnabled, setSfxEnabled] = useState<boolean>(() => soundEffectsService.getEnabled());
+  const isRemoteEnabled = isRemoteFeatureEnabled(platform.isAndroid);
   const [diagnostics, setDiagnostics] = useState<SystemDiagnostics | null>(() => systemService.getCachedDiagnostics());
-  const [clientCount, setClientCount] = useState<number>(() => remoteService.getConnectedClients());
+  const [clientCount, setClientCount] = useState<number>(() => (isRemoteEnabled ? remoteService.getConnectedClients() : 0));
   const [lastAction, setLastAction] = useState<GamepadActionDiagnostic | null>(null);
   const [actionLog, setActionLog] = useState<GamepadActionDiagnostic[]>([]);
   const [screensaverState, setScreensaverState] = useState<ScreensaverState>(() => screensaverService.getState());
@@ -84,20 +127,28 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onClose }) => {
   const [newAddonUrl, setNewAddonUrl] = useState<string>('');
   const [installStatus, setInstallStatus] = useState<string | null>(null);
 
+  const [debridEndpoint, setDebridEndpoint] = useState<string>(() => debridConfig.endpointUrl || 'http://localhost:8081');
+  const [debridApiKey, setDebridApiKey] = useState<string>(() => debridConfig.apiKey || '');
+  const [debridAudioMode, setDebridAudioMode] = useState<DebridConfig['audioMode']>(() => debridConfig.audioMode || 'auto');
+  const [debridTestResult, setDebridTestResult] = useState<{ success: boolean; message: string } | null>(null);
+  const [isTestingDebrid, setIsTestingDebrid] = useState<boolean>(false);
+
   useEffect(() => {
     spatialNav.pushScope('settings-screen');
-    remoteService.discoverServerInfo();
+    if (isRemoteEnabled) {
+      remoteService.discoverServerInfo();
+    }
     return () => {
       spatialNav.popScope('settings-screen');
     };
-  }, []);
+  }, [isRemoteEnabled]);
 
   useEffect(() => {
     const unsub = ambientService.subscribe(setAmbientState);
     const unsubUblock = ublockService.subscribe(setUblockState);
     const unsubProfile = profileService.subscribe(setProfileState);
     const unsubDiag = systemService.subscribe(setDiagnostics);
-    const unsubRemote = remoteService.subscribeClientCount(setClientCount);
+    const unsubRemote = isRemoteEnabled ? remoteService.subscribeClientCount(setClientCount) : () => {};
     const unsubScreensaver = screensaverService.subscribe(setScreensaverState);
     const unsubGamepad = gamepadManager.subscribeAction((diag) => {
       setLastAction(diag);
@@ -113,8 +164,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onClose }) => {
       unsubScreensaver();
       unsubGamepad();
     };
-  }, []);
-
+  }, [isRemoteEnabled]);
 
   useEffect(() => {
     const checkGamepads = () => {
@@ -156,7 +206,6 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onClose }) => {
     ambientService.setIntensity(newInt);
   };
 
-  // Addon Actions
   const handleToggleAddon = (addonId: string, current: boolean) => {
     addonService.toggleAddon(addonId, !current);
     setAddons(addonService.getInstalledAddons());
@@ -179,12 +228,6 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onClose }) => {
       setInstallStatus(`Installation failed: ${e.message}`);
     }
   };
-
-  const [debridEndpoint, setDebridEndpoint] = useState<string>(() => debridConfig.endpointUrl || 'http://localhost:8081');
-  const [debridApiKey, setDebridApiKey] = useState<string>(() => debridConfig.apiKey || '');
-  const [debridAudioMode, setDebridAudioMode] = useState<DebridConfig['audioMode']>(() => debridConfig.audioMode || 'auto');
-  const [debridTestResult, setDebridTestResult] = useState<{ success: boolean; message: string } | null>(null);
-  const [isTestingDebrid, setIsTestingDebrid] = useState<boolean>(false);
 
   const handleDebridProviderChange = (provider: DebridConfig['provider']) => {
     const updated: DebridConfig = {
@@ -219,13 +262,49 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onClose }) => {
     setIsTestingDebrid(false);
   };
 
+  const navItems: Array<{
+    id: string;
+    key: SettingsCategory;
+    label: string;
+    icon: React.ReactNode;
+  }> = [
+    { id: 'cat-profiles', key: 'profiles', label: 'Profiles & Accounts', icon: <Users size={20} className="cat-icon" /> },
+    { id: 'cat-addons', key: 'addons', label: 'Addons & Streams', icon: <Blocks size={20} className="cat-icon" /> },
+    { id: 'cat-ublock', key: 'ublock', label: 'uBlock Origin Shield', icon: <ShieldCheck size={20} className="cat-icon" /> },
+    { id: 'cat-display', key: 'display', label: 'Display & Sound', icon: <Tv size={20} className="cat-icon" /> },
+    { id: 'cat-controller', key: 'controller', label: 'Gamepads & Input', icon: <Gamepad size={20} className="cat-icon" /> },
+    ...(isRemoteEnabled
+      ? [
+          {
+            id: 'cat-remote',
+            key: 'remote' as const,
+            label: clientCount > 0 ? `Phone Remote (${clientCount})` : 'Companion Remote',
+            icon: <Smartphone size={20} className="cat-icon" />,
+          },
+        ]
+      : []),
+    { id: 'cat-ambient', key: 'ambient', label: 'Ambient Lighting', icon: <Lightbulb size={20} className="cat-icon" /> },
+    {
+      id: 'cat-tv-mode',
+      key: 'tv-mode',
+      label: platform.isAndroid ? 'Display Mode' : 'TV Mode & HDMI',
+      icon: <Monitor size={20} className="cat-icon" />,
+    },
+    { id: 'cat-system', key: 'system', label: 'System & Power', icon: <Power size={20} className="cat-icon" /> },
+  ];
+
   return (
     <div className="tv-settings-screen" role="dialog" aria-label="Settings Screen">
-      {/* Settings Header */}
       <div className="tv-settings-header">
         <div className="tv-settings-title-group">
           <h2 className="tv-settings-title">Settings</h2>
-          <span className="tv-settings-subtitle">Google TV Windows Shell System Configuration</span>
+          <span className="tv-settings-subtitle">
+            {platform.isAndroidTV
+              ? 'Kaira Android TV Configuration'
+              : platform.isAndroid
+              ? 'Kaira Android Mobile Configuration'
+              : 'Kaira TV & Media Configuration'}
+          </span>
         </div>
 
         <Focusable
@@ -233,306 +312,144 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onClose }) => {
           groupId="settings-nav"
           className="tv-back-focusable"
           scaleEffect={false}
+          ariaLabel="Back to previous screen"
           onSelect={onClose}
         >
           {(isFocused) => (
             <div className={`tv-back-btn ${isFocused ? 'focused' : ''}`}>
-              <ArrowLeft size={20} />
-              <span>Back (B)</span>
+              <ArrowLeft size={18} />
+              <span>{platform.isAndroid && !platform.isAndroidTV ? 'Back' : 'Back (B)'}</span>
             </div>
           )}
         </Focusable>
       </div>
 
-      {/* Main Settings Split View */}
       <div className="tv-settings-layout">
-        {/* Left Column: Categories List */}
-        <div className="tv-settings-categories-list tv-scroll-container">
-          <Focusable
-            id="cat-profiles"
-            groupId="settings-categories"
-            indexInGroup={0}
-            className={`tv-setting-cat-item ${activeCategory === 'profiles' ? 'selected' : ''}`}
-            onSelect={() => setActiveCategory('profiles')}
-            scaleEffect={true}
-          >
-            {(isFocused) => (
-              <div className={`tv-cat-row ${isFocused ? 'focused' : ''}`}>
-                <Users size={22} className="cat-icon" color="var(--google-blue-light, #8ab4f8)" />
-                <div className="cat-text">
-                  <span className="cat-title">Profiles & Accounts</span>
-                  <span className="cat-desc">User accounts, avatars, and 4-digit PIN locks</span>
+        {/* Left Navigation Rail (M3 Two-Pane Navigation) */}
+        <nav className="tv-settings-categories-list tv-scroll-container" aria-label="Settings Categories">
+          {navItems.map((item, idx) => (
+            <Focusable
+              key={item.id}
+              id={item.id}
+              groupId="settings-categories"
+              indexInGroup={idx}
+              className={`tv-setting-cat-item ${activeCategory === item.key ? 'selected' : ''}`}
+              scaleEffect={false}
+              ariaLabel={item.label}
+              ariaSelected={activeCategory === item.key}
+              onSelect={() => setActiveCategory(item.key)}
+            >
+              {(isFocused) => (
+                <div className={`tv-cat-row ${isFocused ? 'focused' : ''}`}>
+                  {item.icon}
+                  <span className="cat-title">{item.label}</span>
                 </div>
-                <ChevronRight size={18} className="cat-chevron" />
-              </div>
-            )}
-          </Focusable>
+              )}
+            </Focusable>
+          ))}
+        </nav>
 
-          <Focusable
-            id="cat-addons"
-            groupId="settings-categories"
-            indexInGroup={1}
-            className={`tv-setting-cat-item ${activeCategory === 'addons' ? 'selected' : ''}`}
-            onSelect={() => setActiveCategory('addons')}
-            scaleEffect={true}
-          >
-            {(isFocused) => (
-              <div className={`tv-cat-row ${isFocused ? 'focused' : ''}`}>
-                <Blocks size={22} className="cat-icon" />
-                <div className="cat-text">
-                  <span className="cat-title">Addons & Streams</span>
-                  <span className="cat-desc">Streaming addons, resolvers, and Debrid configuration</span>
-                </div>
-                <ChevronRight size={18} className="cat-chevron" />
-              </div>
-            )}
-          </Focusable>
-
-          <Focusable
-            id="cat-ublock"
-            groupId="settings-categories"
-            indexInGroup={2}
-            className={`tv-setting-cat-item ${activeCategory === 'ublock' ? 'selected' : ''}`}
-            onSelect={() => setActiveCategory('ublock')}
-            scaleEffect={true}
-          >
-            {(isFocused) => (
-              <div className={`tv-cat-row ${isFocused ? 'focused' : ''}`}>
-                <ShieldCheck size={22} className="cat-icon" color="var(--google-blue-light, #8ab4f8)" />
-                <div className="cat-text">
-                  <span className="cat-title">uBlock Origin Shield</span>
-                  <span className="cat-desc">Ad blocking, anti-popup filters, and privacy protection</span>
-                </div>
-                <ChevronRight size={18} className="cat-chevron" />
-              </div>
-            )}
-          </Focusable>
-
-          <Focusable
-            id="cat-display"
-            groupId="settings-categories"
-            indexInGroup={3}
-            className={`tv-setting-cat-item ${activeCategory === 'display' ? 'selected' : ''}`}
-            onSelect={() => setActiveCategory('display')}
-            scaleEffect={true}
-          >
-            {(isFocused) => (
-              <div className={`tv-cat-row ${isFocused ? 'focused' : ''}`}>
-                <Tv size={22} className="cat-icon" />
-                <div className="cat-text">
-                  <span className="cat-title">Display & Sound</span>
-                  <span className="cat-desc">Resolution, refresh rate, HDR, and audio boost</span>
-                </div>
-                <ChevronRight size={18} className="cat-chevron" />
-              </div>
-            )}
-          </Focusable>
-
-          <Focusable
-            id="cat-controller"
-            groupId="settings-categories"
-            indexInGroup={4}
-            className={`tv-setting-cat-item ${activeCategory === 'controller' ? 'selected' : ''}`}
-            onSelect={() => setActiveCategory('controller')}
-            scaleEffect={true}
-          >
-            {(isFocused) => (
-              <div className={`tv-cat-row ${isFocused ? 'focused' : ''}`}>
-                <Gamepad size={22} className="cat-icon" />
-                <div className="cat-text">
-                  <span className="cat-title">Gamepads & Input</span>
-                  <span className="cat-desc">Xbox controllers, button mapping, and deadzone tuning</span>
-                </div>
-                <ChevronRight size={18} className="cat-chevron" />
-              </div>
-            )}
-          </Focusable>
-
-          <Focusable
-            id="cat-remote"
-            groupId="settings-categories"
-            indexInGroup={5}
-            className={`tv-setting-cat-item ${activeCategory === 'remote' ? 'selected' : ''}`}
-            onSelect={() => setActiveCategory('remote')}
-            scaleEffect={true}
-          >
-            {(isFocused) => (
-              <div className={`tv-cat-row ${isFocused ? 'focused' : ''}`}>
-                <Smartphone size={22} className="cat-icon" color="#81c995" />
-                <div className="cat-text">
-                  <span className="cat-title">Companion Phone Remote</span>
-                  <span className="cat-desc">
-                    {clientCount > 0 ? `🟢 ${clientCount} phone${clientCount > 1 ? 's' : ''} connected` : 'Scan QR code to control TV with phone'}
-                  </span>
-                </div>
-                <ChevronRight size={18} className="cat-chevron" />
-              </div>
-            )}
-          </Focusable>
-
-          <Focusable
-            id="cat-ambient"
-            groupId="settings-categories"
-            indexInGroup={6}
-            className={`tv-setting-cat-item ${activeCategory === 'ambient' ? 'selected' : ''}`}
-            onSelect={() => setActiveCategory('ambient')}
-            scaleEffect={true}
-          >
-            {(isFocused) => (
-              <div className={`tv-cat-row ${isFocused ? 'focused' : ''}`}>
-                <Lightbulb size={22} className="cat-icon" />
-                <div className="cat-text">
-                  <span className="cat-title">Ambient Lighting</span>
-                  <span className="cat-desc">Tuya smart bulbs and real-time screen color sync</span>
-                </div>
-                <ChevronRight size={18} className="cat-chevron" />
-              </div>
-            )}
-          </Focusable>
-
-          <Focusable
-            id="cat-tv-mode"
-            groupId="settings-categories"
-            indexInGroup={7}
-            className={`tv-setting-cat-item ${activeCategory === 'tv-mode' ? 'selected' : ''}`}
-            onSelect={() => setActiveCategory('tv-mode')}
-            scaleEffect={true}
-          >
-            {(isFocused) => (
-              <div className={`tv-cat-row ${isFocused ? 'focused' : ''}`}>
-                <Monitor size={22} className="cat-icon" />
-                <div className="cat-text">
-                  <span className="cat-title">TV Mode & Display Link</span>
-                  <span className="cat-desc">Sanyo TV HDMI configuration and borderless fullscreen</span>
-                </div>
-                <ChevronRight size={18} className="cat-chevron" />
-              </div>
-            )}
-          </Focusable>
-
-          <Focusable
-            id="cat-system"
-            groupId="settings-categories"
-            indexInGroup={7}
-            className={`tv-setting-cat-item ${activeCategory === 'system' ? 'selected' : ''}`}
-            onSelect={() => setActiveCategory('system')}
-            scaleEffect={true}
-          >
-            {(isFocused) => (
-              <div className={`tv-cat-row ${isFocused ? 'focused' : ''}`}>
-                <Power size={22} className="cat-icon" />
-                <div className="cat-text">
-                  <span className="cat-title">System & Power</span>
-                  <span className="cat-desc">Sleep timer, restart shell, or power down</span>
-                </div>
-                <ChevronRight size={18} className="cat-chevron" />
-              </div>
-            )}
-          </Focusable>
-        </div>
-
-        {/* Right Column: Category Details Panel */}
+        {/* Right Preference Details Pane */}
         <div className="tv-settings-details-panel tv-scroll-container">
           {activeCategory === 'profiles' && (
             <div className="tv-settings-group">
-              <h3 className="tv-group-title">Profiles & Security Memory</h3>
-              <p className="tv-settings-section-desc">
-                Manage user accounts, configure 4-digit PIN lock memory, isolate watch history, and restore personalized tabs.
-              </p>
-
-              {/* 1. Startup Profile Prompt Toggle */}
-              <div className="tv-setting-row-card">
-                <div className="tv-row-text">
-                  <span className="tv-row-title">Ask Who's Watching on Startup</span>
-                  <span className="tv-row-desc">Display profile selection modal every time Google TV Shell launches</span>
-                </div>
-                <Focusable
-                  id="setting-prompt-on-launch-toggle"
-                  groupId="settings-profiles-main"
-                  indexInGroup={0}
-                  className="tv-toggle-btn-focusable"
-                  onSelect={() => profileService.setPromptOnLaunch(!profileState.promptOnLaunch)}
-                >
-                  {(isFocused) => (
-                    <div className={`tv-toggle-btn ${profileState.promptOnLaunch ? 'active' : ''} ${isFocused ? 'focused' : ''}`}>
-                      {profileState.promptOnLaunch ? <ToggleRight size={26} color="#81c995" /> : <ToggleLeft size={26} color="#9aa0a6" />}
-                      <span>{profileState.promptOnLaunch ? 'Enabled' : 'Disabled'}</span>
-                    </div>
-                  )}
-                </Focusable>
-              </div>
-
-              {/* 2. PIN Memory Function Policy */}
-              <div className="tv-setting-row-card">
-                <div className="tv-row-text">
-                  <span className="tv-row-title">PIN Security & Memory Policy</span>
-                  <span className="tv-row-desc">Controls how long unlocked PINs remain remembered before requiring re-authentication</span>
-                </div>
-                <div className="tv-pill-options">
-                  {(
-                    [
-                      { id: 'session', label: 'Remember for Session' },
-                      { id: 'device', label: 'Remember on this TV' },
-                      { id: 'always', label: 'Always Ask PIN' },
-                    ] as const
-                  ).map((item, idx) => (
-                    <Focusable
-                      key={item.id}
-                      id={`opt-pin-policy-${item.id}`}
-                      groupId="settings-pin-policy"
-                      indexInGroup={idx}
-                      className="tv-option-chip"
-                      onSelect={() => profileService.setPinMemoryPolicy(item.id)}
-                    >
-                      {(isFocused) => (
-                        <div
-                          className={`tv-chip-inner ${
-                            profileState.pinMemoryPolicy === item.id ? 'active' : ''
-                          } ${isFocused ? 'focused' : ''}`}
-                        >
-                          {item.label}
-                        </div>
-                      )}
-                    </Focusable>
-                  ))}
+              <div className="tv-settings-section-head">
+                <div>
+                  <h3 className="tv-group-title">Profiles & Security</h3>
+                  <p className="tv-settings-section-desc">
+                    Manage household accounts, 4-digit PIN lock memory, and personalized tab restoration.
+                  </p>
                 </div>
               </div>
 
-              {/* 3. Remember Last Tab & Screen */}
-              <div className="tv-setting-row-card">
-                <div className="tv-row-text">
-                  <span className="tv-row-title">Remember Last Active Tab per Profile</span>
-                  <span className="tv-row-desc">Automatically restore the previous Movies, Shows, or Music tab when switching users</span>
+              <div className="tv-pref-group">
+                <div className="tv-pref-row">
+                  <div className="tv-row-text">
+                    <span className="tv-row-title">Ask Who&apos;s Watching on Startup</span>
+                    <span className="tv-row-desc">
+                      Show profile chooser each time Kaira launches
+                    </span>
+                  </div>
+                  <M3Switch
+                    id="setting-prompt-on-launch-toggle"
+                    groupId="settings-profiles-main"
+                    indexInGroup={0}
+                    checked={profileState.promptOnLaunch}
+                    label="Ask Who's Watching on Startup"
+                    onToggle={() => profileService.setPromptOnLaunch(!profileState.promptOnLaunch)}
+                  />
                 </div>
-                <Focusable
-                  id="setting-remember-tab-toggle"
-                  groupId="settings-profiles-main"
-                  indexInGroup={1}
-                  className="tv-toggle-btn-focusable"
-                  onSelect={() => profileService.setRememberLastTab(!profileState.rememberLastTab)}
-                >
-                  {(isFocused) => (
-                    <div className={`tv-toggle-btn ${profileState.rememberLastTab ? 'active' : ''} ${isFocused ? 'focused' : ''}`}>
-                      {profileState.rememberLastTab ? <ToggleRight size={26} color="#81c995" /> : <ToggleLeft size={26} color="#9aa0a6" />}
-                      <span>{profileState.rememberLastTab ? 'Active' : 'Disabled'}</span>
-                    </div>
-                  )}
-                </Focusable>
+
+                <div className="tv-pref-row">
+                  <div className="tv-row-text">
+                    <span className="tv-row-title">Remember Last Active Tab per Profile</span>
+                    <span className="tv-row-desc">
+                      Restore previous Movies, Shows, or Music tab when switching users
+                    </span>
+                  </div>
+                  <M3Switch
+                    id="setting-remember-tab-toggle"
+                    groupId="settings-profiles-main"
+                    indexInGroup={1}
+                    checked={profileState.rememberLastTab}
+                    label="Remember Last Active Tab per Profile"
+                    onToggle={() => profileService.setRememberLastTab(!profileState.rememberLastTab)}
+                  />
+                </div>
+
+                <div className="tv-pref-row">
+                  <div className="tv-row-text">
+                    <span className="tv-row-title">PIN Memory Policy</span>
+                    <span className="tv-row-desc">
+                      Controls how long unlocked PINs stay remembered before re-authentication
+                    </span>
+                  </div>
+                  <div className="tv-pill-options">
+                    {(
+                      [
+                        { id: 'session', label: 'Session' },
+                        { id: 'device', label: 'This Device' },
+                        { id: 'always', label: 'Always Ask' },
+                      ] as const
+                    ).map((item, idx) => (
+                      <Focusable
+                        key={item.id}
+                        id={`opt-pin-policy-${item.id}`}
+                        groupId="settings-pin-policy"
+                        indexInGroup={idx}
+                        className="tv-option-chip"
+                        scaleEffect={false}
+                        ariaLabel={`PIN policy: ${item.label}`}
+                        onSelect={() => profileService.setPinMemoryPolicy(item.id)}
+                      >
+                        {(isFocused) => (
+                          <div
+                            className={`tv-chip-inner ${
+                              profileState.pinMemoryPolicy === item.id ? 'active' : ''
+                            } ${isFocused ? 'focused' : ''}`}
+                          >
+                            {item.label}
+                          </div>
+                        )}
+                      </Focusable>
+                    ))}
+                  </div>
+                </div>
               </div>
 
-              {/* 4. Lock & Memory Reset Actions */}
-              <div style={{ display: 'flex', gap: '12px', marginTop: '6px' }}>
+              <div className="tv-actions-row">
                 <Focusable
                   id="setting-lock-all-btn"
                   groupId="settings-profiles-main"
                   indexInGroup={2}
-                  className="tv-addon-btn-focusable"
+                  scaleEffect={false}
+                  ariaLabel="Lock All Profiles Now"
                   onSelect={() => profileService.lockAllProfiles()}
                 >
                   {(isFocused) => (
-                    <div className={`tv-addon-action-pill ${isFocused ? 'focused' : ''}`}>
+                    <div className={`tv-tonal-btn ${isFocused ? 'focused' : ''}`}>
                       <Lock size={15} />
-                      <span>Lock All Profiles Now</span>
+                      <span>Lock All Profiles</span>
                     </div>
                   )}
                 </Focusable>
@@ -541,41 +458,41 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onClose }) => {
                   id="setting-clear-mem-btn"
                   groupId="settings-profiles-main"
                   indexInGroup={3}
-                  className="tv-addon-btn-focusable danger"
+                  scaleEffect={false}
+                  ariaLabel="Clear All Memory and History"
                   onSelect={() => profileService.clearAllMemoryData()}
                 >
                   {(isFocused) => (
-                    <div className={`tv-addon-action-pill danger ${isFocused ? 'focused' : ''}`}>
+                    <div className={`tv-tonal-btn danger ${isFocused ? 'focused' : ''}`}>
                       <RotateCcw size={15} />
-                      <span>Clear All Memory & History</span>
+                      <span>Clear Memory &amp; History</span>
                     </div>
                   )}
                 </Focusable>
               </div>
 
-              {/* Registered Profiles List Header */}
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '24px' }}>
-                <h4 className="tv-subgroup-title" style={{ margin: 0 }}>
+              <div className="tv-subgroup-header">
+                <h4 className="tv-subgroup-title">
                   Registered Profiles ({profileState.profiles.length})
                 </h4>
                 <Focusable
                   id="setting-add-profile-btn"
                   groupId="settings-profiles-main"
                   indexInGroup={4}
-                  className="tv-addon-btn-focusable"
+                  scaleEffect={false}
+                  ariaLabel="Add Profile"
                   onSelect={() => setEditingProfile('create')}
                 >
                   {(isFocused) => (
-                    <div className={`tv-addon-action-pill ${isFocused ? 'focused' : ''}`}>
-                      <Plus size={16} />
+                    <div className={`tv-tonal-btn ${isFocused ? 'focused' : ''}`}>
+                      <Plus size={15} />
                       <span>Add Profile</span>
                     </div>
                   )}
                 </Focusable>
               </div>
 
-              {/* Profile List */}
-              <div className="tv-settings-profiles-list">
+              <div className="tv-pref-group">
                 {profileState.profiles.map((prof, idx) => {
                   const isActive = prof.id === profileState.activeProfileId;
                   const hasPin = Boolean(prof.pin);
@@ -583,33 +500,33 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onClose }) => {
                   const historyCount = profileService.getWatchHistory(prof.id).length;
 
                   return (
-                    <div key={prof.id} className={`tv-settings-profile-card ${isActive ? 'active-profile' : ''}`}>
-                      <div className="tv-profile-item-left">
+                    <div key={prof.id} className="tv-pref-row">
+                      <div className="tv-profile-row-left">
                         <div className="tv-profile-item-avatar" style={{ background: prof.avatarColor }}>
-                          {renderAvatarIcon(prof.avatarIcon, 26, '#ffffff')}
+                          {renderAvatarIcon(prof.avatarIcon, 22, '#ffffff')}
                           {hasPin && (
                             <div className="tv-profile-item-lock">
-                              {isUnlocked ? <Unlock size={11} color="#ffffff" /> : <Lock size={11} color="#ffffff" />}
+                              {isUnlocked ? <Unlock size={10} color="#ffffff" /> : <Lock size={10} color="#ffffff" />}
                             </div>
                           )}
                         </div>
                         <div className="tv-profile-item-info">
                           <div className="tv-profile-item-name-row">
                             <span className="tv-profile-item-name">{prof.name}</span>
-                            {isActive && <span className="tv-status-badge active">Active Now</span>}
+                            {isActive && <span className="tv-profile-active-label">Active now</span>}
                           </div>
                           <div className="tv-profile-item-sub">
                             <span>{prof.badge}</span>
-                            <span>•</span>
+                            <span>·</span>
                             <span className={hasPin ? (isUnlocked ? 'unlocked-pin-text' : 'has-pin-text') : 'no-pin-text'}>
                               {hasPin
                                 ? isUnlocked
-                                  ? 'Unlocked (Memory)'
-                                  : 'Locked (PIN Required)'
+                                  ? 'Unlocked'
+                                  : 'PIN Required'
                                 : 'No PIN'}
                             </span>
-                            <span>•</span>
-                            <span>{historyCount} watch history items</span>
+                            <span>·</span>
+                            <span>{historyCount} watched</span>
                           </div>
                         </div>
                       </div>
@@ -620,7 +537,8 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onClose }) => {
                             id={`profile-switch-${prof.id}`}
                             groupId="settings-profile-items"
                             indexInGroup={idx * 4}
-                            className="tv-addon-btn-focusable"
+                            scaleEffect={false}
+                            ariaLabel={`Switch to ${prof.name}`}
                             onSelect={() => {
                               if (prof.pin && !isUnlocked) {
                                 setPinTargetProfile(prof);
@@ -630,7 +548,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onClose }) => {
                             }}
                           >
                             {(isFocused) => (
-                              <div className={`tv-addon-action-pill ${isFocused ? 'focused' : ''}`}>
+                              <div className={`tv-tonal-btn ${isFocused ? 'focused' : ''}`}>
                                 <span>Switch</span>
                               </div>
                             )}
@@ -642,11 +560,12 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onClose }) => {
                             id={`profile-lock-${prof.id}`}
                             groupId="settings-profile-items"
                             indexInGroup={idx * 4 + 1}
-                            className="tv-addon-btn-focusable"
+                            scaleEffect={false}
+                            ariaLabel={`Lock ${prof.name}`}
                             onSelect={() => profileService.lockProfile(prof.id)}
                           >
                             {(isFocused) => (
-                              <div className={`tv-addon-action-pill ${isFocused ? 'focused' : ''}`}>
+                              <div className={`tv-tonal-btn ${isFocused ? 'focused' : ''}`}>
                                 <Lock size={14} />
                                 <span>Lock</span>
                               </div>
@@ -658,12 +577,13 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onClose }) => {
                           id={`profile-edit-${prof.id}`}
                           groupId="settings-profile-items"
                           indexInGroup={idx * 4 + 2}
-                          className="tv-addon-btn-focusable"
+                          scaleEffect={false}
+                          ariaLabel={`Edit ${prof.name}`}
                           onSelect={() => setEditingProfile(prof)}
                         >
                           {(isFocused) => (
-                            <div className={`tv-addon-action-pill ${isFocused ? 'focused' : ''}`}>
-                              <Edit3 size={15} />
+                            <div className={`tv-tonal-btn ${isFocused ? 'focused' : ''}`}>
+                              <Edit3 size={14} />
                               <span>Edit</span>
                             </div>
                           )}
@@ -674,11 +594,12 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onClose }) => {
                             id={`profile-delete-${prof.id}`}
                             groupId="settings-profile-items"
                             indexInGroup={idx * 4 + 3}
-                            className="tv-addon-btn-focusable danger"
+                            scaleEffect={false}
+                            ariaLabel={`Delete ${prof.name}`}
                             onSelect={() => profileService.deleteProfile(prof.id)}
                           >
                             {(isFocused) => (
-                              <div className={`tv-addon-action-pill danger ${isFocused ? 'focused' : ''}`}>
+                              <div className={`tv-tonal-btn danger icon-only ${isFocused ? 'focused' : ''}`}>
                                 <Trash2 size={15} />
                               </div>
                             )}
@@ -692,223 +613,222 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onClose }) => {
             </div>
           )}
 
-
           {activeCategory === 'addons' && (
             <div className="tv-settings-group">
-              <h3 className="tv-group-title">Addons & Stream Providers</h3>
-              <p className="tv-settings-section-desc">
-                Supports the open Stremio & Nuvio Community Addon Protocol. Query high-speed 4K HDR & 1080p HTTPS video streams.
-              </p>
-
-              {/* Debrid & Self-Hosted Stream Accelerator */}
-              <div className="tv-setting-row-card">
-                <div className="tv-row-text">
-                  <span className="tv-row-title">Debrid & Self-Hosted Stream Accelerator</span>
-                  <span className="tv-row-desc">
-                    Connect an0mal1a/self-debrid (local qBittorrent) or Real-Debrid for uncompressed 4K HDR playback
-                  </span>
-                </div>
-                <div className="tv-pill-options">
-                  {(['selfdebrid', 'realdebrid', 'alldebrid', 'torbox', 'none'] as const).map((prov, idx) => (
-                    <Focusable
-                      key={prov}
-                      id={`opt-debrid-${prov}`}
-                      groupId="settings-debrid-options"
-                      indexInGroup={idx}
-                      className="tv-option-chip"
-                      onSelect={() => {
-                        handleDebridProviderChange(prov);
-                        handleSaveDebridSettings(prov);
-                      }}
-                    >
-                      {(isFocused) => (
-                        <div className={`tv-chip-inner ${debridConfig.provider === prov ? 'active' : ''} ${isFocused ? 'focused' : ''}`}>
-                          {prov === 'selfdebrid'
-                            ? 'Self-Debrid (Local / Free)'
-                            : prov === 'realdebrid'
-                            ? 'Real-Debrid'
-                            : prov === 'alldebrid'
-                            ? 'AllDebrid'
-                            : prov === 'torbox'
-                            ? 'TorBox'
-                            : 'Disabled'}
-                        </div>
-                      )}
-                    </Focusable>
-                  ))}
+              <div className="tv-settings-section-head">
+                <div>
+                  <h3 className="tv-group-title">Addons & Stream Providers</h3>
+                  <p className="tv-settings-section-desc">
+                    Configure Stremio &amp; Nuvio manifest addons and high-bitrate Debrid resolvers.
+                  </p>
                 </div>
               </div>
 
-              {/* Self-Debrid Configuration Card */}
-              {debridConfig.provider === 'selfdebrid' && (
-                <div className="tv-setting-row-card" style={{ flexDirection: 'column', alignItems: 'stretch', gap: '14px', background: 'rgba(66, 133, 244, 0.08)', borderColor: 'rgba(66, 133, 244, 0.3)' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <div className="tv-row-text">
-                      <span className="tv-row-title" style={{ color: 'var(--google-blue)', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <Zap size={16} /> Self-Debrid Server Configuration (an0mal1a/self-debrid)
-                      </span>
-                      <span className="tv-row-desc">
-                        Streams torrents through your local qBittorrent on port 8080 & streams live HTTP video on port 8081.
-                      </span>
-                    </div>
-                  </div>
-
-                  <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
-                    <input
-                      type="text"
-                      className="tv-settings-text-input"
-                      style={{ flex: 1, padding: '10px 14px', borderRadius: '8px', background: 'rgba(0,0,0,0.5)', color: '#fff', border: '1px solid var(--border-subtle)' }}
-                      placeholder="http://localhost:8081 or http://192.168.x.x:8081"
-                      value={debridEndpoint}
-                      onChange={(e) => setDebridEndpoint(e.target.value)}
-                      onBlur={() => handleSaveDebridSettings()}
-                    />
-
-                    <Focusable
-                      id="btn-save-self-debrid"
-                      groupId="settings-self-debrid"
-                      indexInGroup={0}
-                      className="tv-addon-btn-focusable"
-                      onSelect={() => {
-                        handleSaveDebridSettings();
-                        handleTestSelfDebrid();
-                      }}
-                    >
-                      {(isFocused) => (
-                        <div className={`tv-addon-action-pill active ${isFocused ? 'focused' : ''}`}>
-                          <Check size={16} />
-                          <span>{isTestingDebrid ? 'Testing...' : 'Save & Test'}</span>
-                        </div>
-                      )}
-                    </Focusable>
-                  </div>
-
-                  {debridTestResult && (
-                    <div style={{ padding: '8px 12px', borderRadius: '6px', fontSize: '13px', background: debridTestResult.success ? 'rgba(52, 168, 83, 0.15)' : 'rgba(234, 67, 53, 0.15)', color: debridTestResult.success ? '#34a853' : '#ea4335' }}>
-                      {debridTestResult.message}
-                    </div>
-                  )}
-
-                  {/* Audio Mode Compatibility Selector */}
-                  <div style={{ marginTop: '8px', paddingTop: '12px', borderTop: '1px solid rgba(255,255,255,0.08)' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                      <span style={{ fontSize: '13px', fontWeight: 600, color: '#fff', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        <Volume2 size={14} color="var(--google-blue)" /> Audio Output & Transcoding Mode (No Sound Fix)
-                      </span>
-                    </div>
-                    <div className="tv-pill-options" style={{ marginBottom: '8px' }}>
-                      {[
-                        { id: 'auto', label: 'Auto (Recommended)' },
-                        { id: 'aac_transcode', label: 'Stereo AAC Transcode (Fix Silence)' },
-                        { id: 'stereo_downmix', label: 'Stereo Downmix' },
-                        { id: 'direct', label: 'Direct Bitstream Passthrough' },
-                      ].map((item, optIdx) => (
-                        <Focusable
-                          key={item.id}
-                          id={`opt-debrid-audio-${item.id}`}
-                          groupId="settings-self-debrid-audio"
-                          indexInGroup={optIdx}
-                          className="tv-option-chip"
-                          onSelect={() => {
-                            setDebridAudioMode(item.id as any);
-                            handleSaveDebridSettings(undefined, item.id as any);
-                          }}
-                        >
-                          {(isFocused) => (
-                            <div className={`tv-chip-inner ${debridAudioMode === item.id ? 'active' : ''} ${isFocused ? 'focused' : ''}`}>
-                              {item.label}
-                            </div>
-                          )}
-                        </Focusable>
-                      ))}
-                    </div>
-                    <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
-                      If torrent movies play video with no sound (due to AC3/EAC3/DTS codecs in web browsers), select <strong>Stereo AAC Transcode</strong>.
+              <div className="tv-pref-group">
+                <div className="tv-pref-row">
+                  <div className="tv-row-text">
+                    <span className="tv-row-title">Stream Accelerator (Debrid)</span>
+                    <span className="tv-row-desc">
+                      Connect Self-Debrid or a cached Debrid provider for direct 4K HDR playback
                     </span>
                   </div>
-
-                  <div style={{ fontSize: '12px', color: 'var(--text-secondary)', lineHeight: 1.6, background: 'rgba(0,0,0,0.3)', padding: '12px', borderRadius: '8px' }}>
-                    <strong>Quick Start with an0mal1a/self-debrid:</strong><br />
-                    1. Ensure qBittorrent is running with Web UI enabled on port <code>8080</code> (Tools → Options → Web UI).<br />
-                    2. In terminal, run <code>python main.py</code> inside your <code>self-debrid</code> folder.<br />
-                    3. Kaira will automatically stream 4K movies with full native hardware transport controls!
-                  </div>
-                </div>
-              )}
-
-              {/* Cloud Debrid API Key Card */}
-              {(debridConfig.provider === 'realdebrid' || debridConfig.provider === 'alldebrid' || debridConfig.provider === 'torbox') && (
-                <div className="tv-setting-row-card" style={{ flexDirection: 'column', alignItems: 'stretch', gap: '14px' }}>
-                  <div className="tv-row-text">
-                    <span className="tv-row-title">API Token / Secret Key</span>
-                    <span className="tv-row-desc">Enter your {debridConfig.provider.toUpperCase()} API key to unlock cached 4K torrents</span>
-                  </div>
-
-                  <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
-                    <input
-                      type="password"
-                      className="tv-settings-text-input"
-                      style={{ flex: 1, padding: '10px 14px', borderRadius: '8px', background: 'rgba(0,0,0,0.5)', color: '#fff', border: '1px solid var(--border-subtle)' }}
-                      placeholder="Paste your API key here..."
-                      value={debridApiKey}
-                      onChange={(e) => setDebridApiKey(e.target.value)}
-                      onBlur={() => handleSaveDebridSettings()}
-                    />
-
-                    <Focusable
-                      id="btn-save-cloud-debrid"
-                      groupId="settings-cloud-debrid"
-                      indexInGroup={0}
-                      className="tv-addon-btn-focusable"
-                      onSelect={() => handleSaveDebridSettings()}
-                    >
-                      {(isFocused) => (
-                        <div className={`tv-addon-action-pill active ${isFocused ? 'focused' : ''}`}>
-                          <Check size={16} />
-                          <span>Save Key</span>
-                        </div>
-                      )}
-                    </Focusable>
-                  </div>
-                </div>
-              )}
-
-              {/* Installed Addons List */}
-              <h4 className="tv-subgroup-title">Installed Addons ({addons.length})</h4>
-              <div className="tv-addons-installed-list">
-                {addons.map((addon, idx) => (
-                  <div key={addon.manifest.id} className="tv-addon-item-card">
-                    <div className="tv-addon-item-info">
-                      <span className="tv-addon-item-name">{addon.manifest.name} <small>v{addon.manifest.version}</small></span>
-                      <span className="tv-addon-item-desc">{addon.manifest.description}</span>
-                    </div>
-
-                    <div className="tv-addon-item-actions">
+                  <div className="tv-pill-options">
+                    {(['selfdebrid', 'realdebrid', 'alldebrid', 'torbox', 'none'] as const).map((prov, idx) => (
                       <Focusable
-                        id={`addon-toggle-${addon.manifest.id}`}
-                        groupId="settings-addons-list"
-                        indexInGroup={idx * 2}
-                        className="tv-addon-btn-focusable"
-                        onSelect={() => handleToggleAddon(addon.manifest.id, addon.enabled)}
+                        key={prov}
+                        id={`opt-debrid-${prov}`}
+                        groupId="settings-debrid-options"
+                        indexInGroup={idx}
+                        className="tv-option-chip"
+                        scaleEffect={false}
+                        ariaLabel={`Debrid provider: ${prov}`}
+                        onSelect={() => {
+                          handleDebridProviderChange(prov);
+                          handleSaveDebridSettings(prov);
+                        }}
                       >
                         {(isFocused) => (
-                          <div className={`tv-addon-action-pill ${addon.enabled ? 'active' : ''} ${isFocused ? 'focused' : ''}`}>
-                            <span>{addon.enabled ? 'Enabled' : 'Disabled'}</span>
+                          <div className={`tv-chip-inner ${debridConfig.provider === prov ? 'active' : ''} ${isFocused ? 'focused' : ''}`}>
+                            {prov === 'selfdebrid'
+                              ? 'Self-Debrid'
+                              : prov === 'realdebrid'
+                              ? 'Real-Debrid'
+                              : prov === 'alldebrid'
+                              ? 'AllDebrid'
+                              : prov === 'torbox'
+                              ? 'TorBox'
+                              : 'Disabled'}
                           </div>
                         )}
                       </Focusable>
+                    ))}
+                  </div>
+                </div>
+
+                {debridConfig.provider === 'selfdebrid' && (
+                  <div className="tv-pref-row tv-pref-row-stacked">
+                    <div className="tv-row-text">
+                      <span className="tv-row-title">
+                        <Zap size={15} />
+                        <span>Self-Debrid Server Endpoint</span>
+                      </span>
+                      <span className="tv-row-desc">
+                        Streams local qBittorrent tasks via HTTP on port 8081
+                      </span>
+                    </div>
+
+                    <div className="tv-settings-input-row">
+                      <input
+                        type="text"
+                        className="tv-settings-text-input"
+                        placeholder="http://localhost:8081"
+                        value={debridEndpoint}
+                        onChange={(e) => setDebridEndpoint(e.target.value)}
+                        onBlur={() => handleSaveDebridSettings()}
+                      />
+                      <Focusable
+                        id="btn-save-self-debrid"
+                        groupId="settings-self-debrid"
+                        indexInGroup={0}
+                        scaleEffect={false}
+                        ariaLabel="Save and test Self-Debrid endpoint"
+                        onSelect={() => {
+                          handleSaveDebridSettings();
+                          handleTestSelfDebrid();
+                        }}
+                      >
+                        {(isFocused) => (
+                          <div className={`tv-tonal-btn primary ${isFocused ? 'focused' : ''}`}>
+                            <Check size={15} />
+                            <span>{isTestingDebrid ? 'Testing...' : 'Save & Test'}</span>
+                          </div>
+                        )}
+                      </Focusable>
+                    </div>
+
+                    {debridTestResult && (
+                      <div className={`tv-inline-status ${debridTestResult.success ? 'active' : ''}`}>
+                        {debridTestResult.message}
+                      </div>
+                    )}
+
+                    <div className="tv-row-text">
+                      <span className="tv-row-title">
+                        <Volume2 size={15} />
+                        <span>Audio Transcode Mode</span>
+                      </span>
+                      <div className="tv-pill-options" style={{ marginTop: 6 }}>
+                        {[
+                          { id: 'auto', label: 'Auto' },
+                          { id: 'aac_transcode', label: 'Stereo AAC' },
+                          { id: 'stereo_downmix', label: 'Downmix' },
+                          { id: 'direct', label: 'Direct Bitstream' },
+                        ].map((item, optIdx) => (
+                          <Focusable
+                            key={item.id}
+                            id={`opt-debrid-audio-${item.id}`}
+                            groupId="settings-self-debrid-audio"
+                            indexInGroup={optIdx}
+                            className="tv-option-chip"
+                            scaleEffect={false}
+                            ariaLabel={`Audio mode: ${item.label}`}
+                            onSelect={() => {
+                              setDebridAudioMode(item.id as any);
+                              handleSaveDebridSettings(undefined, item.id as any);
+                            }}
+                          >
+                            {(isFocused) => (
+                              <div className={`tv-chip-inner ${debridAudioMode === item.id ? 'active' : ''} ${isFocused ? 'focused' : ''}`}>
+                                {item.label}
+                              </div>
+                            )}
+                          </Focusable>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="tv-debrid-guide-note">
+                      Ensure qBittorrent Web UI is enabled on port 8080 and self-debrid is running on port 8081.
+                    </div>
+                  </div>
+                )}
+
+                {(debridConfig.provider === 'realdebrid' ||
+                  debridConfig.provider === 'alldebrid' ||
+                  debridConfig.provider === 'torbox') && (
+                  <div className="tv-pref-row tv-pref-row-stacked">
+                    <div className="tv-row-text">
+                      <span className="tv-row-title">API Token / Secret Key</span>
+                      <span className="tv-row-desc">
+                        Enter your {debridConfig.provider.toUpperCase()} token for cached streams
+                      </span>
+                    </div>
+                    <div className="tv-settings-input-row">
+                      <input
+                        type="password"
+                        className="tv-settings-text-input"
+                        placeholder="Paste your API key..."
+                        value={debridApiKey}
+                        onChange={(e) => setDebridApiKey(e.target.value)}
+                        onBlur={() => handleSaveDebridSettings()}
+                      />
+                      <Focusable
+                        id="btn-save-cloud-debrid"
+                        groupId="settings-cloud-debrid"
+                        indexInGroup={0}
+                        scaleEffect={false}
+                        ariaLabel="Save API Key"
+                        onSelect={() => handleSaveDebridSettings()}
+                      >
+                        {(isFocused) => (
+                          <div className={`tv-tonal-btn primary ${isFocused ? 'focused' : ''}`}>
+                            <Check size={15} />
+                            <span>Save Key</span>
+                          </div>
+                        )}
+                      </Focusable>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <div className="tv-subgroup-header">
+                <h4 className="tv-subgroup-title">Installed Addons ({addons.length})</h4>
+              </div>
+
+              <div className="tv-pref-group">
+                {addons.map((addon, idx) => (
+                  <div key={addon.manifest.id} className="tv-pref-row">
+                    <div className="tv-row-text">
+                      <span className="tv-addon-item-name">
+                        {addon.manifest.name}
+                        <small>v{addon.manifest.version}</small>
+                      </span>
+                      <span className="tv-row-desc">{addon.manifest.description}</span>
+                    </div>
+
+                    <div className="tv-addon-item-actions">
+                      <M3Switch
+                        id={`addon-toggle-${addon.manifest.id}`}
+                        groupId="settings-addons-list"
+                        indexInGroup={idx * 2}
+                        checked={addon.enabled}
+                        label={`Toggle ${addon.manifest.name}`}
+                        onToggle={() => handleToggleAddon(addon.manifest.id, addon.enabled)}
+                      />
 
                       {addon.manifest.id !== 'org.stremio.cinemeta' && (
                         <Focusable
                           id={`addon-del-${addon.manifest.id}`}
                           groupId="settings-addons-list"
                           indexInGroup={idx * 2 + 1}
-                          className="tv-addon-btn-focusable danger"
+                          scaleEffect={false}
+                          ariaLabel={`Uninstall ${addon.manifest.name}`}
                           onSelect={() => handleUninstallAddon(addon.manifest.id)}
                         >
                           {(isFocused) => (
-                            <div className={`tv-addon-action-pill danger ${isFocused ? 'focused' : ''}`}>
-                              <Trash2 size={16} />
+                            <div className={`tv-tonal-btn danger icon-only ${isFocused ? 'focused' : ''}`}>
+                              <Trash2 size={15} />
                             </div>
                           )}
                         </Focusable>
@@ -918,167 +838,127 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onClose }) => {
                 ))}
               </div>
 
-              {/* Community Presets */}
-              <h4 className="tv-subgroup-title">Official & Community Addons</h4>
-              <div className="tv-community-presets-row">
-                <Focusable
-                  id="preset-torrentio"
-                  groupId="settings-addon-presets"
-                  indexInGroup={0}
-                  className="tv-preset-btn-focusable"
-                  onSelect={() => handleInstallAddon('https://torrentio.strem.fun/manifest.json')}
-                >
-                  {(isFocused) => (
-                    <div className={`tv-preset-card ${isFocused ? 'focused' : ''}`}>
-                      <Plus size={16} />
-                      <span>Torrentio (4K / HDR Streams)</span>
-                    </div>
-                  )}
-                </Focusable>
-
-                <Focusable
-                  id="preset-cinemeta"
-                  groupId="settings-addon-presets"
-                  indexInGroup={1}
-                  className="tv-preset-btn-focusable"
-                  onSelect={() => handleInstallAddon('https://v3-cinemeta.strem.io/manifest.json')}
-                >
-                  {(isFocused) => (
-                    <div className={`tv-preset-card ${isFocused ? 'focused' : ''}`}>
-                      <Plus size={16} />
-                      <span>Cinemeta (Streaming Catalogs)</span>
-                    </div>
-                  )}
-                </Focusable>
-
-                <Focusable
-                  id="preset-opensubtitles"
-                  groupId="settings-addon-presets"
-                  indexInGroup={2}
-                  className="tv-preset-btn-focusable"
-                  onSelect={() => handleInstallAddon('https://opensubtitles-v3.strem.io/manifest.json')}
-                >
-                  {(isFocused) => (
-                    <div className={`tv-preset-card ${isFocused ? 'focused' : ''}`}>
-                      <Plus size={16} />
-                      <span>OpenSubtitles v3 (Subtitles)</span>
-                    </div>
-                  )}
-                </Focusable>
-
-                <Focusable
-                  id="preset-aiostreams"
-                  groupId="settings-addon-presets"
-                  indexInGroup={3}
-                  className="tv-preset-btn-focusable"
-                  onSelect={() => handleInstallAddon('https://aiostreams.am/manifest.json')}
-                >
-                  {(isFocused) => (
-                    <div className={`tv-preset-card ${isFocused ? 'focused' : ''}`}>
-                      <Plus size={16} />
-                      <span>AIOStreams (All-In-One Aggregator)</span>
-                    </div>
-                  )}
-                </Focusable>
+              <div className="tv-subgroup-header">
+                <h4 className="tv-subgroup-title">Official &amp; Community Presets</h4>
               </div>
 
-              {/* Custom Addon URL Input */}
-              <div className="tv-setting-row-card" style={{ marginTop: '16px' }}>
-                <div className="tv-row-text">
-                  <span className="tv-row-title">Install Custom Addon Manifest URL</span>
-                  <span className="tv-row-desc">Enter any valid Stremio/Nuvio addon manifest link (e.g. self-hosted AIOStreams or ElfHosted)</span>
-                </div>
-                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+              <div className="tv-community-presets-row">
+                {[
+                  { id: 'preset-torrentio', label: 'Torrentio (4K / HDR)', url: 'https://torrentio.strem.fun/manifest.json' },
+                  { id: 'preset-cinemeta', label: 'Cinemeta Catalogs', url: 'https://v3-cinemeta.strem.io/manifest.json' },
+                  { id: 'preset-opensubtitles', label: 'OpenSubtitles v3', url: 'https://opensubtitles-v3.strem.io/manifest.json' },
+                  { id: 'preset-aiostreams', label: 'AIOStreams Aggregator', url: 'https://aiostreams.am/manifest.json' },
+                ].map((preset, idx) => (
                   <Focusable
-                    id="addon-custom-input-box"
+                    key={preset.id}
+                    id={preset.id}
                     groupId="settings-addon-presets"
-                    indexInGroup={3}
+                    indexInGroup={idx}
                     scaleEffect={false}
-                    className="tv-settings-input-focusable"
-                    onSelect={() => {
-                      const input = document.getElementById('addon-custom-manifest-input');
-                      input?.focus();
-                    }}
+                    ariaLabel={`Install ${preset.label}`}
+                    onSelect={() => handleInstallAddon(preset.url)}
                   >
                     {(isFocused) => (
-                      <input
-                        id="addon-custom-manifest-input"
-                        type="text"
-                        value={newAddonUrl}
-                        onChange={(e) => setNewAddonUrl(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') {
-                            if (newAddonUrl) {
-                              handleInstallAddon(newAddonUrl);
-                              setNewAddonUrl('');
-                            }
-                          } else if (e.key === 'ArrowRight') {
-                            spatialNav.setFocus('addon-custom-install-btn');
-                          } else if (e.key === 'ArrowUp') {
-                            spatialNav.setFocus('preset-torrentio');
-                          }
-                        }}
-                        placeholder="https://.../manifest.json"
-                        className={`tv-settings-input ${isFocused ? 'focused' : ''}`}
-                        style={{
-                          background: isFocused ? 'rgba(255,255,255,0.14)' : 'rgba(255,255,255,0.08)',
-                          border: isFocused ? '1px solid var(--google-blue, #1a73e8)' : '1px solid rgba(255,255,255,0.2)',
-                          borderRadius: '8px',
-                          color: '#fff',
-                          padding: '8px 12px',
-                          fontSize: '14px',
-                          width: '280px',
-                          outline: 'none',
-                        }}
-                      />
-                    )}
-                  </Focusable>
-                  <Focusable
-                    id="addon-custom-install-btn"
-                    groupId="settings-addon-presets"
-                    indexInGroup={4}
-                    className="tv-addon-btn-focusable"
-                    onSelect={() => {
-                      if (newAddonUrl) {
-                        handleInstallAddon(newAddonUrl);
-                        setNewAddonUrl('');
-                      }
-                    }}
-                  >
-                    {(isFocused) => (
-                      <div className={`tv-addon-action-pill ${isFocused ? 'focused' : ''}`}>
-                        <Plus size={16} />
-                        <span>Install</span>
+                      <div className={`tv-preset-card ${isFocused ? 'focused' : ''}`}>
+                        <Plus size={15} />
+                        <span>{preset.label}</span>
                       </div>
                     )}
                   </Focusable>
+                ))}
+              </div>
+
+              <div className="tv-pref-group">
+                <div className="tv-pref-row tv-pref-row-stacked">
+                  <div className="tv-row-text">
+                    <span className="tv-row-title">Install Custom Addon Manifest</span>
+                    <span className="tv-row-desc">
+                      Paste any valid Stremio or Nuvio manifest URL
+                    </span>
+                  </div>
+                  <div className="tv-settings-input-row">
+                    <Focusable
+                      id="addon-custom-input-box"
+                      groupId="settings-addon-presets"
+                      indexInGroup={4}
+                      scaleEffect={false}
+                      onSelect={() => {
+                        const input = document.getElementById('addon-custom-manifest-input');
+                        input?.focus();
+                      }}
+                    >
+                      {(isFocused) => (
+                        <input
+                          id="addon-custom-manifest-input"
+                          type="text"
+                          value={newAddonUrl}
+                          onChange={(e) => setNewAddonUrl(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' && newAddonUrl) {
+                              handleInstallAddon(newAddonUrl);
+                              setNewAddonUrl('');
+                            } else if (e.key === 'ArrowRight') {
+                              spatialNav.setFocus('addon-custom-install-btn');
+                            } else if (e.key === 'ArrowUp') {
+                              spatialNav.setFocus('preset-torrentio');
+                            }
+                          }}
+                          placeholder="https://.../manifest.json"
+                          className={`tv-settings-text-input ${isFocused ? 'focused' : ''}`}
+                        />
+                      )}
+                    </Focusable>
+
+                    <Focusable
+                      id="addon-custom-install-btn"
+                      groupId="settings-addon-presets"
+                      indexInGroup={5}
+                      scaleEffect={false}
+                      ariaLabel="Install custom manifest"
+                      onSelect={() => {
+                        if (newAddonUrl) {
+                          handleInstallAddon(newAddonUrl);
+                          setNewAddonUrl('');
+                        }
+                      }}
+                    >
+                      {(isFocused) => (
+                        <div className={`tv-tonal-btn ${isFocused ? 'focused' : ''}`}>
+                          <Plus size={15} />
+                          <span>Install</span>
+                        </div>
+                      )}
+                    </Focusable>
+                  </div>
                 </div>
               </div>
 
-              {/* Music Streaming Plugins Section */}
-              <h4 className="tv-subgroup-title" style={{ marginTop: '24px' }}>Music Streaming Plugins & Lyrics</h4>
-              <div className="tv-setting-row-card">
-                <div className="tv-row-text">
-                  <span className="tv-row-title">Audius Open Music Protocol</span>
-                  <span className="tv-row-desc">Decentralized 320kbps full-length music streaming & live charts</span>
-                </div>
-                <span className="tv-status-badge active">Active (320kbps)</span>
+              <div className="tv-subgroup-header">
+                <h4 className="tv-subgroup-title">Music Streaming &amp; Lyrics Plugins</h4>
               </div>
 
-              <div className="tv-setting-row-card">
-                <div className="tv-row-text">
-                  <span className="tv-row-title">LRCLIB Synced Karaoke Lyrics</span>
-                  <span className="tv-row-desc">Line-by-line synchronized karaoke lyrics display during music playback</span>
+              <div className="tv-pref-group">
+                <div className="tv-pref-row">
+                  <div className="tv-row-text">
+                    <span className="tv-row-title">Audius Open Music Protocol</span>
+                    <span className="tv-row-desc">320kbps full-length music streaming &amp; charts</span>
+                  </div>
+                  <span className="tv-inline-status active">Active · 320kbps</span>
                 </div>
-                <span className="tv-status-badge active">Active</span>
-              </div>
-
-              <div className="tv-setting-row-card">
-                <div className="tv-row-text">
-                  <span className="tv-row-title">Piped Audio Extractor</span>
-                  <span className="tv-row-desc">High-bitrate Opus/AAC audio stream extraction for catalog music</span>
+                <div className="tv-pref-row">
+                  <div className="tv-row-text">
+                    <span className="tv-row-title">LRCLIB Synced Karaoke Lyrics</span>
+                    <span className="tv-row-desc">Line-by-line synchronized lyrics during music playback</span>
+                  </div>
+                  <span className="tv-inline-status active">Active</span>
                 </div>
-                <span className="tv-status-badge active">Piped Resolver Active</span>
+                <div className="tv-pref-row">
+                  <div className="tv-row-text">
+                    <span className="tv-row-title">Piped Audio Extractor</span>
+                    <span className="tv-row-desc">Opus &amp; AAC audio extraction for catalog tracks</span>
+                  </div>
+                  <span className="tv-inline-status active">Active</span>
+                </div>
               </div>
 
               {installStatus && (
@@ -1091,86 +971,80 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onClose }) => {
 
           {activeCategory === 'ublock' && (
             <div className="tv-settings-group">
-              <h3 className="tv-group-title">uBlock Origin AdBlock & Anti-Popup Shield</h3>
-              <p className="tv-settings-section-desc">
-                High-performance content filtering engine powered by uBlock Origin and EasyList standards. Eliminates video ads, trackers, malware, and rogue stream embed popups.
-              </p>
+              <div className="tv-settings-section-head">
+                <div>
+                  <h3 className="tv-group-title">uBlock Origin AdBlock &amp; Anti-Popup Shield</h3>
+                  <p className="tv-settings-section-desc">
+                    EasyList-powered blocker removing video ads, trackers, and rogue stream redirects.
+                  </p>
+                </div>
+              </div>
 
-              {/* Master Shield Hero Status Card */}
-              <div className="tv-ublock-hero-card">
+              <div className="tv-ublock-summary-card">
                 <div className="tv-ublock-hero-info">
-                  <div className="tv-ublock-shield-icon-box">
-                    <ShieldCheck size={32} />
+                  <div className={`tv-ublock-shield-icon-box ${ublockState.enabled ? '' : 'paused'}`}>
+                    <ShieldCheck size={24} />
                   </div>
                   <div>
                     <div className="tv-ublock-hero-title">
-                      {ublockState.enabled ? 'uBlock Origin Shield: ACTIVE' : 'uBlock Origin Shield: PAUSED'}
+                      {ublockState.enabled ? 'uBlock Origin Shield Active' : 'uBlock Origin Shield Paused'}
                     </div>
                     <div className="tv-ublock-hero-stats">
                       <span className="tv-ublock-stat-badge">
-                        {ublockState.blockedCount.toLocaleString()} Blocked
+                        {ublockState.blockedCount.toLocaleString()} blocked
                       </span>
-                      <span>•</span>
-                      <span>{ublockService.getTotalRulesCount().toLocaleString()} Active Rules</span>
-                      <span>•</span>
-                      <span>Zero Popups Enforced</span>
+                      <span>·</span>
+                      <span>{ublockService.getTotalRulesCount().toLocaleString()} rules</span>
+                      <span>·</span>
+                      <span>Anti-popup enforced</span>
                     </div>
                   </div>
                 </div>
 
-                <Focusable
+                <M3Switch
                   id="ublock-master-toggle"
                   groupId="settings-ublock-main"
                   indexInGroup={0}
-                  className="tv-toggle-btn-focusable"
-                  onSelect={() => ublockService.setEnabled(!ublockState.enabled)}
-                >
-                  {(isFocused) => (
-                    <div className={`tv-toggle-btn ${ublockState.enabled ? 'active' : ''} ${isFocused ? 'focused' : ''}`}>
-                      {ublockState.enabled ? <ToggleRight size={26} color="#81c995" /> : <ToggleLeft size={26} color="#9aa0a6" />}
-                      <span>{ublockState.enabled ? 'Enabled' : 'Disabled'}</span>
-                    </div>
-                  )}
-                </Focusable>
+                  checked={ublockState.enabled}
+                  label="Master uBlock Origin Shield"
+                  onToggle={() => ublockService.setEnabled(!ublockState.enabled)}
+                />
               </div>
 
-              {/* Anti-Popup Protection */}
-              <h4 className="tv-subgroup-title">Anti-Popup & Stream Embed Sandbox</h4>
-              <div className="tv-setting-row-card">
-                <div className="tv-row-text">
-                  <span className="tv-row-title">Aggressive Popup Window Neutralizer</span>
-                  <span className="tv-row-desc">Interceptors deny new tab and window.open redirects spawned by third-party stream mirrors</span>
+              <div className="tv-pref-group">
+                <div className="tv-pref-row">
+                  <div className="tv-row-text">
+                    <span className="tv-row-title">Popup &amp; Redirect Neutralizer</span>
+                    <span className="tv-row-desc">
+                      Blocks new tab and window.open redirects spawned by embedded stream mirrors
+                    </span>
+                  </div>
+                  <M3Switch
+                    id="ublock-popup-toggle"
+                    groupId="settings-ublock-main"
+                    indexInGroup={1}
+                    checked={ublockState.antiPopup}
+                    label="Popup and Redirect Neutralizer"
+                    onToggle={() => ublockService.setAntiPopup(!ublockState.antiPopup)}
+                  />
                 </div>
-                <Focusable
-                  id="ublock-popup-toggle"
-                  groupId="settings-ublock-main"
-                  indexInGroup={1}
-                  className="tv-toggle-btn-focusable"
-                  onSelect={() => ublockService.setAntiPopup(!ublockState.antiPopup)}
-                >
-                  {(isFocused) => (
-                    <div className={`tv-toggle-btn ${ublockState.antiPopup ? 'active' : ''} ${isFocused ? 'focused' : ''}`}>
-                      {ublockState.antiPopup ? <ToggleRight size={26} color="#81c995" /> : <ToggleLeft size={26} color="#9aa0a6" />}
-                      <span>{ublockState.antiPopup ? 'Active' : 'Bypass'}</span>
-                    </div>
-                  )}
-                </Focusable>
               </div>
 
-              {/* Filter Lists */}
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '24px' }}>
-                <h4 className="tv-subgroup-title" style={{ margin: 0 }}>Active Filter Rule Subscriptions ({ublockState.filterLists.filter(f => f.enabled).length})</h4>
-                
+              <div className="tv-subgroup-header">
+                <h4 className="tv-subgroup-title">
+                  Filter Rule Subscriptions ({ublockState.filterLists.filter((f) => f.enabled).length})
+                </h4>
                 <Focusable
                   id="ublock-reset-stats"
                   groupId="settings-ublock-main"
                   indexInGroup={2}
-                  className="tv-toggle-btn-focusable"
+                  scaleEffect={false}
+                  ariaLabel="Reset block statistics"
                   onSelect={() => ublockService.resetStats()}
                 >
                   {(isFocused) => (
-                    <div className={`tv-power-btn ${isFocused ? 'focused' : ''}`}>
-                      <RotateCcw size={16} />
+                    <div className={`tv-tonal-btn ${isFocused ? 'focused' : ''}`}>
+                      <RotateCcw size={14} />
                       <span>Reset Block Count</span>
                     </div>
                   )}
@@ -1184,7 +1058,8 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onClose }) => {
                     id={`ublock-filter-${filter.id}`}
                     groupId="settings-ublock-filters"
                     indexInGroup={idx}
-                    className="tv-option-chip"
+                    scaleEffect={false}
+                    ariaLabel={`Toggle ${filter.name}`}
                     onSelect={() => ublockService.toggleFilterList(filter.id)}
                   >
                     {(isFocused) => (
@@ -1193,7 +1068,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onClose }) => {
                           <span className="tv-ublock-filter-name">{filter.name}</span>
                           <span className="tv-ublock-filter-rules">{filter.rulesCount.toLocaleString()} rules</span>
                         </div>
-                        {filter.enabled ? <Check size={18} color="#81c995" /> : <X size={18} color="#9aa0a6" />}
+                        {filter.enabled ? <Check size={17} color="#81c995" /> : <X size={17} color="#9aa0a6" />}
                       </div>
                     )}
                   </Focusable>
@@ -1204,96 +1079,153 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onClose }) => {
 
           {activeCategory === 'display' && (
             <div className="tv-settings-group">
-              <h3 className="tv-group-title">Display Settings</h3>
-              
-              <div className="tv-setting-row-card">
-                <div className="tv-row-text">
-                  <span className="tv-row-title">Display Resolution</span>
-                  <span className="tv-row-desc">Current output rendered for Sanyo TV</span>
-                </div>
-                <div className="tv-pill-options">
-                  {(['1080p', '1440p', '4k'] as const).map((res, idx) => (
-                    <Focusable
-                      key={res}
-                      id={`opt-res-${res}`}
-                      groupId="settings-res-options"
-                      indexInGroup={idx}
-                      className="tv-option-chip"
-                      onSelect={() => handleResolutionChange(res)}
-                    >
-                      {(isFocused) => (
-                        <div className={`tv-chip-inner ${displaySettings.resolution === res ? 'active' : ''} ${isFocused ? 'focused' : ''}`}>
-                          {res.toUpperCase()}
-                        </div>
-                      )}
-                    </Focusable>
-                  ))}
+              <div className="tv-settings-section-head">
+                <div>
+                  <h3 className="tv-group-title">Display &amp; Sound</h3>
+                  <p className="tv-settings-section-desc">
+                    Configure render resolution and color pass-through output.
+                  </p>
                 </div>
               </div>
 
-              <div className="tv-setting-row-card">
-                <div className="tv-row-text">
-                  <span className="tv-row-title">High Dynamic Range (HDR)</span>
-                  <span className="tv-row-desc">HDR10 color pass-through on HDMI output</span>
+              <div className="tv-pref-group">
+                <div className="tv-pref-row">
+                  <div className="tv-row-text">
+                    <span className="tv-row-title">Display Resolution</span>
+                    <span className="tv-row-desc">
+                      {platform.isAndroid
+                        ? 'Target render scaling for this Android screen'
+                        : 'Target render scaling for primary TV display'}
+                    </span>
+                  </div>
+                  <div className="tv-pill-options">
+                    {(['1080p', '1440p', '4k'] as const).map((res, idx) => (
+                      <Focusable
+                        key={res}
+                        id={`opt-res-${res}`}
+                        groupId="settings-res-options"
+                        indexInGroup={idx}
+                        className="tv-option-chip"
+                        scaleEffect={false}
+                        ariaLabel={`Resolution ${res.toUpperCase()}`}
+                        onSelect={() => handleResolutionChange(res)}
+                      >
+                        {(isFocused) => (
+                          <div className={`tv-chip-inner ${displaySettings.resolution === res ? 'active' : ''} ${isFocused ? 'focused' : ''}`}>
+                            {res.toUpperCase()}
+                          </div>
+                        )}
+                      </Focusable>
+                    ))}
+                  </div>
                 </div>
-                <span className="tv-status-badge active">Enabled</span>
+
+                <div className="tv-pref-row">
+                  <div className="tv-row-text">
+                    <span className="tv-row-title">High Dynamic Range (HDR)</span>
+                    <span className="tv-row-desc">HDR10 pass-through on supported displays</span>
+                  </div>
+                  <span className="tv-inline-status active">Enabled</span>
+                </div>
               </div>
             </div>
           )}
 
           {activeCategory === 'controller' && (
             <div className="tv-settings-group">
-              <h3 className="tv-group-title">Remotes & Controller Validation</h3>
-              <p className="tv-settings-section-desc">
-                Live gamepad hardware validation, semantic action normalization pipeline, and real-time input event inspector.
-              </p>
-              
-              <div className="tv-setting-row-card">
-                <div className="tv-row-text">
-                  <span className="tv-row-title">Active Gamepad Hardware</span>
-                  <span className="tv-row-desc">
-                    {activeGamepads.length > 0
-                      ? activeGamepads[0]
-                      : 'Xbox Wireless Controller (Standard Gamepad / evdev XInput)'}
-                  </span>
+              <div className="tv-settings-section-head">
+                <div>
+                  <h3 className="tv-group-title">Gamepads &amp; Input</h3>
+                  <p className="tv-settings-section-desc">
+                    Gamepad normalization pipeline, deadzone tuning, and navigation audio feedback.
+                  </p>
                 </div>
-                <span className="tv-status-badge active">Connected</span>
               </div>
 
-              {/* Real-time Semantic Normalization Pipeline Card */}
-              <h4 className="tv-subgroup-title" style={{ marginTop: '20px' }}>Input Normalization Pipeline</h4>
+              <div className="tv-pref-group">
+                <div className="tv-pref-row">
+                  <div className="tv-row-text">
+                    <span className="tv-row-title">Active Input Device</span>
+                    <span className="tv-row-desc">
+                      {activeGamepads.length > 0
+                        ? activeGamepads[0]
+                        : platform.isAndroid
+                        ? 'Android TV Remote / Bluetooth Controller'
+                        : 'Bluetooth or USB Controller / D-Pad'}
+                    </span>
+                  </div>
+                  <span className="tv-inline-status active">Connected</span>
+                </div>
+
+                <div className="tv-pref-row">
+                  <div className="tv-row-text">
+                    <span className="tv-row-title">Navigation Analog Deadzone</span>
+                    <span className="tv-row-desc">Tuned threshold for left analog stick 10-foot navigation</span>
+                  </div>
+                  <span className="tv-inline-status">0.42 (Tuned)</span>
+                </div>
+
+                <div className="tv-pref-row">
+                  <div className="tv-row-text">
+                    <span className="tv-row-title">UI Navigation Sound Effects</span>
+                    <span className="tv-row-desc">Subtle clicks and confirmation chimes on focus transitions</span>
+                  </div>
+                  <M3Switch
+                    id="settings-sfx-toggle"
+                    groupId="settings-controller-group"
+                    indexInGroup={0}
+                    checked={sfxEnabled}
+                    label="UI Navigation Sound Effects"
+                    onToggle={() => {
+                      const next = !sfxEnabled;
+                      soundEffectsService.setEnabled(next);
+                      setSfxEnabled(next);
+                    }}
+                  />
+                </div>
+              </div>
+
+              <div className="tv-subgroup-header">
+                <h4 className="tv-subgroup-title">Input Normalization Inspector</h4>
+              </div>
+
               <div className="tv-controller-pipeline-card">
                 <div className="tv-pipeline-stage">
-                  <span className="tv-pipeline-stage-title">1. RAW HARDWARE INPUT</span>
+                  <span className="tv-pipeline-stage-title">1. RAW INPUT</span>
                   <span className="tv-pipeline-stage-value highlight">
-                    {lastAction ? lastAction.raw : 'Press any button / move stick...'}
+                    {lastAction ? lastAction.raw : 'Press any button...'}
                   </span>
                 </div>
-                <div className="tv-pipeline-arrow">↓</div>
+                <div className="tv-pipeline-arrow">→</div>
                 <div className="tv-pipeline-stage">
-                  <span className="tv-pipeline-stage-title">2. NORMALIZED SEMANTIC ACTION</span>
+                  <span className="tv-pipeline-stage-title">2. SEMANTIC ACTION</span>
                   <span className="tv-pipeline-stage-value green">
                     {lastAction ? lastAction.normalized : 'Awaiting input'}
                   </span>
                 </div>
-                <div className="tv-pipeline-arrow">↓</div>
+                <div className="tv-pipeline-arrow">→</div>
                 <div className="tv-pipeline-stage">
-                  <span className="tv-pipeline-stage-title">3. UI SPATIAL ENGINE ACTION</span>
+                  <span className="tv-pipeline-stage-title">3. SPATIAL NAV</span>
                   <span className="tv-pipeline-stage-value">
                     {lastAction ? lastAction.uiAction : 'Awaiting input'}
                   </span>
                 </div>
               </div>
 
-              {/* Live Event Stream Log */}
-              <h4 className="tv-subgroup-title" style={{ marginTop: '20px' }}>Live Controller Event Stream</h4>
               <div className="tv-controller-events-log">
                 {actionLog.length === 0 ? (
-                  <div className="tv-log-empty">No input events captured yet. Press buttons on your controller or keyboard.</div>
+                  <div className="tv-log-empty">No input events captured yet. Press D-pad or gamepad buttons to inspect events.</div>
                 ) : (
                   actionLog.map((act, idx) => (
                     <div key={`${act.timestamp}-${idx}`} className="tv-log-row">
-                      <span className="tv-log-time">{new Date(act.timestamp).toLocaleTimeString([], { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' })}</span>
+                      <span className="tv-log-time">
+                        {new Date(act.timestamp).toLocaleTimeString([], {
+                          hour12: false,
+                          hour: '2-digit',
+                          minute: '2-digit',
+                          second: '2-digit',
+                        })}
+                      </span>
                       <span className="tv-log-raw">{act.raw}</span>
                       <span className="tv-log-arrow">→</span>
                       <span className="tv-log-normalized">{act.normalized}</span>
@@ -1303,125 +1235,73 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onClose }) => {
                   ))
                 )}
               </div>
-
-              {/* Controller Tuning Settings */}
-              <h4 className="tv-subgroup-title" style={{ marginTop: '24px' }}>Controller Settings</h4>
-              <div className="tv-setting-row-card">
-                <div className="tv-row-text">
-                  <span className="tv-row-title">Navigation Analog Deadzone</span>
-                  <span className="tv-row-desc">Left analog stick deadzone tuned for 10-foot TV navigation</span>
-                </div>
-                <span className="tv-status-badge">0.42 (Optimized)</span>
-              </div>
-
-              <div className="tv-setting-row-card">
-                <div className="tv-row-text">
-                  <span className="tv-row-title">UI Navigation Sound Effects</span>
-                  <span className="tv-row-desc">Synthesized spatial audio clicks and selection chimes for controller movement</span>
-                </div>
-                <Focusable
-                  id="settings-sfx-toggle"
-                  groupId="settings-controller-group"
-                  indexInGroup={0}
-                  className="tv-toggle-btn-focusable"
-                  onSelect={() => {
-                    const next = !sfxEnabled;
-                    soundEffectsService.setEnabled(next);
-                    setSfxEnabled(next);
-                  }}
-                >
-                  {(isFocused) => (
-                    <div className={`tv-toggle-btn ${sfxEnabled ? 'active' : ''} ${isFocused ? 'focused' : ''}`}>
-                      {sfxEnabled ? <ToggleRight size={26} color="#81c995" /> : <ToggleLeft size={26} color="#9aa0a6" />}
-                      <span>{sfxEnabled ? 'Enabled' : 'Muted'}</span>
-                    </div>
-                  )}
-                </Focusable>
-              </div>
             </div>
           )}
 
-          {activeCategory === 'remote' && (
+          {isRemoteEnabled && activeCategory === 'remote' && (
             <div className="tv-settings-group">
-              <h3 className="tv-group-title">Companion Phone Remote</h3>
-
-              {/* QR Code & Pairing Card */}
-              <div className="tv-setting-row-card" style={{ padding: '24px', alignItems: 'flex-start' }}>
-                <div style={{ display: 'flex', gap: '28px', alignItems: 'center', width: '100%' }}>
-                  <div
-                    style={{
-                      background: '#ffffff',
-                      borderRadius: '16px',
-                      padding: '12px',
-                      boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
-                      flexShrink: 0,
-                    }}
-                  >
-                    <div
-                      style={{ width: '160px', height: '160px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-                      dangerouslySetInnerHTML={{ __html: generateQRCodeSVG(remoteService.getRemoteUrl(), 160, '#000000', '#ffffff') }}
-                    />
-                  </div>
-
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', flex: 1 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <Smartphone size={20} color="#81c995" />
-                      <span style={{ fontSize: '18px', fontWeight: 700, color: '#fff' }}>
-                        {clientCount > 0 ? `🟢 ${clientCount} Phone${clientCount > 1 ? 's' : ''} Connected` : 'Ready to Pair'}
-                      </span>
-                    </div>
-
-                    <p style={{ margin: 0, fontSize: '13px', color: 'rgba(255,255,255,0.7)', lineHeight: '1.4' }}>
-                      Scan this QR code with any smartphone camera on your local Wi-Fi to instantly control Kaira TV with a glass touchpad, media scrubber, phone keyboard typing, and voice search.
-                    </p>
-
-                    <div style={{ background: 'rgba(0,0,0,0.3)', padding: '8px 12px', borderRadius: '10px', fontFamily: 'monospace', fontSize: '13px', color: '#8ab4f8' }}>
-                      {remoteService.getRemoteUrl()}
-                    </div>
-
-                    <div style={{ display: 'flex', gap: '10px', marginTop: '4px' }}>
-                      <Focusable
-                        id="settings-remote-open-preview"
-                        groupId="settings-remote-group"
-                        indexInGroup={0}
-                        className="tv-action-btn-focusable"
-                        onSelect={() => window.open(remoteService.getRemoteUrl(), '_blank', 'width=420,height=840')}
-                      >
-                        {(isFocused) => (
-                          <div className={`tv-action-btn ${isFocused ? 'focused' : ''}`}>
-                            <ExternalLink size={16} />
-                            <span>Open in Browser Tab</span>
-                          </div>
-                        )}
-                      </Focusable>
-                    </div>
-                  </div>
+              <div className="tv-settings-section-head">
+                <div>
+                  <h3 className="tv-group-title">Companion Phone Remote</h3>
+                  <p className="tv-settings-section-desc">
+                    Scan with any phone on the same local Wi-Fi for touchpad D-pad, media scrubber, and text input.
+                  </p>
                 </div>
               </div>
 
-              {/* Diagnostics Card */}
-              <div className="tv-setting-row-card">
-                <div className="tv-row-text">
-                  <span className="tv-row-title">Remote Bridge Diagnostics</span>
-                  <span className="tv-row-desc">
-                    WebSocket Port: {window.location.port || '3000'} / 3001 • Protocols: WebSocket, SSE, HTTP REST, BroadcastChannel
-                  </span>
-                </div>
-                <div style={{ fontSize: '13px', color: '#81c995', fontWeight: 600 }}>
-                  Active & Listening
-                </div>
-              </div>
+              <div className="tv-pref-group">
+                <div className="tv-pref-row tv-pref-row-stacked">
+                  <div className="tv-remote-pair-layout">
+                    <div className="tv-remote-qr-box">
+                      <div
+                        style={{ width: '148px', height: '148px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                        dangerouslySetInnerHTML={{ __html: generateQRCodeSVG(remoteService.getRemoteUrl(), 148, '#000000', '#ffffff') }}
+                      />
+                    </div>
 
-              {/* Feature Highlights Card */}
-              <div className="tv-setting-row-card">
-                <div className="tv-row-text">
-                  <span className="tv-row-title">Features Available on Phone</span>
-                  <span className="tv-row-desc">
-                    4-Way D-Pad & Touchpad Swipe • Live Media Scrubber • Speech-to-Text Voice Dictation • Ambient Lights Control • Quick App Launcher
-                  </span>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', flex: 1, minWidth: '220px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <Smartphone size={18} color="#81c995" />
+                        <span style={{ fontSize: '16px', fontWeight: 700, color: 'var(--text-primary)' }}>
+                          {clientCount > 0 ? `${clientCount} Phone${clientCount > 1 ? 's' : ''} Connected` : 'Ready to Pair'}
+                        </span>
+                      </div>
+
+                      <div className="tv-remote-url-box">{remoteService.getRemoteUrl()}</div>
+
+                      <div className="tv-actions-row">
+                        <Focusable
+                          id="settings-remote-open-preview"
+                          groupId="settings-remote-group"
+                          indexInGroup={0}
+                          scaleEffect={false}
+                          ariaLabel="Copy remote pairing URL"
+                          onSelect={() => {
+                            if (navigator.clipboard) {
+                              navigator.clipboard.writeText(remoteService.getRemoteUrl()).catch(() => {});
+                            }
+                          }}
+                        >
+                          {(isFocused) => (
+                            <div className={`tv-tonal-btn ${isFocused ? 'focused' : ''}`}>
+                              <ExternalLink size={15} />
+                              <span>Copy Remote URL</span>
+                            </div>
+                          )}
+                        </Focusable>
+                      </div>
+                    </div>
+                  </div>
                 </div>
-                <div style={{ fontSize: '13px', color: '#8ab4f8', fontWeight: 500 }}>
-                  Ready
+
+                <div className="tv-pref-row">
+                  <div className="tv-row-text">
+                    <span className="tv-row-title">Remote Bridge Diagnostics</span>
+                    <span className="tv-row-desc">
+                      Port {window.location.port || '3000'} / 3001 · WebSocket, SSE &amp; BroadcastChannel
+                    </span>
+                  </div>
+                  <span className="tv-inline-status active">Listening</span>
                 </div>
               </div>
             </div>
@@ -1429,342 +1309,378 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onClose }) => {
 
           {activeCategory === 'ambient' && (
             <div className="tv-settings-group">
-              <h3 className="tv-group-title">Ambient Smart Lighting</h3>
-              
-              <div className="tv-setting-row-card">
-                <div className="tv-row-text">
-                  <span className="tv-row-title">Operating Mode</span>
-                  <span className="tv-row-desc">Real-time GPU DXGI Desktop Duplication color extraction</span>
+              <div className="tv-settings-section-head">
+                <div>
+                  <h3 className="tv-group-title">Ambient Smart Lighting</h3>
+                  <p className="tv-settings-section-desc">
+                    Synchronize Tuya smart lights with active video artwork and dominant colors.
+                  </p>
                 </div>
-                <div className="tv-pill-options">
-                  {(['ambient', 'cycle', 'test', 'off'] as const).map((m, idx) => (
+              </div>
+
+              <div className="tv-pref-group">
+                <div className="tv-pref-row">
+                  <div className="tv-row-text">
+                    <span className="tv-row-title">Sync Mode</span>
+                    <span className="tv-row-desc">Color extraction and lighting behavior</span>
+                  </div>
+                  <div className="tv-pill-options">
+                    {(['ambient', 'cycle', 'test', 'off'] as const).map((m, idx) => (
+                      <Focusable
+                        key={m}
+                        id={`opt-amb-mode-${m}`}
+                        groupId="settings-amb-mode"
+                        indexInGroup={idx}
+                        className="tv-option-chip"
+                        scaleEffect={false}
+                        ariaLabel={`Ambient mode ${m.toUpperCase()}`}
+                        onSelect={() => handleAmbientModeChange(m)}
+                      >
+                        {(isFocused) => (
+                          <div className={`tv-chip-inner ${ambientState.mode === m ? 'active' : ''} ${isFocused ? 'focused' : ''}`}>
+                            {m.toUpperCase()}
+                          </div>
+                        )}
+                      </Focusable>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="tv-pref-row">
+                  <div className="tv-row-text">
+                    <span className="tv-row-title">Lighting Intensity ({ambientState.intensity}%)</span>
+                    <span className="tv-row-desc">Adjust peak smart bulb brightness</span>
+                  </div>
+                  <div className="tv-intensity-stepper">
                     <Focusable
-                      key={m}
-                      id={`opt-amb-mode-${m}`}
-                      groupId="settings-amb-mode"
-                      indexInGroup={idx}
-                      className="tv-option-chip"
-                      onSelect={() => handleAmbientModeChange(m)}
+                      id="amb-dec-intensity"
+                      groupId="settings-intensity-stepper"
+                      indexInGroup={0}
+                      scaleEffect={false}
+                      ariaLabel="Decrease intensity by 10%"
+                      onSelect={() => handleIntensityChange(-10)}
                     >
-                      {(isFocused) => (
-                        <div className={`tv-chip-inner ${ambientState.mode === m ? 'active' : ''} ${isFocused ? 'focused' : ''}`}>
-                          {m.toUpperCase()}
-                        </div>
-                      )}
+                      {(isFocused) => <div className={`tv-step-inner ${isFocused ? 'focused' : ''}`}>- 10%</div>}
                     </Focusable>
-                  ))}
+                    <Focusable
+                      id="amb-inc-intensity"
+                      groupId="settings-intensity-stepper"
+                      indexInGroup={1}
+                      scaleEffect={false}
+                      ariaLabel="Increase intensity by 10%"
+                      onSelect={() => handleIntensityChange(10)}
+                    >
+                      {(isFocused) => <div className={`tv-step-inner ${isFocused ? 'focused' : ''}`}>+ 10%</div>}
+                    </Focusable>
+                  </div>
                 </div>
-              </div>
 
-              <div className="tv-setting-row-card">
-                <div className="tv-row-text">
-                  <span className="tv-row-title">Lighting Intensity ({ambientState.intensity}%)</span>
-                  <span className="tv-row-desc">Adjust global smart bulb peak brightness</span>
+                <div className="tv-pref-row">
+                  <div className="tv-row-text">
+                    <span className="tv-row-title">Paired Tuya Smart Bulbs</span>
+                    <span className="tv-row-desc">Local LAN color sync ready across 3 room bulbs</span>
+                  </div>
+                  <span className="tv-inline-status active">3 Bulbs Paired</span>
                 </div>
-                <div className="tv-intensity-stepper">
-                  <Focusable
-                    id="amb-dec-intensity"
-                    groupId="settings-intensity-stepper"
-                    indexInGroup={0}
-                    className="tv-stepper-btn"
-                    onSelect={() => handleIntensityChange(-10)}
-                  >
-                    {(isFocused) => <div className={`tv-step-inner ${isFocused ? 'focused' : ''}`}>- 10%</div>}
-                  </Focusable>
-                  <Focusable
-                    id="amb-inc-intensity"
-                    groupId="settings-intensity-stepper"
-                    indexInGroup={1}
-                    className="tv-stepper-btn"
-                    onSelect={() => handleIntensityChange(10)}
-                  >
-                    {(isFocused) => <div className={`tv-step-inner ${isFocused ? 'focused' : ''}`}>+ 10%</div>}
-                  </Focusable>
-                </div>
-              </div>
-
-              <div className="tv-setting-row-card">
-                <div className="tv-row-text">
-                  <span className="tv-row-title">Configured Tuya Smart Bulbs</span>
-                  <span className="tv-row-desc">Syska 1 (192.168.29.203) • Wipro (192.168.29.109) • Syska 2 (192.168.29.216)</span>
-                </div>
-                <span className="tv-status-badge active">3 Bulbs Paired</span>
               </div>
             </div>
           )}
 
           {activeCategory === 'tv-mode' && (
             <div className="tv-settings-group">
-              <h3 className="tv-group-title">TV Mode & Display Experience</h3>
-              
-              <div className="tv-setting-row-card">
-                <div className="tv-row-text">
-                  <span className="tv-row-title">Fullscreen TV Shell</span>
-                  <span className="tv-row-desc">Hide Windows desktop chrome and taskbar</span>
+              <div className="tv-settings-section-head">
+                <div>
+                  <h3 className="tv-group-title">{platform.isAndroid ? 'Display Mode' : 'TV Mode & Display Link'}</h3>
+                  <p className="tv-settings-section-desc">
+                    Manage fullscreen viewport, HDMI output status, and pointer behavior.
+                  </p>
                 </div>
-                <Focusable
-                  id="tv-mode-fullscreen-toggle"
-                  groupId="tv-mode-actions"
-                  indexInGroup={0}
-                  className="tv-toggle-btn-focusable"
-                  onSelect={handleToggleFullscreen}
-                >
-                  {(isFocused) => (
-                    <div className={`tv-toggle-btn ${isFocused ? 'focused' : ''}`}>
-                      <span>Toggle Fullscreen</span>
-                    </div>
-                  )}
-                </Focusable>
               </div>
 
-              <div className="tv-setting-row-card">
-                <div className="tv-row-text">
-                  <span className="tv-row-title">Sanyo Android TV Connection</span>
-                  <span className="tv-row-desc">Connected via HDMI as Primary TV Shell Display</span>
+              <div className="tv-pref-group">
+                <div className="tv-pref-row">
+                  <div className="tv-row-text">
+                    <span className="tv-row-title">Fullscreen Mode</span>
+                    <span className="tv-row-desc">
+                      Hide system bars and window chrome for distraction-free viewing
+                    </span>
+                  </div>
+                  <Focusable
+                    id="tv-mode-fullscreen-toggle"
+                    groupId="tv-mode-actions"
+                    indexInGroup={0}
+                    scaleEffect={false}
+                    ariaLabel="Toggle Fullscreen"
+                    onSelect={handleToggleFullscreen}
+                  >
+                    {(isFocused) => (
+                      <div className={`tv-toggle-btn ${isFocused ? 'focused' : ''}`}>
+                        <span>Toggle Fullscreen</span>
+                      </div>
+                    )}
+                  </Focusable>
                 </div>
-                <span className="tv-status-badge active">HDMI Active</span>
-              </div>
 
-              <div className="tv-setting-row-card">
-                <div className="tv-row-text">
-                  <span className="tv-row-title">Controller-First Cursor Hiding</span>
-                  <span className="tv-row-desc">Automatically hide mouse pointer after 3 seconds of controller use</span>
+                <div className="tv-pref-row">
+                  <div className="tv-row-text">
+                    <span className="tv-row-title">
+                      {platform.isAndroid ? 'Android Display Output' : 'Primary TV / HDMI Display'}
+                    </span>
+                    <span className="tv-row-desc">Active primary presentation surface</span>
+                  </div>
+                  <span className="tv-inline-status active">
+                    {platform.isAndroid ? 'Active' : 'HDMI Active'}
+                  </span>
                 </div>
-                <span className="tv-status-badge active">Enabled</span>
+
+                <div className="tv-pref-row">
+                  <div className="tv-row-text">
+                    <span className="tv-row-title">Auto-Hide Mouse Cursor</span>
+                    <span className="tv-row-desc">Hide pointer after 3 seconds during gamepad or D-pad control</span>
+                  </div>
+                  <span className="tv-inline-status active">Enabled</span>
+                </div>
               </div>
             </div>
           )}
 
           {activeCategory === 'system' && (
             <div className="tv-settings-group">
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <h3 className="tv-group-title" style={{ margin: 0 }}>System Information & Hardware Diagnostics</h3>
+              <div className="tv-settings-section-head">
+                <div>
+                  <h3 className="tv-group-title">System &amp; Power</h3>
+                  <p className="tv-settings-section-desc">
+                    App installation, ambient screensaver timeout, and hardware diagnostics.
+                  </p>
+                </div>
                 <Focusable
                   id="diag-refresh-btn"
                   groupId="system-diag-actions"
                   indexInGroup={0}
-                  className="tv-addon-btn-focusable"
+                  scaleEffect={false}
+                  ariaLabel="Refresh System Diagnostics"
                   onSelect={() => systemService.refreshDiagnostics()}
                 >
                   {(isFocused) => (
-                    <div className={`tv-addon-action-pill ${isFocused ? 'focused' : ''}`}>
+                    <div className={`tv-tonal-btn ${isFocused ? 'focused' : ''}`}>
                       <RotateCcw size={14} />
                       <span>Refresh Diagnostics</span>
                     </div>
                   )}
                 </Focusable>
               </div>
-              <p className="tv-settings-section-desc">
-                Live operating system telemetry, hardware video decoding pipelines, display modes, and audio subsystem status.
-              </p>
 
-              {/* Live Diagnostics Card Grid */}
+              <div className="tv-pref-group">
+                <div className="tv-pref-row">
+                  <div className="tv-row-text">
+                    <span className="tv-row-title">Android App &amp; Standalone Install</span>
+                    <span className="tv-row-desc">
+                      Install Kaira on Android / Chrome or build native APK from android/
+                    </span>
+                  </div>
+                  <PWAInstallButton />
+                </div>
+
+                {platform.isAndroid && (
+                  <div className="tv-pref-row">
+                    <div className="tv-row-text">
+                      <span className="tv-row-title">Welcome &amp; Setup Guide</span>
+                      <span className="tv-row-desc">
+                        Replay initial profile setup, display preferences, and navigation tips
+                      </span>
+                    </div>
+                    <Focusable
+                      id="settings-replay-onboarding-btn"
+                      groupId="system-diag-actions"
+                      indexInGroup={1}
+                      scaleEffect={false}
+                      ariaLabel="Replay Setup Guide"
+                      onSelect={() => {
+                        resetAndroidOnboarding();
+                        onClose();
+                        window.dispatchEvent(new CustomEvent('kaira:open-onboarding'));
+                      }}
+                    >
+                      {(isFocused) => (
+                        <div className={`tv-tonal-btn ${isFocused ? 'focused' : ''}`}>
+                          <RotateCcw size={14} />
+                          <span>Replay Setup Guide</span>
+                        </div>
+                      )}
+                    </Focusable>
+                  </div>
+                )}
+
+                <div className="tv-pref-row">
+                  <div className="tv-row-text">
+                    <span className="tv-row-title">Screensaver Idle Timeout</span>
+                    <span className="tv-row-desc">Launch 4K aerial screensaver after inactivity</span>
+                  </div>
+                  <div className="tv-row-stepper">
+                    {[
+                      { label: '2m', value: 2 },
+                      { label: '5m', value: 5 },
+                      { label: '10m', value: 10 },
+                      { label: '15m', value: 15 },
+                      { label: 'Never', value: 0 },
+                    ].map((opt, optIdx) => {
+                      const isSelected = screensaverState.timeoutMinutes === opt.value;
+                      return (
+                        <Focusable
+                          key={opt.value}
+                          id={`screensaver-timeout-${opt.value}`}
+                          groupId="screensaver-timeout-group"
+                          indexInGroup={optIdx}
+                          scaleEffect={false}
+                          ariaLabel={`Screensaver timeout: ${opt.label}`}
+                          onSelect={() => screensaverService.setTimeoutMinutes(opt.value)}
+                        >
+                          {(isFocused) => (
+                            <div className={`tv-stepper-btn ${isSelected ? 'active' : ''} ${isFocused ? 'focused' : ''}`}>
+                              <span>{opt.label}</span>
+                            </div>
+                          )}
+                        </Focusable>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div className="tv-pref-row">
+                  <div className="tv-row-text">
+                    <span className="tv-row-title">Preview 4K Screensaver</span>
+                    <span className="tv-row-desc">Test aerial lock screen with clock and weather</span>
+                  </div>
+                  <Focusable
+                    id="screensaver-preview-btn"
+                    groupId="system-power-actions"
+                    indexInGroup={0}
+                    scaleEffect={false}
+                    ariaLabel="Preview Screensaver"
+                    onSelect={() => screensaverService.trigger()}
+                  >
+                    {(isFocused) => (
+                      <div className={`tv-power-btn ${isFocused ? 'focused' : ''}`}>
+                        <Monitor size={15} />
+                        <span>Preview</span>
+                      </div>
+                    )}
+                  </Focusable>
+                </div>
+
+                <div className="tv-pref-row">
+                  <div className="tv-row-text">
+                    <span className="tv-row-title">Power Actions</span>
+                    <span className="tv-row-desc">Standby, relaunch, or power down Kaira</span>
+                  </div>
+                  <div className="tv-actions-row">
+                    <Focusable
+                      id="power-sleep-btn"
+                      groupId="system-power-actions"
+                      indexInGroup={1}
+                      scaleEffect={false}
+                      ariaLabel="Sleep Device"
+                      onSelect={() => sleepTimerService.sleepNow()}
+                    >
+                      {(isFocused) => (
+                        <div className={`tv-power-btn ${isFocused ? 'focused' : ''}`}>
+                          <Moon size={15} />
+                          <span>Sleep</span>
+                        </div>
+                      )}
+                    </Focusable>
+
+                    <Focusable
+                      id="power-restart-btn"
+                      groupId="system-power-actions"
+                      indexInGroup={2}
+                      scaleEffect={false}
+                      ariaLabel="Restart System"
+                      onSelect={() => displayService.triggerPowerAction('restart')}
+                    >
+                      {(isFocused) => (
+                        <div className={`tv-power-btn ${isFocused ? 'focused' : ''}`}>
+                          <RotateCcw size={15} />
+                          <span>Restart</span>
+                        </div>
+                      )}
+                    </Focusable>
+
+                    <Focusable
+                      id="power-shutdown-btn"
+                      groupId="system-power-actions"
+                      indexInGroup={3}
+                      scaleEffect={false}
+                      ariaLabel="Shut Down System"
+                      onSelect={() => displayService.triggerPowerAction('shutdown')}
+                    >
+                      {(isFocused) => (
+                        <div className={`tv-power-btn danger ${isFocused ? 'focused' : ''}`}>
+                          <Power size={15} />
+                          <span>Shut Down</span>
+                        </div>
+                      )}
+                    </Focusable>
+                  </div>
+                </div>
+              </div>
+
+              <div className="tv-subgroup-header">
+                <h4 className="tv-subgroup-title">Hardware Diagnostics</h4>
+              </div>
+
               <div className="tv-diagnostics-grid">
                 <div className="tv-diag-card">
                   <span className="tv-diag-label">Operating System</span>
-                  <span className="tv-diag-value highlight">{diagnostics?.os || 'Linux Appliance (TV OS)'}</span>
-                  <span className="tv-diag-sub">{diagnostics?.kernel || 'Linux 6.8.0 / Wayland'}</span>
+                  <span className="tv-diag-value highlight">{diagnostics?.os || 'Kaira Media Runtime'}</span>
+                  <span className="tv-diag-sub">{diagnostics?.kernel || 'Standard Web / Native'}</span>
                 </div>
 
                 <div className="tv-diag-card">
-                  <span className="tv-diag-label">Architecture & Hardware</span>
+                  <span className="tv-diag-label">Architecture</span>
                   <span className="tv-diag-value">{diagnostics?.arch.toUpperCase() || 'X86_64'}</span>
-                  <span className="tv-diag-sub">{diagnostics?.deviceModel || 'Personal TV Appliance'}</span>
+                  <span className="tv-diag-sub">{diagnostics?.deviceModel || 'Media Device'}</span>
                 </div>
 
                 <div className="tv-diag-card">
-                  <span className="tv-diag-label">CPU Processor</span>
-                  <span className="tv-diag-value">{diagnostics?.cpuModel || 'Multi-Core Processor'}</span>
-                  <span className="tv-diag-sub">{diagnostics?.cpuCores} CPU Threads / Cores Active</span>
+                  <span className="tv-diag-label">Processor &amp; Cores</span>
+                  <span className="tv-diag-value">{diagnostics?.cpuModel || 'Multi-Core CPU'}</span>
+                  <span className="tv-diag-sub">{diagnostics?.cpuCores || 4} Threads Active</span>
                 </div>
 
                 <div className="tv-diag-card">
-                  <span className="tv-diag-label">System Memory (RAM)</span>
+                  <span className="tv-diag-label">Memory (RAM)</span>
                   <span className="tv-diag-value">
-                    {diagnostics ? `${(diagnostics.ramUsedBytes / (1024 ** 3)).toFixed(1)} GB / ${(diagnostics.ramTotalBytes / (1024 ** 3)).toFixed(1)} GB` : '16 GB Total'}
+                    {diagnostics
+                      ? `${(diagnostics.ramUsedBytes / 1024 ** 3).toFixed(1)} GB / ${(diagnostics.ramTotalBytes / 1024 ** 3).toFixed(1)} GB`
+                      : '8.0 GB Total'}
                   </span>
                   <span className="tv-diag-sub">
-                    {diagnostics ? `${(diagnostics.ramFreeBytes / (1024 ** 3)).toFixed(1)} GB Available` : 'Available'}
+                    {diagnostics ? `${(diagnostics.ramFreeBytes / 1024 ** 3).toFixed(1)} GB Free` : 'Available'}
                   </span>
                 </div>
 
                 <div className="tv-diag-card">
-                  <span className="tv-diag-label">Graphics Processing Unit (GPU)</span>
-                  <span className="tv-diag-value">{diagnostics?.gpuModel || 'Mesa DRM / Intel Iris / AMD Radeon'}</span>
-                  <span className="tv-diag-sub">{diagnostics?.gpuDriver || 'Mesa 24.1 / DRM KMS'}</span>
+                  <span className="tv-diag-label">Video Hardware Decode</span>
+                  <span className="tv-diag-value green">{diagnostics?.hardwareVideoDecode || 'Hardware Decode Ready'}</span>
+                  <span className="tv-diag-sub">H.264 · HEVC · AV1 · VP9</span>
                 </div>
 
                 <div className="tv-diag-card">
-                  <span className="tv-diag-label">Hardware Video Acceleration</span>
-                  <span className="tv-diag-value green">{diagnostics?.hardwareVideoDecode || 'VA-API Hardware Decode Active'}</span>
-                  <span className="tv-diag-sub">H.264 • HEVC (4K) • AV1 • VP9 Decoders</span>
-                </div>
-
-                <div className="tv-diag-card">
-                  <span className="tv-diag-label">TV Display Output</span>
+                  <span className="tv-diag-label">Display &amp; Audio</span>
                   <span className="tv-diag-value">
                     {diagnostics?.activeDisplay.width}×{diagnostics?.activeDisplay.height} @ {diagnostics?.activeDisplay.refreshRate}Hz
                   </span>
                   <span className="tv-diag-sub">
-                    {diagnostics?.displayServer.toUpperCase()} • HDR10 Color Gamut Pass-Through
+                    {diagnostics?.audioServer.toUpperCase() || 'AUDIO'} · {diagnostics?.activeAudioDevice.name || 'Primary Output'}
                   </span>
                 </div>
-
-                <div className="tv-diag-card">
-                  <span className="tv-diag-label">Audio Server & Output</span>
-                  <span className="tv-diag-value">{diagnostics?.audioServer.toUpperCase() || 'PIPEWIRE'}</span>
-                  <span className="tv-diag-sub">{diagnostics?.activeAudioDevice.name || 'HDMI Audio Output'}</span>
-                </div>
-
-                <div className="tv-diag-card">
-                  <span className="tv-diag-label">Network Connection</span>
-                  <span className="tv-diag-value">{diagnostics?.networkType.toUpperCase() || 'ETHERNET'}</span>
-                  <span className="tv-diag-sub">IP: {diagnostics?.ipAddress || '192.168.29.120'} • Internet Connected</span>
-                </div>
-
-                <div className="tv-diag-card">
-                  <span className="tv-diag-label">Active Controller</span>
-                  <span className="tv-diag-value">{diagnostics?.controllerName || 'Xbox Wireless Controller'}</span>
-                  <span className="tv-diag-sub">USB / Bluetooth XInput & evdev Normalized</span>
-                </div>
-
-                <div className="tv-diag-card">
-                  <span className="tv-diag-label">Storage (Appliance Disk)</span>
-                  <span className="tv-diag-value">
-                    {diagnostics ? `${(diagnostics.storageFreeBytes / (1024 ** 3)).toFixed(0)} GB Free / ${(diagnostics.storageTotalBytes / (1024 ** 3)).toFixed(0)} GB` : '380 GB Free'}
-                  </span>
-                  <span className="tv-diag-sub">Read-Only System Root • Ext4 User Data</span>
-                </div>
-              </div>
-
-              {/* Power & System Actions */}
-              <h4 className="tv-subgroup-title" style={{ marginTop: '28px' }}>Power & Appliance Controls</h4>
-
-              {/* Screensaver Idle Timeout */}
-              <div className="tv-setting-row-card">
-                <div className="tv-row-text">
-                  <span className="tv-row-title">Screensaver Idle Timeout</span>
-                  <span className="tv-row-desc">Automatically launch 4K aerial views when inactive</span>
-                </div>
-                <div className="tv-row-stepper" style={{ display: 'flex', gap: '8px' }}>
-                  {[
-                    { label: '2m', value: 2 },
-                    { label: '5m', value: 5 },
-                    { label: '10m', value: 10 },
-                    { label: '15m', value: 15 },
-                    { label: 'Never', value: 0 },
-                  ].map((opt, optIdx) => {
-                    const isSelected = screensaverState.timeoutMinutes === opt.value;
-                    return (
-                      <Focusable
-                        key={opt.value}
-                        id={`screensaver-timeout-${opt.value}`}
-                        groupId="screensaver-timeout-group"
-                        indexInGroup={optIdx}
-                        className="tv-stepper-btn-focusable"
-                        onSelect={() => screensaverService.setTimeoutMinutes(opt.value)}
-                      >
-                        {(isFocused) => (
-                          <div className={`tv-stepper-btn ${isSelected ? 'active' : ''} ${isFocused ? 'focused' : ''}`}>
-                            <span>{opt.label}</span>
-                          </div>
-                        )}
-                      </Focusable>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* Preview Screensaver Button */}
-              <div className="tv-setting-row-card">
-                <div className="tv-row-text">
-                  <span className="tv-row-title">Preview 4K Screensaver</span>
-                  <span className="tv-row-desc">Immediately launch aerial views with ambient clock and weather</span>
-                </div>
-                <Focusable
-                  id="screensaver-preview-btn"
-                  groupId="system-power-actions"
-                  indexInGroup={0}
-                  className="tv-power-btn-focusable"
-                  onSelect={() => screensaverService.trigger()}
-                >
-                  {(isFocused) => (
-                    <div className={`tv-power-btn ${isFocused ? 'focused' : ''}`}>
-                      <Sparkles size={16} />
-                      <span>Preview</span>
-                    </div>
-                  )}
-                </Focusable>
-              </div>
-
-              <div className="tv-setting-row-card">
-                <div className="tv-row-text">
-                  <span className="tv-row-title">Sleep TV Appliance</span>
-                  <span className="tv-row-desc">Enter low-power standby mode and pause all media</span>
-                </div>
-                <Focusable
-                  id="power-sleep-btn"
-                  groupId="system-power-actions"
-                  indexInGroup={1}
-                  className="tv-power-btn-focusable"
-                  onSelect={() => sleepTimerService.sleepNow()}
-                >
-                  {(isFocused) => (
-                    <div className={`tv-power-btn ${isFocused ? 'focused' : ''}`}>
-                      <Moon size={16} />
-                      <span>Sleep</span>
-                    </div>
-                  )}
-                </Focusable>
-              </div>
-
-              <div className="tv-setting-row-card">
-                <div className="tv-row-text">
-                  <span className="tv-row-title">Restart System</span>
-                  <span className="tv-row-desc">Reboot operating system and relaunch TV shell</span>
-                </div>
-                <Focusable
-                  id="power-restart-btn"
-                  groupId="system-power-actions"
-                  indexInGroup={2}
-                  className="tv-power-btn-focusable"
-                  onSelect={() => displayService.triggerPowerAction('restart')}
-                >
-                  {(isFocused) => (
-                    <div className={`tv-power-btn ${isFocused ? 'focused' : ''}`}>
-                      <RotateCcw size={16} />
-                      <span>Restart</span>
-                    </div>
-                  )}
-                </Focusable>
-              </div>
-
-              <div className="tv-setting-row-card">
-                <div className="tv-row-text">
-                  <span className="tv-row-title">Shut Down</span>
-                  <span className="tv-row-desc">Safely unmount user storage and power off appliance</span>
-                </div>
-                <Focusable
-                  id="power-shutdown-btn"
-                  groupId="system-power-actions"
-                  indexInGroup={3}
-                  className="tv-power-btn-focusable danger"
-                  onSelect={() => displayService.triggerPowerAction('shutdown')}
-                >
-                  {(isFocused) => (
-                    <div className={`tv-power-btn danger ${isFocused ? 'focused' : ''}`}>
-                      <Power size={16} />
-                      <span>Shut Down</span>
-                    </div>
-                  )}
-                </Focusable>
               </div>
             </div>
           )}
         </div>
       </div>
 
-      {/* 4-Digit PIN Security Modal */}
       {pinTargetProfile && (
         <PinModal
           profile={pinTargetProfile}
@@ -1778,7 +1694,6 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onClose }) => {
         />
       )}
 
-      {/* Create / Edit Profile Modal */}
       {editingProfile && (
         <ProfileEditorModal
           profile={editingProfile === 'create' ? null : editingProfile}
@@ -1801,4 +1716,3 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onClose }) => {
     </div>
   );
 };
-

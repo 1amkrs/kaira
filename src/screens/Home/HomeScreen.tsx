@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Play, Info, Sparkles } from 'lucide-react';
+import { Play, Info } from 'lucide-react';
 import { Movie, Show, Album, MediaItem } from '../../types';
 import { mediaProvider, ContinueWatchingItem } from '../../services/media/LiveMediaProvider';
 import { continueWatchingService, ContinueWatchingEntry } from '../../services/playback/ContinueWatchingService';
@@ -205,10 +205,18 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
               src={featured.backdrop || featured.poster}
               alt={featured.title}
               className="tv-hero-backdrop-img"
+              referrerPolicy="no-referrer"
               onError={(e) => {
                 const target = e.target as HTMLImageElement;
-                if (featured.poster && target.src !== featured.poster) {
+                if (featured.poster && target.src !== featured.poster && !target.dataset.triedPoster) {
+                  target.dataset.triedPoster = '1';
                   target.src = featured.poster;
+                  return;
+                }
+                if (!target.dataset.fallbackApplied) {
+                  target.dataset.fallbackApplied = '1';
+                  target.src =
+                    'data:image/svg+xml;charset=UTF-8,%3Csvg%20width%3D%221280%22%20height%3D%22720%22%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%3E%3Cdefs%3E%3ClinearGradient%20id%3D%22g%22%20x1%3D%220%22%20y1%3D%220%22%20x2%3D%221%22%20y2%3D%221%22%3E%3Cstop%20offset%3D%220%25%22%20stop-color%3D%22%23191d24%22%2F%3E%3Cstop%20offset%3D%22100%25%22%20stop-color%3D%22%230e1014%22%2F%3E%3C%2FlinearGradient%3E%3C%2Fdefs%3E%3Crect%20width%3D%22100%25%22%20height%3D%22100%25%22%20fill%3D%22url(%23g)%22%2F%3E%3C%2Fsvg%3E';
                 }
               }}
             />
@@ -217,16 +225,18 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
 
           <div className="tv-hero-content-container">
             <div className="tv-hero-badge-row">
-              <span className="tv-hero-badge-pill">
-                <Sparkles size={14} className="badge-icon" />
-                Featured in 4K
-              </span>
-              <span className="tv-hero-source">{featured.genres.join(' • ')}</span>
+              <span className="tv-hero-format-tag">4K HDR</span>
+              {featured.genres.length > 0 && (
+                <>
+                  <span className="tv-meta-dot" aria-hidden="true" />
+                  <span className="tv-hero-source">{featured.genres.join(' · ')}</span>
+                </>
+              )}
             </div>
 
             <h1 className="tv-hero-title">{featured.title}</h1>
             <p className="tv-hero-subtitle">
-              <span className="tv-hero-rating-score">{featured.rating.replace('★', '').trim()}</span> • {featured.year} • {featured.runtime}
+              <span className="tv-hero-rating-score">{featured.rating.replace('★', '').trim()}</span> · {featured.year} · {featured.runtime}
             </p>
             <p className="tv-hero-description text-line-clamp-2">{featured.description}</p>
 

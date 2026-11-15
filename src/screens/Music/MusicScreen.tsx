@@ -86,7 +86,7 @@ export const MusicScreen: React.FC<MusicScreenProps> = ({ onSelectAlbum, onPlayT
     <div className="tv-yt-music-screen tv-scroll-container">
       {/* 1. Top Mood / Activity Filter Chips */}
       <section className="tv-yt-chips-container" aria-label="Music Moods and Activities">
-        <div className="tv-yt-chips-scroll">
+        <div className="tv-yt-chips-scroll" role="tablist" aria-label="Mood Filters">
           {YOUTUBE_MOOD_CHIPS.map((chip, idx) => {
             const isSelected = selectedChip === chip;
             return (
@@ -95,18 +95,20 @@ export const MusicScreen: React.FC<MusicScreenProps> = ({ onSelectAlbum, onPlayT
                 id={`yt-chip-${idx}`}
                 groupId="yt-mood-chips"
                 indexInGroup={idx}
+                role="tab"
+                ariaSelected={isSelected}
+                ariaLabel={chip}
                 className="tv-yt-chip-focusable"
                 onSelect={() => setSelectedChip(isSelected ? null : chip)}
               >
                 {(isFocused) => (
-                  <button
-                    type="button"
+                  <div
                     className={`tv-yt-chip-btn ${isSelected ? 'selected' : ''} ${
                       isFocused ? 'focused' : ''
                     }`}
                   >
                     {chip}
-                  </button>
+                  </div>
                 )}
               </Focusable>
             );
@@ -146,6 +148,8 @@ export const MusicScreen: React.FC<MusicScreenProps> = ({ onSelectAlbum, onPlayT
                 id="yt-qp-play-all"
                 groupId="yt-quick-picks-header"
                 indexInGroup={0}
+                role="button"
+                ariaLabel="Play all quick picks"
                 className="tv-yt-play-all-focusable"
                 onSelect={() => {
                   if (quickPicks.length > 0) {
@@ -168,34 +172,30 @@ export const MusicScreen: React.FC<MusicScreenProps> = ({ onSelectAlbum, onPlayT
                   id="yt-qp-page-prev"
                   groupId="yt-quick-picks-header"
                   indexInGroup={1}
+                  role="button"
+                  ariaLabel="Previous Quick Picks"
                   className="tv-yt-arrow-focusable"
                   onSelect={() => setQuickPickPage((p) => (p > 0 ? p - 1 : totalQuickPickPages - 1))}
                 >
                   {(isFocused) => (
-                    <button
-                      type="button"
-                      aria-label="Previous Quick Picks"
-                      className={`tv-yt-arrow-btn ${isFocused ? 'focused' : ''}`}
-                    >
+                    <div className={`tv-yt-arrow-btn ${isFocused ? 'focused' : ''}`}>
                       <ChevronLeft size={20} />
-                    </button>
+                    </div>
                   )}
                 </Focusable>
                 <Focusable
                   id="yt-qp-page-next"
                   groupId="yt-quick-picks-header"
                   indexInGroup={2}
+                  role="button"
+                  ariaLabel="Next Quick Picks"
                   className="tv-yt-arrow-focusable"
                   onSelect={() => setQuickPickPage((p) => (p < totalQuickPickPages - 1 ? p + 1 : 0))}
                 >
                   {(isFocused) => (
-                    <button
-                      type="button"
-                      aria-label="Next Quick Picks"
-                      className={`tv-yt-arrow-btn ${isFocused ? 'focused' : ''}`}
-                    >
+                    <div className={`tv-yt-arrow-btn ${isFocused ? 'focused' : ''}`}>
                       <ChevronRight size={20} />
-                    </button>
+                    </div>
                   )}
                 </Focusable>
               </div>

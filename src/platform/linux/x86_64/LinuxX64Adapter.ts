@@ -79,6 +79,8 @@ export class LinuxX64PlatformAdapter implements IPlatformAdapter {
   public readonly platform: PlatformType = 'linux-x64';
   public readonly isLinux: boolean = true;
   public readonly isARM64: boolean = false;
+  public readonly isAndroid: boolean = false;
+  public readonly isAndroidTV: boolean = false;
 
   public readonly display: IDisplayAdapter = new LinuxDisplayAdapter();
   public readonly audio: IAudioAdapter = new LinuxAudioAdapter();

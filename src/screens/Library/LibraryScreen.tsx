@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Play, Info, Bookmark, Clock, Film, Tv } from 'lucide-react';
+import { Play, Info, Bookmark } from 'lucide-react';
 import { Movie, Show, MediaItem, Episode } from '../../types';
 import { mediaProvider, ContinueWatchingItem } from '../../services/media/LiveMediaProvider';
 import { continueWatchingService, ContinueWatchingEntry } from '../../services/playback/ContinueWatchingService';
@@ -314,19 +314,29 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
 
             <div className="tv-library-hero-meta">
               {featuredHero.rating && (
-                <span className="rating-pill">
-                  {featuredHero.rating.replace('★', '').trim()}
-                </span>
+                <>
+                  <span className="tv-library-hero-rating">
+                    ★ {featuredHero.rating.replace('★', '').trim()}
+                  </span>
+                  {(featuredHero.progress !== undefined || featuredHero.year) && (
+                    <span className="tv-meta-dot" aria-hidden="true" />
+                  )}
+                </>
               )}
               {featuredHero.progress !== undefined && (
-                <span className="progress-pill">
-                  {featuredHero.progress}% Watched
-                </span>
+                <>
+                  <span className="tv-library-hero-progress">
+                    {featuredHero.progress}% Watched
+                  </span>
+                  {(featuredHero.year || featuredHero.metaExtra) && (
+                    <span className="tv-meta-dot" aria-hidden="true" />
+                  )}
+                </>
               )}
               {featuredHero.year && <span>{featuredHero.year}</span>}
               {featuredHero.metaExtra && (
                 <>
-                  <span className="tv-meta-dot" aria-hidden="true" />
+                  {featuredHero.year && <span className="tv-meta-dot" aria-hidden="true" />}
                   <span>{featuredHero.metaExtra}</span>
                 </>
               )}
@@ -389,6 +399,9 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
               id={`lib-cat-tab-${cat.id}`}
               groupId="library-categories"
               indexInGroup={idx}
+              role="tab"
+              ariaSelected={isActive}
+              ariaLabel={cat.label}
               className="tv-library-category-focusable"
               scaleEffect={false}
               onSelect={() => setActiveCategory(cat.id)}

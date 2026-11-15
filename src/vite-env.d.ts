@@ -1,4 +1,5 @@
 /// <reference types="vite/client" />
+/// <reference types="vite-plugin-pwa/client" />
 
 /* Static asset type declarations */
 declare module '*.png' {
@@ -32,6 +33,19 @@ declare module '*.gif' {
 }
 
 interface Window {
+  AndroidBridge?: {
+    isAndroidTV?: () => boolean;
+    getDeviceInfo?: () => string;
+    launchApp?: (packageName: string, fallbackUrl: string) => boolean;
+    openExternal?: (url: string) => void;
+    setImmersiveMode?: (enabled: boolean) => void;
+    sleep?: () => void;
+    exitApp?: () => void;
+  };
+  Capacitor?: {
+    getPlatform?: () => string;
+    isNativePlatform?: () => boolean;
+  };
   electronAPI?: {
     launchApp: (app: any) => Promise<{ success: boolean; error?: string }>;
     openExternal: (url: string) => Promise<void>;

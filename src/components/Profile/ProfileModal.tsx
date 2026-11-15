@@ -1,12 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  Check, 
-  X, 
-  Lock, 
-  Unlock, 
-  Plus, 
-  Edit3, 
-  ArrowLeft
+import {
+  Lock,
+  Unlock,
+  Plus,
+  Edit3,
+  ArrowLeft,
+  Check,
 } from 'lucide-react';
 import { Focusable } from '../Focusable/Focusable';
 import { UserProfile, CreateProfileDTO, UpdateProfileDTO } from '../../types/profile';
@@ -96,26 +95,18 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
 
   return (
     <>
-      <div 
-        className="tv-profile-screen-backdrop" 
-        role="dialog" 
-        aria-modal="true" 
-        aria-label="Who's Watching?"
+      <div
+        className="tv-profile-screen-backdrop"
+        role="dialog"
+        aria-modal="true"
+        aria-label={isManageMode ? 'Manage profiles' : "Who's watching?"}
       >
         <div className="tv-profile-minimal-stage">
-          {/* Minimalist Title */}
-          <div className="tv-profile-minimal-header">
-            <h1 className="tv-profile-minimal-title">
-              {isManageMode ? 'Manage Profiles' : "Who's watching?"}
-            </h1>
-            <p className="tv-profile-minimal-hint">
-              {isManageMode
-                ? 'Customize your avatar, edit names, or set up a 4-digit PIN lock.'
-                : 'Select your profile to jump back into your watchlist and recommendations.'}
-            </p>
-          </div>
+          <h1 className="tv-profile-minimal-title">
+            {isManageMode ? 'Manage profiles' : "Who's watching?"}
+          </h1>
 
-          {/* Horizontal Floating Avatar Carousel */}
+          {/* Simplified Netflix-style Rounded Avatars (No Cards) */}
           <div className="tv-profile-minimal-row" role="list">
             {profiles.map((prof, idx) => {
               const isSelected = prof.id === activeProfileId;
@@ -131,44 +122,38 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
                   autoFocus={idx === 0}
                   className="tv-profile-avatar-focusable"
                   onSelect={() => handleProfileClick(prof)}
+                  scaleEffect={false}
+                  role="listitem"
+                  ariaLabel={`${prof.name}${isSelected ? ' (Active)' : ''}`}
                 >
                   {(isFocused) => (
                     <div
-                      className={`tv-profile-avatar-card ${isSelected ? 'active-user' : ''} ${
+                      className={`tv-profile-avatar-item ${isSelected ? 'active-user' : ''} ${
                         isFocused ? 'focused' : ''
-                      } ${isManageMode ? 'editing' : ''}`}
+                      }`}
                     >
-                      {/* Avatar Circle Disc */}
-                      <div 
-                        className="tv-profile-avatar-disc"
+                      <div
+                        className="tv-profile-avatar-tile"
                         style={{ background: prof.avatarColor }}
                       >
-                        {renderAvatarIcon(prof.avatarIcon, 44, '#ffffff')}
+                        {renderAvatarIcon(prof.avatarIcon, 42, '#ffffff')}
 
-                        {/* Active Dot Indicator */}
-                        {isSelected && !isManageMode && (
-                          <div className="tv-profile-avatar-active-dot" title="Current Active Profile" />
-                        )}
-
-                        {/* Discreet Lock Badge */}
                         {hasPin && (
-                          <div 
+                          <div
                             className={`tv-profile-avatar-lock-tag ${isUnlocked ? 'unlocked' : 'locked'}`}
                             title={isUnlocked ? 'Unlocked' : 'PIN Required'}
                           >
-                            {isUnlocked ? <Unlock size={11} /> : <Lock size={11} />}
+                            {isUnlocked ? <Unlock size={12} /> : <Lock size={12} />}
                           </div>
                         )}
 
-                        {/* Edit Mode Pencil Overlay */}
                         {isManageMode && (
                           <div className="tv-profile-avatar-edit-overlay">
-                            <Edit3 size={20} color="#ffffff" />
+                            <Edit3 size={22} color="#ffffff" />
                           </div>
                         )}
                       </div>
 
-                      {/* Clean Name */}
                       <span className="tv-profile-avatar-label">{prof.name}</span>
                     </div>
                   )}
@@ -176,18 +161,21 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
               );
             })}
 
-            {/* Add Profile Minimalist Circle */}
+            {/* Add Profile Tile */}
             <Focusable
               id="profile-add-card"
               groupId="profile-minimal-row"
               indexInGroup={profiles.length}
               className="tv-profile-avatar-focusable"
               onSelect={() => setEditingProfile('create')}
+              scaleEffect={false}
+              role="listitem"
+              ariaLabel="Add Profile"
             >
               {(isFocused) => (
-                <div className={`tv-profile-avatar-card add-user ${isFocused ? 'focused' : ''}`}>
-                  <div className="tv-profile-avatar-disc add-disc">
-                    <Plus size={36} color="rgba(255, 255, 255, 0.7)" />
+                <div className={`tv-profile-avatar-item add-user ${isFocused ? 'focused' : ''}`}>
+                  <div className="tv-profile-avatar-tile add-tile">
+                    <Plus size={36} />
                   </div>
                   <span className="tv-profile-avatar-label">Add Profile</span>
                 </div>
@@ -195,7 +183,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
             </Focusable>
           </div>
 
-          {/* Minimal Floating Footer Actions */}
+          {/* Minimal Actions */}
           <div className="tv-profile-minimal-footer">
             <Focusable
               id="profile-manage-toggle"
@@ -203,11 +191,14 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
               indexInGroup={0}
               className="tv-profile-footer-btn-focusable"
               onSelect={() => setIsManageMode(!isManageMode)}
+              scaleEffect={false}
+              role="button"
+              ariaLabel={isManageMode ? 'Done managing profiles' : 'Manage profiles'}
             >
               {(isFocused) => (
                 <div className={`tv-profile-pill-btn ${isManageMode ? 'active' : ''} ${isFocused ? 'focused' : ''}`}>
-                  <Edit3 size={15} />
-                  <span>{isManageMode ? 'Done' : 'Edit Profiles'}</span>
+                  {isManageMode ? <Check size={16} /> : <Edit3 size={15} />}
+                  <span>{isManageMode ? 'Done' : 'Manage Profiles'}</span>
                 </div>
               )}
             </Focusable>
@@ -218,10 +209,14 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
               indexInGroup={1}
               className="tv-profile-footer-btn-focusable"
               onSelect={onClose}
+              scaleEffect={false}
+              role="button"
+              ariaLabel="Close profile switcher"
             >
               {(isFocused) => (
                 <div className={`tv-profile-pill-btn secondary ${isFocused ? 'focused' : ''}`}>
-                  <span>Cancel (B)</span>
+                  <ArrowLeft size={15} />
+                  <span>Back</span>
                 </div>
               )}
             </Focusable>

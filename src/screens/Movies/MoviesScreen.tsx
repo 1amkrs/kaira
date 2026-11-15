@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Play, Info, Sparkles, Film } from 'lucide-react';
+import { Play, Info } from 'lucide-react';
 import { Movie } from '../../types/media';
 import { mediaProvider } from '../../services/media/LiveMediaProvider';
 import { ContentRail } from '../../components/ContentRail/ContentRail';
@@ -98,18 +98,17 @@ export const MoviesScreen: React.FC<MoviesScreenProps> = ({ onSelectMovie, onPla
           </div>
 
           <div className="tv-movie-hero-content">
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <span className="tv-movie-hero-badge">
-                {featured.language ? `${featured.language} Cinema` : 'Blockbuster Release'}
-              </span>
-              {featured.rating && (
-                <span className="rating-pill">
-                  {featured.rating.replace('★', '').trim()}
-                </span>
-              )}
-            </div>
+            <span className="tv-movie-hero-badge">
+              {featured.language ? `${featured.language} Cinema` : 'Blockbuster Release'}
+            </span>
             <h1 className="tv-movie-hero-title">{featured.title}</h1>
             <div className="tv-movie-hero-meta">
+              {featured.rating && (
+                <>
+                  <span className="tv-movie-hero-rating">★ {featured.rating.replace('★', '').trim()}</span>
+                  <span className="tv-meta-dot" aria-hidden="true" />
+                </>
+              )}
               <span>{featured.year}</span>
               <span className="tv-meta-dot" aria-hidden="true" />
               <span>{featured.runtime}</span>
@@ -167,6 +166,9 @@ export const MoviesScreen: React.FC<MoviesScreenProps> = ({ onSelectMovie, onPla
               indexInGroup={idx}
               className="tv-movie-category-focusable"
               scaleEffect={false}
+              role="tab"
+              ariaSelected={isActive}
+              ariaLabel={cat.label}
               onSelect={() => setActiveCategory(cat.id)}
             >
               {(isFocused) => (

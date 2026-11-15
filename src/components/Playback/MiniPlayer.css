@@ -67,11 +67,6 @@
   transition: all var(--duration-base) var(--easing-standard);
 }
 
-.tv-mini-track-info:hover {
-  background-color: rgba(255, 255, 255, 0.08);
-  border-color: rgba(255, 255, 255, 0.15);
-}
-
 .tv-mini-track-info.focused {
   background-color: rgba(138, 180, 248, 0.15);
   border-color: var(--border-focus);
@@ -131,7 +126,6 @@
   transition: all var(--duration-base) var(--easing-standard);
 }
 
-.tv-mini-track-info:hover .tv-mini-expand-icon,
 .tv-mini-track-info.focused .tv-mini-expand-icon {
   opacity: 1;
   color: var(--google-blue);
@@ -164,19 +158,9 @@
   transition: all var(--duration-base) var(--easing-standard);
 }
 
-.tv-mini-btn:hover {
-  background-color: rgba(255, 255, 255, 0.16);
-  color: var(--text-primary);
-  transform: scale(1.08);
-}
-
 .tv-mini-btn.playpause {
   background-color: rgba(255, 255, 255, 0.12);
   color: var(--text-primary);
-}
-
-.tv-mini-btn.playpause:hover {
-  background-color: rgba(255, 255, 255, 0.22);
 }
 
 .tv-mini-btn.focused {
@@ -185,11 +169,6 @@
   transform: scale(var(--focus-scale));
   border-color: var(--border-focus);
   box-shadow: 0 0 14px rgba(138, 180, 248, 0.6);
-}
-
-.tv-mini-btn.danger:hover {
-  background-color: rgba(234, 67, 53, 0.25);
-  color: var(--accent-red);
 }
 
 .tv-mini-btn.danger.focused {

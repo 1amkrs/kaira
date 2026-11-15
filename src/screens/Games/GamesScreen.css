@@ -122,8 +122,7 @@
               transform var(--duration-micro) var(--easing-enter);
 }
 
-.tv-game-hero-btn.focused,
-.tv-game-hero-btn:hover {
+.tv-game-hero-btn.focused {
   background: var(--google-blue);
   color: #ffffff;
   box-shadow: 0 4px 14px rgba(26, 115, 232, 0.35);

@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { ShowcaseHeroItem, SHOWCASE_HERO_ITEMS } from '../../data/media/showcaseData';
 import { Movie, Show, MediaItem } from '../../types';
 import { mediaProvider } from '../../services/media/LiveMediaProvider';
+import { platform } from '../../platform';
 import './MobileShowcaseHero.css';
 
 interface MobileShowcaseHeroProps {
@@ -55,7 +56,7 @@ export const MobileShowcaseHero: React.FC<MobileShowcaseHeroProps> = ({
   const currentItem: ShowcaseHeroItem = items[activeIndex] || items[0];
 
   useEffect(() => {
-    if (items.length <= 1) return;
+    if (items.length <= 1 || platform.isAndroid) return;
     timerRef.current = setInterval(() => {
       setActiveIndex((prev) => (prev + 1) % items.length);
     }, 7000);
@@ -150,10 +151,18 @@ export const MobileShowcaseHero: React.FC<MobileShowcaseHeroProps> = ({
           alt={currentItem.title}
           className="mobile-showcase-img"
           loading="eager"
+          referrerPolicy="no-referrer"
           onError={(e) => {
             const target = e.target as HTMLImageElement;
-            if (currentItem.posterUrl && target.src !== currentItem.posterUrl) {
+            if (currentItem.posterUrl && target.src !== currentItem.posterUrl && !target.dataset.triedPoster) {
+              target.dataset.triedPoster = '1';
               target.src = currentItem.posterUrl;
+              return;
+            }
+            if (!target.dataset.fallbackApplied) {
+              target.dataset.fallbackApplied = '1';
+              target.src =
+                'data:image/svg+xml;charset=UTF-8,%3Csvg%20width%3D%22720%22%20height%3D%22900%22%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%3E%3Crect%20width%3D%22100%25%22%20height%3D%22100%25%22%20fill%3D%22%23191d24%22%2F%3E%3C%2Fsvg%3E';
             }
           }}
         />

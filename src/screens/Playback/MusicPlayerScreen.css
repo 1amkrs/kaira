@@ -105,11 +105,6 @@
   border: 1px solid rgba(234, 67, 53, 0.3);
 }
 
-.tv-music-lyrics-pill.danger:hover {
-  background: rgba(234, 67, 53, 0.3);
-  color: #ffffff;
-}
-
 .tv-music-lyrics-pill.danger.focused {
   background: var(--accent-red);
   color: #ffffff;
@@ -248,8 +243,6 @@
   z-index: 5;
 }
 
-.tv-music-progress-bar-container:hover .tv-music-scrubber-head,
-.tv-music-scrubber-head:hover,
 .tv-music-progress-bar-container.focused .tv-music-scrubber-head,
 .tv-music-progress-bar-container.scrubbing .tv-music-scrubber-head {
   transform: translate(-50%, -50%) scale(1.3);

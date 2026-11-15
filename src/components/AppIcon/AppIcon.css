@@ -27,9 +27,9 @@
 }
 
 .tv-app-tile.focused .tv-app-tile-body {
-  border-color: rgba(255, 255, 255, 0.4);
+  border-color: var(--md-sys-color-focus-ring);
   filter: brightness(1.06);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.55);
+  box-shadow: var(--focus-border-glow), 0 8px 24px rgba(0, 0, 0, 0.55);
 }
 
 .tv-app-brand-logo {
