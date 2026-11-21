@@ -59,6 +59,9 @@ class RemoteService {
   private tvPeer: Peer | null = null;
   private tvPeerId: string = '';
   private peerConnections: Set<DataConnection> = new Set();
+  private peerReconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  private peerReconnectAttempts: number = 0;
+  private readonly maxPeerReconnectAttempts: number = 3;
 
   constructor() {
     if (this.isSupported()) {
@@ -122,19 +125,66 @@ class RemoteService {
       }
 
       this.tvPeerId = storedId;
-      this.tvPeer = new Peer(this.tvPeerId, {
-        debug: 1,
-      });
+      this.createTvPeer(this.tvPeerId);
 
-      this.tvPeer.on('open', (id) => {
-        console.log(`[RemoteService] 🌐 WebRTC Peer Ready with ID: ${id}`);
+      window.addEventListener('online', () => {
+        if (this.tvPeer && !this.tvPeer.destroyed && this.tvPeer.disconnected) {
+          this.peerReconnectAttempts = 0;
+          try {
+            this.tvPeer.reconnect();
+          } catch (e) {}
+        }
+      });
+    } catch (e) {
+      // PeerJS signaling is optional; local/BroadcastChannel remote remains active
+    }
+  }
+
+  private schedulePeerReconnect(): void {
+    if (this.peerReconnectTimer || typeof window === 'undefined') return;
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) return;
+    if (this.peerReconnectAttempts >= this.maxPeerReconnectAttempts) return;
+
+    this.peerReconnectAttempts += 1;
+    const delayMs = 5000 * Math.pow(2, this.peerReconnectAttempts - 1);
+
+    this.peerReconnectTimer = setTimeout(() => {
+      this.peerReconnectTimer = null;
+      if (!this.tvPeer || this.tvPeer.destroyed) return;
+      if (this.tvPeer.disconnected) {
+        try {
+          this.tvPeer.reconnect();
+        } catch (e) {}
+      }
+    }, delayMs);
+  }
+
+  private createTvPeer(peerId: string): void {
+    if (this.peerReconnectTimer) {
+      clearTimeout(this.peerReconnectTimer);
+      this.peerReconnectTimer = null;
+    }
+
+    if (this.tvPeer) {
+      try {
+        this.tvPeer.destroy();
+      } catch (e) {}
+      this.tvPeer = null;
+    }
+
+    try {
+      const peer = new Peer(peerId, {
+        debug: 0,
+      });
+      this.tvPeer = peer;
+
+      peer.on('open', (id) => {
+        this.peerReconnectAttempts = 0;
         this.tvPeerId = id;
         this.broadcastState();
       });
 
-      this.tvPeer.on('connection', (conn) => {
-        console.log(`[RemoteService] 📱 Incoming WebRTC Peer Connection from phone: ${conn.peer}`);
-
+      peer.on('connection', (conn) => {
         conn.on('open', () => {
           this.peerConnections.add(conn);
           this.setConnectedClients(this.peerConnections.size);
@@ -156,25 +206,41 @@ class RemoteService {
           this.setConnectedClients(this.peerConnections.size);
         });
 
-        conn.on('error', (err) => {
-          console.warn('[RemoteService] Peer connection error:', err);
+        conn.on('error', () => {
           this.peerConnections.delete(conn);
           this.setConnectedClients(this.peerConnections.size);
         });
       });
 
-      this.tvPeer.on('error', (err: any) => {
-        console.warn('[RemoteService] PeerJS error:', err?.type || err);
-        // If ID is taken, fallback to random ID
-        if (err?.type === 'unavailable-id') {
+      peer.on('disconnected', () => {
+        if (this.tvPeer === peer && !peer.destroyed) {
+          this.schedulePeerReconnect();
+        }
+      });
+
+      peer.on('error', (err: any) => {
+        const errType = err?.type;
+        if (errType === 'unavailable-id') {
           this.tvPeerId = `kaira-${Math.random().toString(36).substring(2, 9)}`;
           try {
-            this.tvPeer = new Peer(this.tvPeerId);
+            sessionStorage.setItem('kaira_tv_peer_id', this.tvPeerId);
           } catch (e) {}
+          this.createTvPeer(this.tvPeerId);
+          return;
+        }
+
+        if (
+          errType === 'network' ||
+          errType === 'server-error' ||
+          errType === 'socket-error' ||
+          errType === 'socket-closed' ||
+          errType === 'disconnected'
+        ) {
+          this.schedulePeerReconnect();
         }
       });
     } catch (e) {
-      console.warn('[RemoteService] WebRTC PeerJS init notice:', e);
+      // Graceful fallback when WebRTC signaling server is unreachable
     }
   }
 

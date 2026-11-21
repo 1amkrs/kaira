@@ -63,8 +63,10 @@ class LiveMediaProviderService implements MediaProvider {
   }
 
   private moviesCache: Movie[] = [];
+  private pendingMoviesPromise: Promise<Movie[]> | null = null;
   private movieDetailsCache: Map<string, Movie> = new Map();
   private showsCache: Show[] = [];
+  private pendingShowsPromise: Promise<Show[]> | null = null;
   private showDetailsCache: Map<string, Show> = new Map();
   private episodesCache: Map<string, Episode[]> = new Map();
   private showRuntimesCache: Map<string, Map<string, { runtimeMinutes: number; durationSeconds?: number }>> = new Map();
@@ -73,20 +75,30 @@ class LiveMediaProviderService implements MediaProvider {
   private albumDetailsCache: Map<string, Album> = new Map();
   private artistsCache: Artist[] = [];
   private favorites: Set<string> = new Set();
+  private lastProfileId: string = '';
 
   constructor() {
+    this.lastProfileId = this.getActiveProfileId();
     this.loadFavorites();
-    // Re-synchronize favorites and media cache when profile changes
-    profileService.subscribe(() => {
+    // Re-synchronize favorites and media cache only when activeProfileId actually changes
+    profileService.subscribe((state) => {
+      if (state.activeProfileId === this.lastProfileId) return;
+      this.lastProfileId = state.activeProfileId;
       this.loadFavorites();
       this.moviesCache = [];
+      this.pendingMoviesPromise = null;
       this.showsCache = [];
+      this.pendingShowsPromise = null;
       this.albumsCache = [];
       this.movieDetailsCache.clear();
       this.showDetailsCache.clear();
       this.albumDetailsCache.clear();
       this.episodesCache.clear();
     });
+  }
+
+  public isFavorite(id: string): boolean {
+    return this.favorites.has(id);
   }
 
   private getActiveProfileId(): string {
@@ -130,31 +142,40 @@ class LiveMediaProviderService implements MediaProvider {
   // --- MOVIES (Live Cinemeta / IMDb Real Blockbuster Catalog, Hollywood & Curated Regional) ---
   public async getMovies(): Promise<Movie[]> {
     if (this.moviesCache.length > 0) return this.moviesCache;
+    if (this.pendingMoviesPromise) return this.pendingMoviesPromise;
 
-    // Start with curated Hollywood and latest global blockbusters + curated Regional hits
-    const combined: Movie[] = [...HOLLYWOOD_MOVIES, ...ALL_REGIONAL_MOVIES];
+    this.pendingMoviesPromise = (async () => {
+      // Start with curated Hollywood and latest global blockbusters + curated Regional hits
+      const combined: Movie[] = [...HOLLYWOOD_MOVIES, ...ALL_REGIONAL_MOVIES];
+
+      try {
+        const res = await fetch('https://v3-cinemeta.strem.io/catalog/movie/top.json');
+        const data = await res.json();
+
+        if (data && Array.isArray(data.metas)) {
+          const cinemetaList = data.metas
+            .filter((m: any) => m.id && m.name && m.poster)
+            .map((m: any) => this.mapCinemetaMovie(m));
+
+          cinemetaList.forEach((m: Movie) => {
+            if (!combined.some(existing => existing.id === m.id)) {
+              combined.push(m);
+            }
+          });
+        }
+      } catch (e) {
+        console.warn('[LiveMediaProvider] Cinemeta fetch failed, using local catalogs', e);
+      }
+
+      this.moviesCache = combined;
+      return this.moviesCache;
+    })();
 
     try {
-      const res = await fetch('https://v3-cinemeta.strem.io/catalog/movie/top.json');
-      const data = await res.json();
-
-      if (data && Array.isArray(data.metas)) {
-        const cinemetaList = data.metas
-          .filter((m: any) => m.id && m.name && m.poster)
-          .map((m: any) => this.mapCinemetaMovie(m));
-
-        cinemetaList.forEach((m: Movie) => {
-          if (!combined.some(existing => existing.id === m.id)) {
-            combined.push(m);
-          }
-        });
-      }
-    } catch (e) {
-      console.warn('[LiveMediaProvider] Cinemeta fetch failed, using local catalogs', e);
+      return await this.pendingMoviesPromise;
+    } finally {
+      this.pendingMoviesPromise = null;
     }
-
-    this.moviesCache = combined;
-    return this.moviesCache;
   }
 
   public async getHollywoodMovies(): Promise<Movie[]> {
@@ -260,19 +281,22 @@ class LiveMediaProviderService implements MediaProvider {
 
   public async getMovie(id: string): Promise<Movie | null> {
     if (this.movieDetailsCache.has(id)) {
-      return this.movieDetailsCache.get(id)!;
+      const cached = this.movieDetailsCache.get(id)!;
+      return { ...cached, isFavorite: this.favorites.has(cached.id) };
     }
 
     const hollywood = HOLLYWOOD_MOVIES.find(m => m.id === id);
     if (hollywood) {
-      this.movieDetailsCache.set(id, hollywood);
-      return hollywood;
+      const item = { ...hollywood, isFavorite: this.favorites.has(hollywood.id) };
+      this.movieDetailsCache.set(id, item);
+      return item;
     }
 
     const regional = ALL_REGIONAL_MOVIES.find(m => m.id === id);
     if (regional) {
-      this.movieDetailsCache.set(id, regional);
-      return regional;
+      const item = { ...regional, isFavorite: this.favorites.has(regional.id) };
+      this.movieDetailsCache.set(id, item);
+      return item;
     }
 
     try {
@@ -282,14 +306,14 @@ class LiveMediaProviderService implements MediaProvider {
       if (data && data.meta) {
         const fullMovie = this.mapCinemetaMovie(data.meta);
         this.movieDetailsCache.set(id, fullMovie);
-        return fullMovie;
+        return { ...fullMovie, isFavorite: this.favorites.has(fullMovie.id) };
       }
     } catch (e) {
       console.warn(`[LiveMediaProvider] Failed to fetch movie details for ${id}`, e);
     }
 
     const cached = this.moviesCache.find(m => m.id === id);
-    return cached || null;
+    return cached ? { ...cached, isFavorite: this.favorites.has(cached.id) } : null;
   }
 
   public async getMalayalamMovies(): Promise<Movie[]> {
@@ -314,20 +338,29 @@ class LiveMediaProviderService implements MediaProvider {
   // --- TV SHOWS (Live TVMaze API) ---
   public async getShows(): Promise<Show[]> {
     if (this.showsCache.length > 0) return this.showsCache;
+    if (this.pendingShowsPromise) return this.pendingShowsPromise;
+
+    this.pendingShowsPromise = (async () => {
+      try {
+        const res = await fetch('https://api.tvmaze.com/shows?page=0');
+        const data = await res.json();
+
+        const filtered = (data as any[])
+          .filter(s => s.image?.original && s.rating?.average && s.rating.average >= 7.5)
+          .slice(0, 20);
+
+        this.showsCache = filtered.map(item => this.mapTvMazeShow(item));
+        return this.showsCache;
+      } catch (e) {
+        console.warn('[LiveMediaProvider] TVMaze fetch failed', e);
+        return [];
+      }
+    })();
 
     try {
-      const res = await fetch('https://api.tvmaze.com/shows?page=0');
-      const data = await res.json();
-
-      const filtered = (data as any[])
-        .filter(s => s.image?.original && s.rating?.average && s.rating.average >= 7.5)
-        .slice(0, 20);
-
-      this.showsCache = filtered.map(item => this.mapTvMazeShow(item));
-    return this.showsCache;
-    } catch (e) {
-      console.warn('[LiveMediaProvider] TVMaze fetch failed', e);
-      return [];
+      return await this.pendingShowsPromise;
+    } finally {
+      this.pendingShowsPromise = null;
     }
   }
 
@@ -399,54 +432,53 @@ class LiveMediaProviderService implements MediaProvider {
         }
       }
 
-      // 2. Query Self-Debrid local cache (highest priority - actual probed video duration)
-      try {
-        const debridCfg = addonService.getDebridConfig();
-        const debridUrl = (debridCfg?.provider === 'selfdebrid' && debridCfg?.endpointUrl
-          ? debridCfg.endpointUrl
-          : 'http://localhost:8081'
-        ).replace(/\/+$/, '');
-        const controller = new AbortController();
-        const timer = setTimeout(() => controller.abort(), 1200);
+      // 2. Query Self-Debrid local cache (only when explicitly enabled)
+      const debridCfg = addonService.getDebridConfig();
+      if (debridCfg?.enabled && debridCfg?.provider === 'selfdebrid') {
+        try {
+          const debridUrl = (debridCfg.endpointUrl || 'http://localhost:8081').replace(/\/+$/, '');
+          const controller = new AbortController();
+          const timer = setTimeout(() => controller.abort(), 1200);
 
-        const cacheRes = await fetch(`${debridUrl}/cache`, { signal: controller.signal });
-        clearTimeout(timer);
+          const cacheRes = await fetch(`${debridUrl}/cache`, { signal: controller.signal });
+          clearTimeout(timer);
 
-        if (cacheRes.ok) {
-          const cacheData = await cacheRes.json();
-          if (cacheData && Array.isArray(cacheData.cached_files)) {
-            const cleanShowTitle = (showName || '')
-              .replace(/\(\d{4}\)/g, '')
-              .replace(/\b(19|20)\d{2}\b/g, '')
-              .trim();
-            const titleWords = cleanShowTitle.toLowerCase().split(/[^a-z0-9]+/).filter((w) => w.length > 2);
-            for (const f of cacheData.cached_files) {
-              if (!f.name || !f.duration) continue;
-              const combined = `${f.name || ''} ${f.relpath || ''}`.toLowerCase();
-              // If we have a show title, verify file belongs to this show
-              if (titleWords.length > 0) {
-                const matches = titleWords.filter((w) => combined.includes(w));
-                if (matches.length === 0) continue;
-              }
+          if (cacheRes.ok) {
+            const cacheData = await cacheRes.json();
+            if (cacheData && Array.isArray(cacheData.cached_files)) {
+              const cleanShowTitle = (showName || '')
+                .replace(/\(\d{4}\)/g, '')
+                .replace(/\b(19|20)\d{2}\b/g, '')
+                .trim();
+              const titleWords = cleanShowTitle.toLowerCase().split(/[^a-z0-9]+/).filter((w) => w.length > 2);
+              for (const f of cacheData.cached_files) {
+                if (!f.name || !f.duration) continue;
+                const combined = `${f.name || ''} ${f.relpath || ''}`.toLowerCase();
+                // If we have a show title, verify file belongs to this show
+                if (titleWords.length > 0) {
+                  const matches = titleWords.filter((w) => combined.includes(w));
+                  if (matches.length === 0) continue;
+                }
 
-              const epMatch = f.name.match(/[sS](\d{1,2})[eE](\d{1,3})/i) || f.name.match(/\b(\d{1,2})x(\d{1,3})\b/i);
-              if (epMatch) {
-                const s = parseInt(epMatch[1], 10);
-                const e = parseInt(epMatch[2], 10);
-                const exactDur = Math.round(f.duration);
-                const exactMins = Math.round(f.duration / 60);
-                const key = `s${s}e${e}`;
-                // Self-Debrid probed duration overwrites any TV broadcast estimate
-                runtimeMap.set(key, {
-                  runtimeMinutes: exactMins,
-                  durationSeconds: exactDur,
-                });
+                const epMatch = f.name.match(/[sS](\d{1,2})[eE](\d{1,3})/i) || f.name.match(/\b(\d{1,2})x(\d{1,3})\b/i);
+                if (epMatch) {
+                  const s = parseInt(epMatch[1], 10);
+                  const e = parseInt(epMatch[2], 10);
+                  const exactDur = Math.round(f.duration);
+                  const exactMins = Math.round(f.duration / 60);
+                  const key = `s${s}e${e}`;
+                  // Self-Debrid probed duration overwrites any TV broadcast estimate
+                  runtimeMap.set(key, {
+                    runtimeMinutes: exactMins,
+                    durationSeconds: exactDur,
+                  });
+                }
               }
             }
           }
+        } catch (err) {
+          // Suppress timeout or unreachable local debrid cache
         }
-      } catch (err) {
-        // Suppress timeout or unreachable local debrid cache
       }
 
       this.showRuntimesCache.set(cleanImdbId, runtimeMap);

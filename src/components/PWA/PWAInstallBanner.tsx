@@ -69,7 +69,7 @@ export const PWAInstallButton: React.FC = () => {
             style={{
               width: '100%',
               maxWidth: '380px',
-              background: '#161820',
+              background: 'var(--md-sys-color-surface-container, #111115)',
               border: '1px solid rgba(255,255,255,0.16)',
               borderRadius: '18px',
               padding: '24px',

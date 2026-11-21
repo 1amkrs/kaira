@@ -4,6 +4,7 @@ import { Movie } from '../../types/media';
 import { AddonStream } from '../../types/addons';
 import { mediaProvider } from '../../services/media/LiveMediaProvider';
 import { addonService } from '../../services/addons/AddonService';
+import { buildEmergencyFallbackStreams, extractImdbId } from '../../services/addons/streamFallback';
 import { Focusable } from '../../components/Focusable/Focusable';
 import { ContentRail } from '../../components/ContentRail/ContentRail';
 import { MovieCard } from '../../components/MediaCard/MovieCard';
@@ -12,7 +13,13 @@ import './MovieDetailsScreen.css';
 
 interface MovieDetailsScreenProps {
   movie: Movie;
-  onPlay: (movie: Movie, customStreamUrl?: string, streamType?: AddonStream['streamType']) => void;
+  onPlay: (
+    movie: Movie,
+    customStreamUrl?: string,
+    streamType?: AddonStream['streamType'],
+    proxyHeaders?: Record<string, string>,
+    preloadedStreams?: AddonStream[]
+  ) => void;
   onSelectSimilar: (movie: Movie) => void;
   onBack: () => void;
   isPlayerActive?: boolean;
@@ -36,33 +43,61 @@ export const MovieDetailsScreen: React.FC<MovieDetailsScreenProps> = ({
   const [isTrailerMuted, setIsTrailerMuted] = useState<boolean>(true);
   const [isLogoError, setIsLogoError] = useState<boolean>(false);
   const trailerTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const trailerIframeRef = useRef<HTMLIFrameElement | null>(null);
 
   useEffect(() => {
+    let cancelled = false;
     setDetailedMovie(movie);
+    setIsFavorite(mediaProvider.isFavorite(movie.id) || !!movie.isFavorite);
     setIsTrailerReady(false);
+    setIsTrailerMuted(true);
     setIsLogoError(false);
 
     // Fetch full rich metadata (cast, director, high-res backdrop, trailer)
     mediaProvider.getMovie(movie.id).then((full) => {
+      if (cancelled) return;
       if (full) {
         setDetailedMovie(full);
+        setIsFavorite(mediaProvider.isFavorite(full.id) || !!full.isFavorite);
       }
     });
 
     // Fetch similar movies
     mediaProvider.getMovies().then((all) => {
+      if (cancelled) return;
       setSimilarMovies(all.filter((m) => m.id !== movie.id).slice(0, 6));
     });
 
     // Auto-fade trailer after a short delay
     trailerTimerRef.current = setTimeout(() => {
-      setIsTrailerReady(true);
+      if (!cancelled) setIsTrailerReady(true);
     }, 1200);
 
     return () => {
+      cancelled = true;
       if (trailerTimerRef.current) clearTimeout(trailerTimerRef.current);
     };
   }, [movie.id]);
+
+  const trailerId = detailedMovie.ytTrailerId;
+
+  useEffect(() => {
+    if (!trailerId || isPlayerActive) return;
+    const win = trailerIframeRef.current?.contentWindow;
+    if (!win) return;
+    try {
+      win.postMessage(
+        JSON.stringify({
+          event: 'command',
+          func: isTrailerMuted ? 'mute' : 'unMute',
+          args: [],
+        }),
+        '*'
+      );
+    } catch {
+      // Ignore cross-origin iframe messaging errors before load
+    }
+  }, [isTrailerMuted, trailerId, isPlayerActive]);
 
   const handleToggleFavorite = async () => {
     const nextState = await mediaProvider.toggleFavorite(movie.id, 'movie');
@@ -73,23 +108,26 @@ export const MovieDetailsScreen: React.FC<MovieDetailsScreenProps> = ({
     setIsTrailerReady(false);
     setIsResolvingStreams(true);
     try {
-      const streams = await addonService.fetchStreams(
-        'movie',
-        detailedMovie.id,
-        undefined,
-        undefined,
-        detailedMovie.title,
-        detailedMovie.ytTrailerId
-      );
-      if (streams && streams.length > 0) {
-        const best = addonService.selectBestStream(streams);
-        if (best) {
-          onPlay(detailedMovie, best.url, best.streamType);
-          return;
-        }
+      const plan = await addonService.resolveStreamPlan({
+        type: 'movie',
+        id: detailedMovie.id,
+        imdbId: detailedMovie.imdbId,
+        titleHint: detailedMovie.title,
+        ytTrailerId: detailedMovie.ytTrailerId,
+      });
+      if (plan.primary) {
+        onPlay(
+          detailedMovie,
+          plan.primary.url,
+          plan.primary.streamType,
+          plan.primary.proxyHeaders,
+          plan.candidates
+        );
+        return;
       }
-      onPlay(detailedMovie);
+      onPlay(detailedMovie, undefined, undefined, undefined, plan.candidates);
     } catch (e) {
+      console.warn('[MovieDetailsScreen] Stream resolution failed, delegating to fallback launch:', e);
       onPlay(detailedMovie);
     } finally {
       setIsResolvingStreams(false);
@@ -98,31 +136,48 @@ export const MovieDetailsScreen: React.FC<MovieDetailsScreenProps> = ({
 
   const handleOpenSourceSelector = async () => {
     setIsResolvingStreams(true);
+    const cleanImdb = extractImdbId(detailedMovie.imdbId, detailedMovie.id);
     try {
-      const streams = await addonService.fetchStreams(
-        'movie',
-        detailedMovie.id,
-        undefined,
-        undefined,
-        detailedMovie.title,
-        detailedMovie.ytTrailerId
-      );
-      if (streams && streams.length > 0) {
-        setAvailableStreams(streams);
+      const plan = await addonService.resolveStreamPlan({
+        type: 'movie',
+        id: detailedMovie.id,
+        imdbId: cleanImdb,
+        titleHint: detailedMovie.title,
+        ytTrailerId: detailedMovie.ytTrailerId,
+      });
+      if (plan.candidates.length > 0) {
+        setAvailableStreams(plan.candidates);
+      } else {
+        setAvailableStreams(
+          buildEmergencyFallbackStreams({
+            type: 'movie',
+            imdbId: cleanImdb,
+            titleHint: detailedMovie.title,
+            ytTrailerId: detailedMovie.ytTrailerId,
+          })
+        );
       }
     } catch (e) {
+      console.warn('[MovieDetailsScreen] Source selector fallback triggered:', e);
+      setAvailableStreams(
+        buildEmergencyFallbackStreams({
+          type: 'movie',
+          imdbId: cleanImdb,
+          titleHint: detailedMovie.title,
+          ytTrailerId: detailedMovie.ytTrailerId,
+        })
+      );
     } finally {
       setIsResolvingStreams(false);
     }
   };
 
   const handleSelectStream = (stream: AddonStream) => {
+    const preloaded = availableStreams || undefined;
     setIsTrailerReady(false);
     setAvailableStreams(null);
-    onPlay(detailedMovie, stream.url, stream.streamType);
+    onPlay(detailedMovie, stream.url, stream.streamType, stream.proxyHeaders, preloaded);
   };
-
-  const trailerId = detailedMovie.ytTrailerId;
 
   return (
     <div className="tv-movie-details-screen tv-scroll-container">
@@ -136,6 +191,7 @@ export const MovieDetailsScreen: React.FC<MovieDetailsScreenProps> = ({
       {trailerId && !isPlayerActive && (
         <div className={`tv-details-trailer-bg ${isTrailerReady ? 'visible' : 'hidden'}`}>
           <iframe
+            ref={trailerIframeRef}
             src={`https://www.youtube.com/embed/${trailerId}?autoplay=1&mute=1&controls=0&showinfo=0&rel=0&loop=1&playlist=${trailerId}&modestbranding=1&iv_load_policy=3&enablejsapi=1`}
             allow="autoplay; encrypted-media"
             title={detailedMovie.title}

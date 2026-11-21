@@ -15,7 +15,7 @@ export const AppsScreen: React.FC<AppsScreenProps> = ({ onSelectApp }) => {
   const mediaAndTools = APP_REGISTRY.filter(a => a.category === 'media' || a.category === 'utility');
 
   return (
-    <div className="tv-scroll-container tv-apps-screen" role="main" aria-label="Apps Library Screen">
+    <div className="tv-scroll-container tv-apps-screen" role="region" aria-label="Apps Library Screen">
       <div className="tv-screen-page-header">
         <h2 className="tv-screen-page-title">Your Apps</h2>
         <p className="tv-screen-page-subtitle">Installed TV applications, streaming hubs, and Windows utilities</p>

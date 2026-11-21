@@ -4,6 +4,7 @@ import { Show, Episode } from '../../types/media';
 import { AddonStream } from '../../types/addons';
 import { mediaProvider } from '../../services/media/LiveMediaProvider';
 import { addonService } from '../../services/addons/AddonService';
+import { buildEmergencyFallbackStreams, extractImdbId } from '../../services/addons/streamFallback';
 import { Focusable } from '../../components/Focusable/Focusable';
 import { EpisodeCard } from '../../components/MediaCard/EpisodeCard';
 import { ShowCard } from '../../components/MediaCard/ShowCard';
@@ -14,7 +15,14 @@ import './ShowDetailsScreen.css';
 interface ShowDetailsScreenProps {
   show: Show;
   initialSeason?: number;
-  onPlayEpisode: (episode: Episode, customStreamUrl?: string, streamType?: AddonStream['streamType'], streamDurationSeconds?: number) => void;
+  onPlayEpisode: (
+    episode: Episode,
+    customStreamUrl?: string,
+    streamType?: AddonStream['streamType'],
+    streamDurationSeconds?: number,
+    proxyHeaders?: Record<string, string>,
+    preloadedStreams?: AddonStream[]
+  ) => void;
   onSelectSimilar?: (show: Show) => void;
   onBack: () => void;
   isPlayerActive?: boolean;
@@ -40,6 +48,7 @@ export const ShowDetailsScreen: React.FC<ShowDetailsScreenProps> = ({
   const [isTrailerReady, setIsTrailerReady] = useState<boolean>(false);
   const [isTrailerMuted, setIsTrailerMuted] = useState<boolean>(true);
   const trailerTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const trailerIframeRef = useRef<HTMLIFrameElement | null>(null);
 
   // Stream Resolution
   const [isResolving, setIsResolving] = useState<boolean>(false);
@@ -47,16 +56,21 @@ export const ShowDetailsScreen: React.FC<ShowDetailsScreenProps> = ({
   const [availableStreams, setAvailableStreams] = useState<AddonStream[] | null>(null);
 
   useEffect(() => {
+    let cancelled = false;
     setDetailedShow(show);
+    setIsFavorite(mediaProvider.isFavorite(show.id) || !!show.isFavorite);
     setIsTrailerReady(false);
+    setIsTrailerMuted(true);
     setIsLogoError(false);
     if (initialSeason) {
       setSelectedSeason(initialSeason);
     }
 
     mediaProvider.getShow(show.id).then((res) => {
+      if (cancelled) return;
       if (res) {
         setDetailedShow(res);
+        setIsFavorite(mediaProvider.isFavorite(res.id) || mediaProvider.isFavorite(show.id) || !!res.isFavorite);
         if (initialSeason && res.seasons && res.seasons.some((s) => s.number === initialSeason)) {
           setSelectedSeason(initialSeason);
         } else if (res.seasons && res.seasons.length > 0 && !res.seasons.some((s) => s.number === selectedSeason)) {
@@ -66,25 +80,52 @@ export const ShowDetailsScreen: React.FC<ShowDetailsScreenProps> = ({
     });
 
     mediaProvider.getShows().then((all) => {
+      if (cancelled) return;
       setSimilarShows(all.filter((s) => s.id !== show.id).slice(0, 6));
     });
 
     trailerTimerRef.current = setTimeout(() => {
-      setIsTrailerReady(true);
+      if (!cancelled) setIsTrailerReady(true);
     }, 1200);
 
     return () => {
+      cancelled = true;
       if (trailerTimerRef.current) clearTimeout(trailerTimerRef.current);
     };
   }, [show.id]);
 
   useEffect(() => {
+    let cancelled = false;
     setIsLoadingEpisodes(true);
     mediaProvider.getEpisodes(show.id, selectedSeason).then((eps) => {
+      if (cancelled) return;
       setEpisodes(eps);
       setIsLoadingEpisodes(false);
     });
+    return () => {
+      cancelled = true;
+    };
   }, [show.id, selectedSeason]);
+
+  const trailerId = detailedShow.ytTrailerId;
+
+  useEffect(() => {
+    if (!trailerId || isPlayerActive) return;
+    const win = trailerIframeRef.current?.contentWindow;
+    if (!win) return;
+    try {
+      win.postMessage(
+        JSON.stringify({
+          event: 'command',
+          func: isTrailerMuted ? 'mute' : 'unMute',
+          args: [],
+        }),
+        '*'
+      );
+    } catch {
+      // Ignore cross-origin iframe messaging errors before load
+    }
+  }, [isTrailerMuted, trailerId, isPlayerActive]);
 
   const handleToggleFavorite = async () => {
     const nextState = await mediaProvider.toggleFavorite(show.id, 'show');
@@ -96,24 +137,30 @@ export const ShowDetailsScreen: React.FC<ShowDetailsScreenProps> = ({
     setResolvingEpisode(ep);
     setIsResolving(true);
     try {
-      const cleanImdb = detailedShow.imdbId || (detailedShow.id.startsWith('tt') ? detailedShow.id : detailedShow.id.replace(/^show-/, ''));
-      const streams = await addonService.fetchStreams(
-        'series',
-        cleanImdb,
-        ep.seasonNumber,
-        ep.number,
-        detailedShow.title,
-        undefined
-      );
-      if (streams && streams.length > 0) {
-        const best = addonService.selectBestStream(streams);
-        if (best) {
-          onPlayEpisode(ep, best.url, best.streamType, best.durationSeconds);
-          return;
-        }
+      const cleanImdb = extractImdbId(ep.imdbId, detailedShow.imdbId, detailedShow.id);
+      const plan = await addonService.resolveStreamPlan({
+        type: 'series',
+        id: detailedShow.id,
+        imdbId: cleanImdb,
+        seasonNumber: ep.seasonNumber,
+        episodeNumber: ep.number,
+        titleHint: detailedShow.title,
+        ytTrailerId: detailedShow.ytTrailerId,
+      });
+      if (plan.primary) {
+        onPlayEpisode(
+          ep,
+          plan.primary.url,
+          plan.primary.streamType,
+          plan.primary.durationSeconds,
+          plan.primary.proxyHeaders,
+          plan.candidates
+        );
+        return;
       }
-      onPlayEpisode(ep);
+      onPlayEpisode(ep, undefined, undefined, undefined, undefined, plan.candidates);
     } catch (e) {
+      console.warn('[ShowDetailsScreen] Episode stream resolution failed, delegating to fallback launch:', e);
       onPlayEpisode(ep);
     } finally {
       setIsResolving(false);
@@ -126,20 +173,43 @@ export const ShowDetailsScreen: React.FC<ShowDetailsScreenProps> = ({
     if (!targetEp) return;
     setResolvingEpisode(targetEp);
     setIsResolving(true);
+    const cleanImdb = extractImdbId(targetEp.imdbId, detailedShow.imdbId, detailedShow.id);
     try {
-      const cleanImdb = detailedShow.imdbId || (detailedShow.id.startsWith('tt') ? detailedShow.id : detailedShow.id.replace(/^show-/, ''));
-      const streams = await addonService.fetchStreams(
-        'series',
-        cleanImdb,
-        targetEp.seasonNumber,
-        targetEp.number,
-        detailedShow.title,
-        undefined
-      );
-      if (streams && streams.length > 0) {
-        setAvailableStreams(streams);
+      const plan = await addonService.resolveStreamPlan({
+        type: 'series',
+        id: detailedShow.id,
+        imdbId: cleanImdb,
+        seasonNumber: targetEp.seasonNumber,
+        episodeNumber: targetEp.number,
+        titleHint: detailedShow.title,
+        ytTrailerId: detailedShow.ytTrailerId,
+      });
+      if (plan.candidates.length > 0) {
+        setAvailableStreams(plan.candidates);
+      } else {
+        setAvailableStreams(
+          buildEmergencyFallbackStreams({
+            type: 'series',
+            imdbId: cleanImdb,
+            seasonNumber: targetEp.seasonNumber,
+            episodeNumber: targetEp.number,
+            titleHint: detailedShow.title,
+            ytTrailerId: detailedShow.ytTrailerId,
+          })
+        );
       }
     } catch (e) {
+      console.warn('[ShowDetailsScreen] Source selector fallback triggered:', e);
+      setAvailableStreams(
+        buildEmergencyFallbackStreams({
+          type: 'series',
+          imdbId: cleanImdb,
+          seasonNumber: targetEp.seasonNumber,
+          episodeNumber: targetEp.number,
+          titleHint: detailedShow.title,
+          ytTrailerId: detailedShow.ytTrailerId,
+        })
+      );
     } finally {
       setIsResolving(false);
     }
@@ -147,9 +217,17 @@ export const ShowDetailsScreen: React.FC<ShowDetailsScreenProps> = ({
 
   const handleSelectStream = (stream: AddonStream) => {
     if (!resolvingEpisode) return;
+    const preloaded = availableStreams || undefined;
     setIsTrailerReady(false);
     setAvailableStreams(null);
-    onPlayEpisode(resolvingEpisode, stream.url, stream.streamType, stream.durationSeconds);
+    onPlayEpisode(
+      resolvingEpisode,
+      stream.url,
+      stream.streamType,
+      stream.durationSeconds,
+      stream.proxyHeaders,
+      preloaded
+    );
     setResolvingEpisode(null);
   };
 
@@ -162,7 +240,6 @@ export const ShowDetailsScreen: React.FC<ShowDetailsScreenProps> = ({
         name: `Season ${i + 1}`,
       }));
 
-  const trailerId = detailedShow.ytTrailerId;
   const firstEpisode = episodes.length > 0 ? episodes[0] : null;
 
   return (
@@ -177,6 +254,7 @@ export const ShowDetailsScreen: React.FC<ShowDetailsScreenProps> = ({
       {trailerId && !isPlayerActive && (
         <div className={`tv-details-trailer-bg ${isTrailerReady ? 'visible' : 'hidden'}`}>
           <iframe
+            ref={trailerIframeRef}
             src={`https://www.youtube.com/embed/${trailerId}?autoplay=1&mute=1&controls=0&showinfo=0&rel=0&loop=1&playlist=${trailerId}&modestbranding=1&iv_load_policy=3&enablejsapi=1`}
             allow="autoplay; encrypted-media"
             title={detailedShow.title}

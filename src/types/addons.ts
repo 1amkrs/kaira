@@ -1,3 +1,13 @@
+export type StremioResourceName = 'stream' | 'catalog' | 'subtitles' | 'meta' | string;
+
+export interface StremioResourceObject {
+  name: StremioResourceName;
+  types?: string[];
+  idPrefixes?: string[];
+}
+
+export type StremioResourceDescriptor = StremioResourceName | StremioResourceObject;
+
 export interface AddonManifest {
   id: string;
   name: string;
@@ -5,8 +15,8 @@ export interface AddonManifest {
   description?: string;
   icon?: string;
   background?: string;
-  resources: ('stream' | 'catalog' | 'subtitles' | 'meta')[];
-  types: ('movie' | 'series' | 'anime' | 'other')[];
+  resources: StremioResourceDescriptor[];
+  types: ('movie' | 'series' | 'anime' | 'other' | string)[];
   idPrefixes?: string[];
   catalogs?: {
     type: string;
@@ -29,7 +39,7 @@ export interface SubtitleTrack {
 }
 
 export interface AddonStream {
-  name: string; // e.g. "Torrentio [RD+]", "Torrentio [4K]", "Web Stream", "Trailer"
+  name: string; // e.g. "Torrentio [RD+]", "WebStreamr", "VidLink Server 1", "Trailer"
   title: string; // e.g. "Interstellar (2014) • 4K HDR • 18.2 GB\n1000+ seeds • Atmos"
   description?: string;
   url: string; // Direct HTTPS stream link / Web embed / YouTube embed
@@ -44,11 +54,19 @@ export interface AddonStream {
   providerName?: string;
   isDebrid?: boolean;
   isCached?: boolean;
+  isHls?: boolean;
+  proxyHeaders?: Record<string, string>;
   durationSeconds?: number;
   behaviorHints?: {
     notWebReady?: boolean;
     bingeGroup?: string;
-    proxyHeaders?: Record<string, string>;
+    filename?: string;
+    proxyHeaders?:
+      | Record<string, string>
+      | {
+          request?: Record<string, string>;
+          response?: Record<string, string>;
+        };
   };
 }
 

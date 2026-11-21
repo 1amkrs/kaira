@@ -45,8 +45,11 @@ class PlaybackService {
   }
 
   private initEngineBridge() {
-    // Sync state from core musicEngine when playing audio
+    // Sync state from core musicEngine when playing audio (never overwrite an active video session)
     musicEngine.subscribe((engineState) => {
+      if (this.state.currentSource?.type === 'video') {
+        return;
+      }
       if (this.state.currentSource?.type === 'audio' || engineState.currentSource) {
         const queueSources: PlaybackSource[] = engineState.queue.map((t) => ({
           id: `source-${t.id}`,

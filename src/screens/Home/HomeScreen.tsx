@@ -172,7 +172,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
   };
 
   return (
-    <div className="tv-scroll-container tv-home-screen" role="main" aria-label="Google TV For You Home">
+    <div className="tv-scroll-container tv-home-screen" role="region" aria-label="Google TV For You Home">
       {/* ─── Mobile Hero Showcase (Active on Mobile <= 768px down to 350px) ─── */}
       <MobileShowcaseHero
         heroItems={

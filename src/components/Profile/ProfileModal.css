@@ -100,7 +100,7 @@
   width: 24px;
   height: 24px;
   border-radius: 8px;
-  background-color: rgba(14, 16, 20, 0.85);
+  background-color: rgba(0, 0, 0, 0.88);
   color: var(--text-primary);
   display: flex;
   align-items: center;
@@ -120,7 +120,7 @@
   position: absolute;
   inset: 0;
   border-radius: 24px;
-  background-color: rgba(14, 16, 20, 0.58);
+  background-color: rgba(0, 0, 0, 0.62);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -166,7 +166,7 @@
   padding: 0 22px;
   border-radius: var(--radius-pill);
   background-color: var(--md-sys-color-surface-container-high);
-  border: 1px solid var(--md-sys-color-outline-variant);
+  border: none;
   color: var(--text-primary);
   font-size: 14px;
   font-weight: 600;
@@ -175,7 +175,6 @@
   transition:
     background-color var(--duration-base) var(--easing-standard),
     color var(--duration-base) var(--easing-standard),
-    border-color var(--duration-base) var(--easing-standard),
     box-shadow var(--duration-base) var(--easing-standard);
 }
 
@@ -187,13 +186,11 @@
 .tv-profile-pill-btn.active {
   background-color: var(--md-sys-color-secondary-container);
   color: var(--md-sys-color-on-secondary-container);
-  border-color: var(--md-sys-color-primary);
 }
 
 .tv-profile-pill-btn.focused {
   background-color: var(--md-sys-color-primary);
   color: var(--md-sys-color-on-primary);
-  border-color: var(--md-sys-color-focus-ring);
   box-shadow: 0 0 0 2px var(--md-sys-color-focus-ring);
 }
 

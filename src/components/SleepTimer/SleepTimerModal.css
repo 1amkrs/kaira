@@ -15,8 +15,8 @@
   width: 90vw;
   min-width: 580px;
   max-width: 680px;
-  background: linear-gradient(145deg, rgba(26, 29, 38, 0.97) 0%, rgba(16, 18, 24, 0.98) 100%);
-  border: 1.5px solid rgba(255, 255, 255, 0.12);
+  background: linear-gradient(145deg, rgba(16, 16, 20, 0.98) 0%, rgba(7, 7, 9, 0.99) 100%);
+  border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: var(--radius-xl);
   padding: 32px 36px;
   box-shadow:
@@ -82,7 +82,7 @@
   padding: 0 20px;
   border-radius: var(--radius-pill);
   background-color: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  border: none;
   color: #ffffff;
   font-size: var(--font-body);
   font-weight: 600;
@@ -97,7 +97,6 @@
 .tv-modal-close-pill.focused {
   background-color: #ffffff;
   color: #000000;
-  border-color: #ffffff;
   transform: scale(1.04);
   box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.8), 0 8px 24px rgba(0, 0, 0, 0.6);
 }
@@ -136,7 +135,7 @@
   color: #f28b82;
   font-size: var(--font-caption);
   font-weight: 600;
-  border: 1px solid rgba(234, 67, 53, 0.35);
+  border: none;
   cursor: pointer;
   transition: all var(--duration-base) var(--easing-standard);
   white-space: nowrap;
@@ -145,9 +144,8 @@
 .tv-sleep-cancel-pill.focused {
   background: var(--accent-red);
   color: #ffffff;
-  border-color: #ffffff;
   transform: scale(1.04);
-  box-shadow: 0 0 14px rgba(234, 67, 53, 0.6);
+  box-shadow: 0 0 0 2px var(--md-sys-color-focus-ring, #e8eefc), 0 0 14px rgba(234, 67, 53, 0.6);
 }
 
 .tv-sleep-presets-grid {
@@ -224,7 +222,7 @@
   height: 44px;
   padding: 0 22px;
   background: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  border: none;
   border-radius: var(--radius-pill);
   color: var(--text-primary);
   font-size: var(--font-body);
@@ -239,7 +237,6 @@
 .tv-sleep-instant-btn.focused {
   background: #ffffff;
   color: #000000;
-  border-color: #ffffff;
   transform: scale(1.04);
   box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.8), 0 8px 24px rgba(0, 0, 0, 0.6);
 }

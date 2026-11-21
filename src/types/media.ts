@@ -1,4 +1,4 @@
-import { SubtitleTrack } from './addons';
+import { AddonStream, SubtitleTrack } from './addons';
 
 export interface SyncedLyricLine {
   time: number; // In seconds
@@ -186,6 +186,8 @@ export interface PlaybackSource {
   album?: string;
   intro?: { start: number; end: number; type?: string };
   outro?: { start: number; end: number };
+  proxyHeaders?: Record<string, string>;
+  fallbackStreams?: AddonStream[];
 }
 
 export interface PlaybackState {

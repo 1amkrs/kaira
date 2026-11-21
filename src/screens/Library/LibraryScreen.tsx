@@ -291,7 +291,7 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
   const showRecommendedRail = favoriteMovies.length === 0 && favoriteShows.length === 0 && activeCategory !== 'continue';
 
   return (
-    <div className="tv-scroll-container tv-library-screen" role="main" aria-label="Library Screen">
+    <div className="tv-scroll-container tv-library-screen" role="region" aria-label="Library Screen">
       {/* Featured Hero Billboard */}
       {featuredHero && (
         <section className="tv-library-hero-billboard">

@@ -7,7 +7,7 @@ import {
   ArrowLeft,
   AlertCircle,
   Subtitles,
-  Sliders,
+  SlidersHorizontal,
   Layers,
   Volume2,
   Volume1,
@@ -17,12 +17,36 @@ import {
   FastForward,
   Minimize2,
   RefreshCw,
-  Zap,
   Loader2,
+  ListVideo,
+  ChevronDown,
+  ChevronUp,
+  Gauge,
 } from 'lucide-react';
 import { PlayerEngineController, PlayerEngineState } from '../../services/player/PlayerEngineController';
 import { DriverType } from '../../services/player/types';
+import {
+  formatTime,
+  formatRemainingTime,
+  formatEndsAt,
+  computeIntroRangePercent,
+  loadSubtitleStyle,
+  saveSubtitleStyle,
+  SubtitleStylePrefs,
+  SubtitleSize,
+  SubtitleBackdrop,
+} from '../../services/player/playerHudUtils';
 import { addonService } from '../../services/addons/AddonService';
+import {
+  getStreamPlayerBadge,
+  sortStreamsForDisplay,
+  formatPlayerErrorMessage,
+} from '../../services/addons/stremioProtocol';
+import {
+  deduplicateStreams,
+  extractImdbId,
+  buildEmergencyFallbackStreams,
+} from '../../services/addons/streamFallback';
 import { introService } from '../../services/playback/IntroService';
 import { continueWatchingService } from '../../services/playback/ContinueWatchingService';
 import { mediaProvider } from '../../services/media/LiveMediaProvider';
@@ -34,6 +58,7 @@ import { Focusable } from '../../components/Focusable/Focusable';
 import { playbackService } from '../../services/playback/PlaybackService';
 import './VideoPlayerScreen.css';
 
+type SheetTab = 'audio_subs' | 'sources' | 'playback' | 'episodes';
 
 interface VideoPlayerScreenProps {
   source: PlaybackSource;
@@ -69,17 +94,48 @@ export const VideoPlayerScreen: React.FC<VideoPlayerScreenProps> = ({
   const [isHudVisible, setIsHudVisible] = useState<boolean>(true);
   const [isCursorHidden, setIsCursorHidden] = useState<boolean>(false);
   const [isMenuOpen, setIsMenuOpen] = useState<boolean>(false);
-  const [menuTab, setMenuTab] = useState<'sources' | 'subtitles' | 'audio' | 'speed' | 'intro'>('sources');
+  const [menuTab, setMenuTab] = useState<SheetTab>('audio_subs');
+  const [showCodecTools, setShowCodecTools] = useState<boolean>(false);
   const [feedbackBadge, setFeedbackBadge] = useState<string | null>(null);
   const [debugOverlayOpen, setDebugOverlayOpen] = useState<boolean>(false);
   const [lastAction, setLastAction] = useState<string>('Player Initialized');
+  const [showSlowBufferHint, setShowSlowBufferHint] = useState<boolean>(false);
+  const [clockTick, setClockTick] = useState<number>(() => Date.now());
+
+  // Subtitle appearance preferences (persisted in localStorage)
+  const [subtitleStyle, setSubtitleStyle] = useState<SubtitleStylePrefs>(() => loadSubtitleStyle());
+
+  const updateSubtitleStyle = useCallback((patch: Partial<SubtitleStylePrefs>) => {
+    setSubtitleStyle((prev) => {
+      const next = { ...prev, ...patch };
+      saveSubtitleStyle(next);
+      return next;
+    });
+  }, []);
 
   // Stream & Subtitles metadata
   const [currentStreamUrl, setCurrentStreamUrl] = useState<string>(source.streamUrl);
+  const [currentProxyHeaders, setCurrentProxyHeaders] = useState<Record<string, string> | undefined>(
+    source.proxyHeaders
+  );
   const [currentDriverType, setCurrentDriverType] = useState<DriverType>(
     source.streamType === 'youtube' ? 'youtube' : source.streamType === 'embed' ? 'embed' : 'direct'
   );
-  const [availableStreams, setAvailableStreams] = useState<AddonStream[]>([]);
+  const [availableStreams, setAvailableStreams] = useState<AddonStream[]>(() => {
+    if (source.fallbackStreams && source.fallbackStreams.length > 0) {
+      return sortStreamsForDisplay(deduplicateStreams(source.fallbackStreams));
+    }
+    const cleanImdb = extractImdbId(source.imdbId, source.showId, source.mediaId);
+    return buildEmergencyFallbackStreams({
+      type: source.mediaType === 'episode' ? 'series' : 'movie',
+      imdbId: cleanImdb,
+      seasonNumber: source.seasonNumber,
+      episodeNumber: source.episodeNumber,
+      titleHint: source.showTitle || source.title,
+      ytTrailerId: source.ytTrailerId,
+    });
+  });
+  const [activeStreamIdx, setActiveStreamIdx] = useState<number | null>(null);
   const [availableSubtitles, setAvailableSubtitles] = useState<SubtitleTrack[]>(source.subtitles || []);
   const [selectedSubId, setSelectedSubId] = useState<string | null>(null);
 
@@ -94,10 +150,12 @@ export const VideoPlayerScreen: React.FC<VideoPlayerScreenProps> = ({
   useEffect(() => {
     setHasAutoSkipped(false);
     setIntroSegment(source.intro || null);
-  }, [source.id]);
+  }, [source.id, source.intro]);
 
-  // Next Episode State (Strictly for TV Shows)
+  // Next Episode & Season Episode List State (Strictly for TV Shows)
   const [nextEpisode, setNextEpisode] = useState<Episode | null>(null);
+  const [seasonEpisodes, setSeasonEpisodes] = useState<Episode[]>([]);
+  const [isLoadingEpisodes, setIsLoadingEpisodes] = useState<boolean>(false);
   const [isLoadingNext, setIsLoadingNext] = useState<boolean>(false);
 
   // Scrubbing & Tooltip State
@@ -111,18 +169,42 @@ export const VideoPlayerScreen: React.FC<VideoPlayerScreenProps> = ({
 
   // Volume OSD state
   const [volumeToast, setVolumeToast] = useState<{ level: number; muted: boolean } | null>(null);
-  const volumeToastTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const volumeToastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const hudTimerRef = useRef<NodeJS.Timeout | null>(null);
-  const cursorTimerRef = useRef<NodeJS.Timeout | null>(null);
-  const feedbackTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const hudTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const cursorTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const feedbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Keep "Ends HH:MM PM" fresh every 30s while HUD is visible
+  useEffect(() => {
+    if (!isHudVisible) return;
+    setClockTick(Date.now());
+    const id = setInterval(() => setClockTick(Date.now()), 30000);
+    return () => clearInterval(id);
+  }, [isHudVisible]);
+
+  // Show quiet "Taking a while? Switch Source" hint if buffering persists > 8s
+  useEffect(() => {
+    if (engineState.status !== 'buffering') {
+      setShowSlowBufferHint(false);
+      return;
+    }
+    const timer = setTimeout(() => setShowSlowBufferHint(true), 8000);
+    return () => clearTimeout(timer);
+  }, [engineState.status, currentStreamUrl]);
 
   // Helper: Trigger visual feedback badge
   const triggerFeedback = useCallback((text: string) => {
     setFeedbackBadge(text);
     setLastAction(text);
     if (feedbackTimerRef.current) clearTimeout(feedbackTimerRef.current);
-    feedbackTimerRef.current = setTimeout(() => setFeedbackBadge(null), 1200);
+    feedbackTimerRef.current = setTimeout(() => setFeedbackBadge(null), 1100);
+  }, []);
+
+  const showVolumeOsd = useCallback((level: number, muted: boolean) => {
+    setVolumeToast({ level, muted });
+    if (volumeToastTimerRef.current) clearTimeout(volumeToastTimerRef.current);
+    volumeToastTimerRef.current = setTimeout(() => setVolumeToast(null), 1600);
   }, []);
 
   // Helper: Reset HUD and cursor auto-hide timers
@@ -133,12 +215,10 @@ export const VideoPlayerScreen: React.FC<VideoPlayerScreenProps> = ({
     if (cursorTimerRef.current) clearTimeout(cursorTimerRef.current);
 
     if (engineRef.current?.getState().status === 'playing' && !isMenuOpen && !isScrubbing) {
-      // Hide HUD after 3.5s
       hudTimerRef.current = setTimeout(() => {
         setIsHudVisible(false);
       }, 3500);
 
-      // Hide mouse pointer after 2.5s of inactivity
       cursorTimerRef.current = setTimeout(() => {
         setIsCursorHidden(true);
       }, 2500);
@@ -151,10 +231,21 @@ export const VideoPlayerScreen: React.FC<VideoPlayerScreenProps> = ({
       setIsCursorHidden(false);
       if (cursorTimerRef.current) clearTimeout(cursorTimerRef.current);
     } else {
-      // When playing, start cursor hide timer
       pingHud();
     }
   }, [engineState.status, isMenuOpen, isScrubbing, pingHud]);
+
+  // Helper to open/close settings slide-over sheet cleanly
+  const openSheet = useCallback((tab?: SheetTab) => {
+    if (tab) setMenuTab(tab);
+    setIsMenuOpen(true);
+  }, []);
+
+  const closeSheet = useCallback(() => {
+    setIsMenuOpen(false);
+    const restoreTarget = currentDriverType === 'embed' ? 'player-hud-menu-btn' : 'player-playpause-main-btn';
+    setTimeout(() => spatialNav.setFocus(restoreTarget), 30);
+  }, [currentDriverType]);
 
   // 1. Initialize Player Engine Controller
   useEffect(() => {
@@ -184,6 +275,7 @@ export const VideoPlayerScreen: React.FC<VideoPlayerScreenProps> = ({
       engine.destroy();
       engineRef.current = null;
     };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // 1b. React to source stream URL changes (async resolution from App.tsx)
@@ -196,7 +288,15 @@ export const VideoPlayerScreen: React.FC<VideoPlayerScreenProps> = ({
       : 'direct';
 
     setCurrentStreamUrl(source.streamUrl);
+    setCurrentProxyHeaders(source.proxyHeaders);
     setCurrentDriverType(driverType);
+    setActiveStreamIdx(null);
+
+    if (source.fallbackStreams && source.fallbackStreams.length > 0) {
+      setAvailableStreams((prev) =>
+        sortStreamsForDisplay(deduplicateStreams([...(source.fallbackStreams || []), ...prev]))
+      );
+    }
 
     const initialExpectedDur = source.durationSeconds || (source.mediaType === 'episode' ? 2700 : 7200);
     engineRef.current.loadMedia(
@@ -205,6 +305,7 @@ export const VideoPlayerScreen: React.FC<VideoPlayerScreenProps> = ({
       source.initialPosition || 0,
       source.subtitles && source.subtitles.length > 0 ? source.subtitles[0].url : undefined,
       initialExpectedDur,
+      source.proxyHeaders,
     );
 
     if (source.subtitles && source.subtitles.length > 0) {
@@ -224,53 +325,110 @@ export const VideoPlayerScreen: React.FC<VideoPlayerScreenProps> = ({
         })
         .catch(() => {});
     }
-  }, [source.streamUrl, source.streamType]);
+  }, [source.streamUrl, source.streamType, source.durationSeconds, source.initialPosition, source.mediaType, source.subtitles, source.proxyHeaders, source.fallbackStreams]);
 
-  // 1c. Stream Loading Watchdog & Automatic VidSrc Server 2 Fallback
-  // If a debrid/direct torrent stream takes too much time to load (>10s) or errors out, automatically fall back to VidSrc Server 2
-  const [hasFallenBackToVidSrc, setHasFallenBackToVidSrc] = useState<boolean>(false);
-  const loadingWatchdogRef = useRef<NodeJS.Timeout | null>(null);
+  // 1c. Stream Loading Watchdog, Alternate Direct Failover & Automatic Backup Mirror Fallback
+  const [hasExhaustedFallbacks, setHasExhaustedFallbacks] = useState<boolean>(false);
+  const loadingWatchdogRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const hasStartedPlayingRef = useRef<boolean>(false);
-
-  const triggerVidSrcFallback = useCallback((reason: string) => {
-    if (hasFallenBackToVidSrc) return;
-    setHasFallenBackToVidSrc(true);
-
-    console.warn(`[VideoPlayerScreen] Triggering VidSrc Server 2 fallback: ${reason}`);
-    triggerFeedback('Switching to VidSrc Server 2 (Cloud Mirror)...');
-
-    const cleanImdb = source.imdbId || (source.mediaId?.startsWith('tt') ? source.mediaId : 'tt0816692');
-    const existingVidSrc = availableStreams.find(
-      (s) => s.name?.includes('VidSrc Server 2') || s.providerName === 'VidSrc Mirror' || s.url?.includes('vidsrc')
-    );
-
-    const vidSrcUrl =
-      existingVidSrc?.url ||
-      (source.mediaType === 'episode'
-        ? `https://vidsrc.pm/embed/tv/${cleanImdb}/${source.seasonNumber || 1}/${source.episodeNumber || 1}?autoplay=1`
-        : `https://vidsrc.pm/embed/movie/${cleanImdb}?autoplay=1`);
-
-    setCurrentStreamUrl(vidSrcUrl);
-    setCurrentDriverType('embed');
-
-    if (engineRef.current) {
-      engineRef.current.loadMedia(
-        vidSrcUrl,
-        'embed',
-        engineState.currentTime,
-        undefined,
-        engineState.duration || source.durationSeconds || 7200
-      );
-    }
-  }, [hasFallenBackToVidSrc, availableStreams, source, engineState.currentTime, engineState.duration, triggerFeedback]);
+  const failedStreamUrlsRef = useRef<Set<string>>(new Set());
+  const directFailureCountRef = useRef<number>(0);
 
   useEffect(() => {
-    // If playing, mark that stream has started and clear watchdog
+    failedStreamUrlsRef.current.clear();
+    directFailureCountRef.current = 0;
+    hasStartedPlayingRef.current = false;
+    setHasExhaustedFallbacks(false);
+  }, [source.id, source.streamUrl]);
+
+  const triggerNextFallback = useCallback(
+    (reason: string, forceMirror: boolean = false) => {
+      if (currentStreamUrl) {
+        failedStreamUrlsRef.current.add(currentStreamUrl);
+        addonService.markStreamFailed(currentStreamUrl, reason);
+      }
+
+      if (currentDriverType === 'direct') {
+        directFailureCountRef.current += 1;
+      }
+
+      const cleanImdb = extractImdbId(source.imdbId, source.showId, source.mediaId);
+      const emergency = buildEmergencyFallbackStreams({
+        type: source.mediaType === 'episode' ? 'series' : 'movie',
+        imdbId: cleanImdb,
+        seasonNumber: source.seasonNumber,
+        episodeNumber: source.episodeNumber,
+        titleHint: source.showTitle || source.title,
+        ytTrailerId: source.ytTrailerId,
+      });
+
+      const candidatePool = sortStreamsForDisplay(
+        deduplicateStreams([...availableStreams, ...emergency])
+      );
+
+      const nextStream = addonService.getNextFallbackStream(
+        candidatePool,
+        failedStreamUrlsRef.current,
+        {
+          allowDirect: !forceMirror,
+          allowSelfDebrid: false,
+          maxDirectAttemptsReached: directFailureCountRef.current >= 3,
+        }
+      );
+
+      if (!nextStream || !engineRef.current) {
+        console.warn(`[VideoPlayerScreen] All fallback streams exhausted (${reason})`);
+        setHasExhaustedFallbacks(true);
+        return false;
+      }
+
+      const nextDriver: DriverType =
+        nextStream.streamType === 'youtube'
+          ? 'youtube'
+          : nextStream.streamType === 'embed'
+          ? 'embed'
+          : 'direct';
+
+      console.warn(
+        `[VideoPlayerScreen] Stream failed (${reason}); failing over to "${nextStream.name}" [${nextDriver}]`
+      );
+      triggerFeedback(
+        nextDriver === 'direct' ? 'Trying next direct stream' : 'Switching to backup mirror'
+      );
+
+      setCurrentStreamUrl(nextStream.url);
+      setCurrentProxyHeaders(nextStream.proxyHeaders);
+      setCurrentDriverType(nextDriver);
+      const idx = availableStreams.findIndex((s) => s.url === nextStream.url);
+      setActiveStreamIdx(idx >= 0 ? idx : null);
+
+      engineRef.current.loadMedia(
+        nextStream.url,
+        nextDriver,
+        engineState.currentTime,
+        undefined,
+        nextStream.durationSeconds || engineState.duration || source.durationSeconds || 7200,
+        nextStream.proxyHeaders
+      );
+      return true;
+    },
+    [
+      currentStreamUrl,
+      currentDriverType,
+      availableStreams,
+      source,
+      engineState.currentTime,
+      engineState.duration,
+      triggerFeedback,
+    ]
+  );
+
+  useEffect(() => {
     if (engineState.status === 'playing') {
       hasStartedPlayingRef.current = true;
     }
 
-    if (engineState.status === 'playing' || hasFallenBackToVidSrc) {
+    if (engineState.status === 'playing' || hasExhaustedFallbacks) {
       if (loadingWatchdogRef.current) {
         clearTimeout(loadingWatchdogRef.current);
         loadingWatchdogRef.current = null;
@@ -286,21 +444,22 @@ export const VideoPlayerScreen: React.FC<VideoPlayerScreenProps> = ({
       currentStreamUrl.includes('.mp4') ||
       currentStreamUrl.includes('.mkv') ||
       isSelfDebrid;
-    const isAlreadyVidSrc = currentStreamUrl.includes('vidsrc');
 
-    // Only allow fallback to VidSrc if:
-    // 1) NOT a Self-Debrid local cached stream (local streams should never switch to cloud mirror)
-    // 2) The stream has NOT started playing yet (never fall back during active seeking / buffering)
-    if (isDirectOrDebrid && !isAlreadyVidSrc && !isSelfDebrid && !hasStartedPlayingRef.current) {
-      if (engineState.status === 'buffering') {
-        if (!loadingWatchdogRef.current) {
-          loadingWatchdogRef.current = setTimeout(() => {
-            triggerVidSrcFallback('Stream buffering exceeded 10 seconds timeout');
-          }, 10000);
-        }
-      } else if (engineState.status === 'error') {
-        triggerVidSrcFallback(`Playback error encountered: ${engineState.error || 'Connection failed'}`);
+    if (engineState.status === 'buffering' && isDirectOrDebrid && !isSelfDebrid && !hasStartedPlayingRef.current) {
+      if (!loadingWatchdogRef.current) {
+        loadingWatchdogRef.current = setTimeout(() => {
+          triggerNextFallback('Stream buffering exceeded 10 seconds timeout', false);
+        }, 10000);
       }
+    } else if (engineState.status === 'error') {
+      if (loadingWatchdogRef.current) {
+        clearTimeout(loadingWatchdogRef.current);
+        loadingWatchdogRef.current = null;
+      }
+      triggerNextFallback(
+        `Playback error encountered: ${engineState.error || 'Connection failed'}`,
+        currentDriverType !== 'direct'
+      );
     }
 
     return () => {
@@ -309,15 +468,23 @@ export const VideoPlayerScreen: React.FC<VideoPlayerScreenProps> = ({
         loadingWatchdogRef.current = null;
       }
     };
-  }, [engineState.status, engineState.error, currentDriverType, currentStreamUrl, source.streamUrl, hasFallenBackToVidSrc, triggerVidSrcFallback]);
-
+  }, [
+    engineState.status,
+    engineState.error,
+    currentDriverType,
+    currentStreamUrl,
+    source.streamUrl,
+    hasExhaustedFallbacks,
+    triggerNextFallback,
+  ]);
 
   // 2. Fetch Alternate Mirrors & Intro Timestamps in background
   useEffect(() => {
+    let cancelled = false;
     const fetchExtraData = async () => {
       try {
-        const imdb = source.imdbId || (source.mediaId?.startsWith('tt') ? source.mediaId : undefined);
-        if (imdb) {
+        const imdb = extractImdbId(source.imdbId, source.showId, source.mediaId);
+        if (imdb && imdb.startsWith('tt')) {
           const streams = await addonService.fetchStreams(
             source.mediaType === 'episode' ? 'series' : 'movie',
             imdb,
@@ -326,16 +493,18 @@ export const VideoPlayerScreen: React.FC<VideoPlayerScreenProps> = ({
             source.showTitle || source.title,
             source.ytTrailerId
           );
-          if (streams && streams.length > 0) {
-            setAvailableStreams(streams);
+          if (!cancelled && streams && streams.length > 0) {
+            setAvailableStreams((prev) =>
+              sortStreamsForDisplay(deduplicateStreams([...streams, ...prev]))
+            );
           }
 
-          if (!source.subtitles || source.subtitles.length === 0) {
+          if (!cancelled && (!source.subtitles || source.subtitles.length === 0)) {
             const subs = await addonService.fetchSubtitles(
               source.mediaType === 'episode' ? 'series' : 'movie',
               imdb
             );
-            if (subs && subs.length > 0) {
+            if (!cancelled && subs && subs.length > 0) {
               setAvailableSubtitles(subs);
             }
           }
@@ -344,19 +513,21 @@ export const VideoPlayerScreen: React.FC<VideoPlayerScreenProps> = ({
         console.warn('[VideoPlayerScreen] Background stream query notice:', e);
       }
 
-      // Check intro timestamps (via IntroDB, verified series list, or heuristics)
-      if (!source.intro && (source.mediaType === 'episode' || Boolean(source.showId || source.seasonNumber))) {
+      if (!cancelled && !source.intro && (source.mediaType === 'episode' || Boolean(source.showId || source.seasonNumber))) {
         const intro = await introService.getIntroTimestamps(source);
-        if (intro) {
+        if (!cancelled && intro) {
           setIntroSegment(intro);
         }
       }
     };
 
     fetchExtraData();
-  }, [source.id, source.showId, source.imdbId, source.seasonNumber, source.episodeNumber]);
+    return () => {
+      cancelled = true;
+    };
+  }, [source.id, source.showId, source.imdbId, source.seasonNumber, source.episodeNumber, source.mediaId, source.mediaType, source.showTitle, source.title, source.ytTrailerId, source.subtitles, source.intro]);
 
-  // 2a-2. Pre-fetch Next Episode Metadata (Strictly for TV Shows)
+  // 2a-2. Pre-fetch Next Episode & Season Episodes (Strictly for TV Shows)
   useEffect(() => {
     let isCancelled = false;
     if (source.mediaType === 'episode' && (source.showId || source.imdbId)) {
@@ -375,8 +546,24 @@ export const VideoPlayerScreen: React.FC<VideoPlayerScreenProps> = ({
           console.warn('[VideoPlayerScreen] Error fetching next episode:', err);
           if (!isCancelled) setNextEpisode(null);
         });
+
+      setIsLoadingEpisodes(true);
+      mediaProvider
+        .getEpisodes(showId, seasonNum)
+        .then((eps) => {
+          if (!isCancelled) {
+            setSeasonEpisodes(eps || []);
+          }
+        })
+        .catch(() => {
+          if (!isCancelled) setSeasonEpisodes([]);
+        })
+        .finally(() => {
+          if (!isCancelled) setIsLoadingEpisodes(false);
+        });
     } else {
       setNextEpisode(null);
+      setSeasonEpisodes([]);
     }
 
     return () => {
@@ -385,7 +572,6 @@ export const VideoPlayerScreen: React.FC<VideoPlayerScreenProps> = ({
   }, [source.id, source.mediaType, source.showId, source.imdbId, source.seasonNumber, source.episodeNumber]);
 
   // 2b. Progress Saver — persist watch position to ContinueWatchingService
-  // Runs every 5 seconds while playing; also flushes on unmount (exit/back) and on completion.
   const engineStateRef = useRef(engineState);
   engineStateRef.current = engineState;
 
@@ -393,11 +579,10 @@ export const VideoPlayerScreen: React.FC<VideoPlayerScreenProps> = ({
     const saveNow = (isComplete: boolean = false) => {
       const state = engineStateRef.current;
       const dur = state.duration > 0 ? state.duration : (source.durationSeconds ?? 7200);
-      if (state.currentTime < 10 && !isComplete) return; // Don't save if barely started
+      if (state.currentTime < 10 && !isComplete) return;
       continueWatchingService.upsertFromEngine(source, state.currentTime, dur, isComplete);
     };
 
-    // Periodic save every 5 seconds
     const interval = setInterval(() => {
       const state = engineStateRef.current;
       if (state.status === 'playing') {
@@ -405,12 +590,9 @@ export const VideoPlayerScreen: React.FC<VideoPlayerScreenProps> = ({
       }
     }, 5000);
 
-    // Save on unmount (user exits the player)
     return () => {
       clearInterval(interval);
       const state = engineStateRef.current;
-      const dur = state.duration > 0 ? state.duration : (source.durationSeconds ?? 7200);
-      // Don't save if playback never really started
       if (state.currentTime >= 10) {
         saveNow(false);
       }
@@ -440,12 +622,11 @@ export const VideoPlayerScreen: React.FC<VideoPlayerScreenProps> = ({
   }, [engineState.status, currentStreamUrl]);
 
   // 3. Transport Handlers
-
   const handleTogglePlayPause = useCallback(() => {
     if (!engineRef.current) return;
     engineRef.current.togglePlayPause();
     const nextStatus = engineRef.current.getState().status;
-    triggerFeedback(nextStatus === 'playing' ? 'Play ▶' : 'Paused ⏸');
+    triggerFeedback(nextStatus === 'playing' ? 'Playing' : 'Paused');
     pingHud();
   }, [triggerFeedback, pingHud]);
 
@@ -493,55 +674,61 @@ export const VideoPlayerScreen: React.FC<VideoPlayerScreenProps> = ({
     if (!introSegment || !engineRef.current) return;
     setHasAutoSkipped(true);
     seekTo(introSegment.end);
-    triggerFeedback('Intro Skipped');
+    triggerFeedback('Intro skipped');
   }, [introSegment, seekTo, triggerFeedback]);
+
+  const handleSelectEpisode = useCallback(
+    async (episode: Episode) => {
+      setIsLoadingNext(true);
+      setIsMenuOpen(false);
+      triggerFeedback(`S${episode.seasonNumber} E${episode.number}`);
+
+      if (onPlayNextEpisode) {
+        onPlayNextEpisode(episode);
+        setIsLoadingNext(false);
+        return;
+      }
+
+      try {
+        const nextSource = await mediaProvider.getPlaybackSource(episode);
+        if (engineRef.current) {
+          const driverType: DriverType =
+            nextSource.streamType === 'youtube' ? 'youtube' : nextSource.streamType === 'embed' ? 'embed' : 'direct';
+          setCurrentStreamUrl(nextSource.streamUrl);
+          setCurrentDriverType(driverType);
+          engineRef.current.loadMedia(
+            nextSource.streamUrl,
+            driverType,
+            0,
+            nextSource.subtitles && nextSource.subtitles.length > 0 ? nextSource.subtitles[0].url : undefined,
+            nextSource.durationSeconds || 2700
+          );
+        }
+      } catch (err) {
+        console.error('[VideoPlayerScreen] Error starting episode:', err);
+      } finally {
+        setIsLoadingNext(false);
+      }
+    },
+    [onPlayNextEpisode, triggerFeedback]
+  );
 
   const handlePlayNextEpisode = useCallback(async () => {
     if (!nextEpisode) return;
-    setIsLoadingNext(true);
-    triggerFeedback(`Starting S${nextEpisode.seasonNumber} E${nextEpisode.number}...`);
-
-    if (onPlayNextEpisode) {
-      onPlayNextEpisode(nextEpisode);
-      return;
-    }
-
-    // Fallback: standalone engine reload if callback is omitted
-    try {
-      const nextSource = await mediaProvider.getPlaybackSource(nextEpisode);
-      if (engineRef.current) {
-        const driverType: DriverType =
-          nextSource.streamType === 'youtube' ? 'youtube' : nextSource.streamType === 'embed' ? 'embed' : 'direct';
-        setCurrentStreamUrl(nextSource.streamUrl);
-        setCurrentDriverType(driverType);
-        engineRef.current.loadMedia(
-          nextSource.streamUrl,
-          driverType,
-          0,
-          nextSource.subtitles && nextSource.subtitles.length > 0 ? nextSource.subtitles[0].url : undefined,
-          nextSource.durationSeconds || 2700
-        );
-        setNextEpisode(null);
-      }
-    } catch (err) {
-      console.error('[VideoPlayerScreen] Error starting next episode:', err);
-    } finally {
-      setIsLoadingNext(false);
-    }
-  }, [nextEpisode, onPlayNextEpisode, triggerFeedback]);
+    await handleSelectEpisode(nextEpisode);
+  }, [nextEpisode, handleSelectEpisode]);
 
   const handleReplayCurrent = useCallback(() => {
     if (!engineRef.current) return;
     seekTo(0);
     engineRef.current.play();
-    triggerFeedback('Replaying Media');
+    triggerFeedback('Replaying');
     pingHud();
   }, [seekTo, triggerFeedback, pingHud]);
 
   // 4. Intro Auto-Skip Monitor & Reset
   useEffect(() => {
     if (!introSegment) return;
-    // Reset auto-skip lock if playback is rewound prior to intro start
     if (hasAutoSkipped && engineState.currentTime < introSegment.start) {
       setHasAutoSkipped(false);
       return;
@@ -567,8 +754,7 @@ export const VideoPlayerScreen: React.FC<VideoPlayerScreenProps> = ({
 
   // 5. Remote Controller & Physical Keyboard Mapping
   useEffect(() => {
-    // Focus play/pause button on mount
-    spatialNav.setFocus('player-playpause-main-btn');
+    spatialNav.setFocus(currentDriverType === 'embed' ? 'player-hud-menu-btn' : 'player-playpause-main-btn');
 
     const handleKeyDown = (e: KeyboardEvent) => {
       pingHud();
@@ -576,9 +762,9 @@ export const VideoPlayerScreen: React.FC<VideoPlayerScreenProps> = ({
       // Escape / B button
       if (e.key === 'Escape' || e.key === 'Backspace' || e.key === 'BrowserBack') {
         e.preventDefault();
+        e.stopImmediatePropagation();
         if (isMenuOpen) {
-          setIsMenuOpen(false);
-          spatialNav.setFocus('player-playpause-main-btn');
+          closeSheet();
         } else {
           onExit();
         }
@@ -588,6 +774,7 @@ export const VideoPlayerScreen: React.FC<VideoPlayerScreenProps> = ({
       // Space / PlayPause key / Key K
       if (e.key === ' ' || e.key === 'MediaPlayPause' || e.key === 'k' || e.key === 'K') {
         e.preventDefault();
+        e.stopImmediatePropagation();
         handleTogglePlayPause();
         return;
       }
@@ -595,28 +782,29 @@ export const VideoPlayerScreen: React.FC<VideoPlayerScreenProps> = ({
       // Dedicated Seek keys: [ / J (-10s) and ] / L (+10s)
       if (e.key === '[' || e.key === 'j' || e.key === 'J' || (e.shiftKey && e.key === 'ArrowLeft')) {
         e.preventDefault();
+        e.stopImmediatePropagation();
         seekBy(-10);
         return;
       }
       if (e.key === ']' || e.key === 'l' || e.key === 'L' || (e.shiftKey && e.key === 'ArrowRight')) {
         e.preventDefault();
+        e.stopImmediatePropagation();
         seekBy(10);
         return;
       }
 
-      // Left / Right Arrow: Seek ±10s when HUD is hidden OR focus is explicitly on the timeline scrubber
+      // Left / Right Arrow: Seek +/-10s when HUD is hidden OR focus is on scrubber
       const focusedId = spatialNav.getFocusedId();
       const isScrubberFocused = focusedId === 'player-scrubber-bar';
 
       if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight') && !isMenuOpen) {
         if (!isHudVisible || isScrubberFocused) {
           e.preventDefault();
+          e.stopImmediatePropagation();
           const delta = e.key === 'ArrowLeft' ? -10 : 10;
           seekBy(delta);
-          triggerFeedback(delta > 0 ? '⏩ +10s' : '⏪ -10s');
           return;
         }
-        // When HUD is visible and scrubber is not focused, allow spatialNav to navigate between buttons
       }
 
       // 'I' key: Skip intro immediately
@@ -635,48 +823,43 @@ export const VideoPlayerScreen: React.FC<VideoPlayerScreenProps> = ({
         return;
       }
 
-      // 'Y' key: Open quick menu / mirrors
+      // 'Y' key: Toggle settings sheet
       if (e.key === 'y' || e.key === 'Y') {
         e.preventDefault();
-        setIsMenuOpen((prev) => !prev);
+        e.stopImmediatePropagation();
+        if (isMenuOpen) closeSheet();
+        else openSheet();
         return;
       }
 
-      // 'X' / 'S' key: Quick subtitles
+      // 'X' / 'S' key: Quick subtitles & audio sheet
       if (e.key === 'x' || e.key === 'X' || e.key === 's' || e.key === 'S') {
         e.preventDefault();
-        setMenuTab('subtitles');
-        setIsMenuOpen(true);
+        openSheet('audio_subs');
         return;
       }
 
-      // Volume Keys: + / - / VolumeUp / VolumeDown / M / ArrowUp / ArrowDown (only when HUD is hidden)
+      // Volume Keys
       if (e.key === '+' || e.key === '=' || e.key === 'VolumeUp' || (e.key === 'ArrowUp' && !isMenuOpen && !isHudVisible)) {
         e.preventDefault();
+        e.stopImmediatePropagation();
         const next = engineRef.current ? engineRef.current.adjustVolume(0.05) : 1;
-        setVolumeToast({ level: Math.round(next * 100), muted: next === 0 });
-        if (volumeToastTimerRef.current) clearTimeout(volumeToastTimerRef.current);
-        volumeToastTimerRef.current = setTimeout(() => setVolumeToast(null), 1800);
-        triggerFeedback(`Volume: ${Math.round(next * 100)}%`);
+        showVolumeOsd(Math.round(next * 100), next === 0);
         return;
       }
       if (e.key === '-' || e.key === '_' || e.key === 'VolumeDown' || (e.key === 'ArrowDown' && !isMenuOpen && !isHudVisible)) {
         e.preventDefault();
+        e.stopImmediatePropagation();
         const next = engineRef.current ? engineRef.current.adjustVolume(-0.05) : 0;
-        setVolumeToast({ level: Math.round(next * 100), muted: next === 0 });
-        if (volumeToastTimerRef.current) clearTimeout(volumeToastTimerRef.current);
-        volumeToastTimerRef.current = setTimeout(() => setVolumeToast(null), 1800);
-        triggerFeedback(`Volume: ${Math.round(next * 100)}%`);
+        showVolumeOsd(Math.round(next * 100), next === 0);
         return;
       }
       if (e.key === 'm' || e.key === 'M' || e.key === 'VolumeMute') {
         e.preventDefault();
+        e.stopImmediatePropagation();
         const muted = engineRef.current ? engineRef.current.toggleMute() : false;
         const curVol = engineRef.current ? engineRef.current.getState().volume : 1;
-        setVolumeToast({ level: muted ? 0 : Math.round(curVol * 100), muted });
-        if (volumeToastTimerRef.current) clearTimeout(volumeToastTimerRef.current);
-        volumeToastTimerRef.current = setTimeout(() => setVolumeToast(null), 1800);
-        triggerFeedback(muted ? 'Muted' : `Volume: ${Math.round(curVol * 100)}%`);
+        showVolumeOsd(muted ? 0 : Math.round(curVol * 100), muted);
         return;
       }
 
@@ -691,7 +874,7 @@ export const VideoPlayerScreen: React.FC<VideoPlayerScreenProps> = ({
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [pingHud, isHudVisible, isMenuOpen, onExit, handleTogglePlayPause, seekBy, introSegment, handleSkipIntro, triggerFeedback, handlePlayNextEpisode, source.mediaType, nextEpisode]);
+  }, [pingHud, isHudVisible, isMenuOpen, onExit, closeSheet, openSheet, currentDriverType, handleTogglePlayPause, seekBy, introSegment, handleSkipIntro, handlePlayNextEpisode, source.mediaType, nextEpisode, showVolumeOsd]);
 
   // 5b. Gamepad Action Handling
   useEffect(() => {
@@ -702,8 +885,7 @@ export const VideoPlayerScreen: React.FC<VideoPlayerScreenProps> = ({
       switch (action) {
         case 'BACK':
           if (isMenuOpen) {
-            setIsMenuOpen(false);
-            spatialNav.setFocus('player-playpause-main-btn');
+            closeSheet();
           } else {
             onExit();
           }
@@ -712,11 +894,11 @@ export const VideoPlayerScreen: React.FC<VideoPlayerScreenProps> = ({
           handleTogglePlayPause();
           break;
         case 'SUBTITLES':
-          setMenuTab('subtitles');
-          setIsMenuOpen(true);
+          openSheet('audio_subs');
           break;
         case 'MENU':
-          setIsMenuOpen((prev) => !prev);
+          if (isMenuOpen) closeSheet();
+          else openSheet();
           break;
         case 'SEEK_BACKWARD':
         case 'TAB_PREV':
@@ -728,27 +910,18 @@ export const VideoPlayerScreen: React.FC<VideoPlayerScreenProps> = ({
           break;
         case 'VOLUME_UP': {
           const next = engineRef.current ? engineRef.current.adjustVolume(0.05) : 1;
-          setVolumeToast({ level: Math.round(next * 100), muted: next === 0 });
-          if (volumeToastTimerRef.current) clearTimeout(volumeToastTimerRef.current);
-          volumeToastTimerRef.current = setTimeout(() => setVolumeToast(null), 1800);
-          triggerFeedback(`Volume: ${Math.round(next * 100)}%`);
+          showVolumeOsd(Math.round(next * 100), next === 0);
           break;
         }
         case 'VOLUME_DOWN': {
           const next = engineRef.current ? engineRef.current.adjustVolume(-0.05) : 0;
-          setVolumeToast({ level: Math.round(next * 100), muted: next === 0 });
-          if (volumeToastTimerRef.current) clearTimeout(volumeToastTimerRef.current);
-          volumeToastTimerRef.current = setTimeout(() => setVolumeToast(null), 1800);
-          triggerFeedback(`Volume: ${Math.round(next * 100)}%`);
+          showVolumeOsd(Math.round(next * 100), next === 0);
           break;
         }
         case 'MUTE': {
           const muted = engineRef.current ? engineRef.current.toggleMute() : false;
           const curVol = engineRef.current ? engineRef.current.getState().volume : 1;
-          setVolumeToast({ level: muted ? 0 : Math.round(curVol * 100), muted });
-          if (volumeToastTimerRef.current) clearTimeout(volumeToastTimerRef.current);
-          volumeToastTimerRef.current = setTimeout(() => setVolumeToast(null), 1800);
-          triggerFeedback(muted ? 'Muted' : `Volume: ${Math.round(curVol * 100)}%`);
+          showVolumeOsd(muted ? 0 : Math.round(curVol * 100), muted);
           break;
         }
         default:
@@ -759,20 +932,7 @@ export const VideoPlayerScreen: React.FC<VideoPlayerScreenProps> = ({
     return () => {
       unsubGamepad();
     };
-  }, [pingHud, isMenuOpen, onExit, handleTogglePlayPause, seekBy, triggerFeedback]);
-
-  // Helper: Format Time string HH:MM:SS / MM:SS
-  const formatTime = (secs: number): string => {
-    if (!secs || isNaN(secs) || secs < 0) return '0:00';
-    const total = Math.floor(secs);
-    const h = Math.floor(total / 3600);
-    const m = Math.floor((total % 3600) / 60);
-    const s = total % 60;
-    if (h > 0) {
-      return `${h}:${m < 10 ? '0' : ''}${m}:${s < 10 ? '0' : ''}${s}`;
-    }
-    return `${m}:${s < 10 ? '0' : ''}${s}`;
-  };
+  }, [pingHud, isMenuOpen, onExit, closeSheet, openSheet, handleTogglePlayPause, seekBy, showVolumeOsd]);
 
   const fallbackDur = source.durationSeconds || (source.mediaType === 'episode' ? 2700 : 7200);
   const currentEffectiveDur =
@@ -809,6 +969,15 @@ export const VideoPlayerScreen: React.FC<VideoPlayerScreenProps> = ({
       ? Math.min(100, (engineState.currentTime / currentEffectiveDur) * 100)
       : 0;
 
+  const bufferedPct = Math.max(progressPct, Math.min(100, engineState.bufferedPercent || 0));
+  const introRange = computeIntroRangePercent(introSegment, currentEffectiveDur);
+  const endsAtLabel = formatEndsAt(
+    displayCurrentTime,
+    currentEffectiveDur,
+    engineState.playbackSpeed,
+    new Date(clockTick)
+  );
+
   const isInsideIntro =
     introSegment && engineState.currentTime >= introSegment.start && engineState.currentTime <= introSegment.end;
 
@@ -819,6 +988,35 @@ export const VideoPlayerScreen: React.FC<VideoPlayerScreenProps> = ({
     !isMenuOpen &&
     currentEffectiveDur > 60 &&
     engineState.currentTime >= currentEffectiveDur - 25;
+
+  const isEpisode = source.mediaType === 'episode';
+  const inlineSubtitle =
+    source.subtitle ||
+    (isEpisode && source.seasonNumber && source.episodeNumber
+      ? `Season ${source.seasonNumber} · Episode ${source.episodeNumber}`
+      : null);
+
+  // Deduplicate identical language codes so subtitle picker stays clean (max 1 per language label unless distinct)
+  const dedupedSubtitles = React.useMemo(() => {
+    const seen = new Set<string>();
+    const result: SubtitleTrack[] = [];
+    for (const sub of availableSubtitles) {
+      const key = (sub.label || sub.lang || sub.id).trim().toLowerCase();
+      if (!seen.has(key)) {
+        seen.add(key);
+        result.push(sub);
+      }
+    }
+    return result;
+  }, [availableSubtitles]);
+
+  // Resolve a single active source index (avoid marking multiple mirrors that share a fallback URL)
+  const resolvedActiveStreamIdx = React.useMemo(() => {
+    if (activeStreamIdx !== null && activeStreamIdx >= 0 && activeStreamIdx < availableStreams.length) {
+      return activeStreamIdx;
+    }
+    return availableStreams.findIndex((st) => st.url === currentStreamUrl);
+  }, [activeStreamIdx, availableStreams, currentStreamUrl]);
 
   return (
     <div
@@ -834,60 +1032,81 @@ export const VideoPlayerScreen: React.FC<VideoPlayerScreenProps> = ({
 
       {/* 2. Live Subtitle Rendering Layer */}
       {engineState.currentSubtitleText && (
-        <div className="tv-player-live-subtitles-container">
-          <div className="tv-player-live-subtitles-text">{engineState.currentSubtitleText}</div>
+        <div
+          className={`tv-player-live-subtitles-container ${
+            isHudVisible && currentDriverType !== 'embed' ? 'hud-lifted' : ''
+          }`}
+        >
+          <div
+            className={`tv-player-live-subtitles-text sub-size-${subtitleStyle.size} sub-bg-${subtitleStyle.backdrop}`}
+          >
+            {engineState.currentSubtitleText}
+          </div>
         </div>
       )}
 
-      {/* 3. Center Gesture Feedback Badge ("+10s", "-10s", "Paused") */}
+      {/* 3. Center Gesture Feedback Pill ("+10s", "-10s", "Paused") */}
       {feedbackBadge && (
         <div className="tv-player-feedback-badge animate-pop" aria-live="assertive">
           <span>{feedbackBadge}</span>
         </div>
       )}
 
-      {/* 4. Volume OSD Toast Indicator */}
+      {/* 4. Minimal Right-Edge Vertical Volume Rail OSD */}
       {volumeToast && (
-        <div className="tv-player-volume-osd animate-pop" role="status" aria-live="polite">
-          {volumeToast.muted || volumeToast.level === 0 ? (
-            <VolumeX size={24} className="tv-volume-osd-icon muted" />
-          ) : (
-            <Volume2 size={24} className="tv-volume-osd-icon" />
-          )}
-          <div className="tv-volume-osd-bar">
+        <div className="tv-player-volume-osd" role="status" aria-live="polite">
+          <div className="tv-volume-osd-rail">
             <div
               className="tv-volume-osd-fill"
-              style={{ width: `${volumeToast.muted ? 0 : volumeToast.level}%` }}
+              style={{ height: `${volumeToast.muted ? 0 : volumeToast.level}%` }}
             />
           </div>
+          {volumeToast.muted || volumeToast.level === 0 ? (
+            <VolumeX size={16} className="tv-volume-osd-icon muted" />
+          ) : volumeToast.level < 50 ? (
+            <Volume1 size={16} className="tv-volume-osd-icon" />
+          ) : (
+            <Volume2 size={16} className="tv-volume-osd-icon" />
+          )}
           <span className="tv-volume-osd-text">
-            {volumeToast.muted ? 'MUTED' : `${volumeToast.level}%`}
+            {volumeToast.muted ? '0%' : `${volumeToast.level}%`}
           </span>
         </div>
       )}
 
-      {/* 5. Buffering Overlay */}
-      {engineState.status === 'buffering' && (
+      {/* 5. Quiet Cinema Buffering Ring (no giant acrylic box, no blue halo) */}
+      {engineState.status === 'buffering' && !isMenuOpen && (
         <div className="tv-player-buffering-overlay" aria-label="Buffering Media" role="status">
-          <div className="tv-buffering-spinner-container">
-            <div className="tv-buffering-glow" />
-            <div className="tv-spinner-circle" />
-          </div>
-          <div className="tv-buffering-content">
-            <span className="tv-buffering-label">Loading stream...</span>
-            {source.title && (
-              <span className="tv-buffering-sub">{source.title}</span>
-            )}
-          </div>
+          <div className="tv-spinner-circle" />
+          {showSlowBufferHint && (
+            <div className="tv-buffering-slow-wrap">
+              <Focusable
+                id="btn-slow-buffer-switch"
+                groupId="player-buffer-hint"
+                indexInGroup={0}
+                className="tv-hud-btn-focusable"
+                onSelect={() => openSheet('sources')}
+              >
+                {(isFocused) => (
+                  <div className={`tv-hud-menu-pill tv-buffering-switch-pill ${isFocused ? 'focused' : ''}`}>
+                    <Layers size={14} />
+                    <span>Taking a while? Switch source</span>
+                  </div>
+                )}
+              </Focusable>
+            </div>
+          )}
         </div>
       )}
 
-      {/* 5. Error Recovery Modal */}
-      {engineState.status === 'error' && (
-        <div className="tv-player-error-modal animate-scale-up" role="alertdialog">
-          <AlertCircle size={48} className="error-icon" />
+      {/* 5.5. Error Recovery Modal (Calm Cinema Charcoal) */}
+      {engineState.status === 'error' && !isMenuOpen && (
+        <div className="tv-player-error-modal animate-scale-up" role="alertdialog" aria-label="Stream Unavailable">
+          <AlertCircle size={36} className="error-icon" />
           <h2 className="error-title">Stream Unavailable</h2>
-          <p className="error-desc">{engineState.error || 'We could not connect to this video source. Please try switching to a backup mirror.'}</p>
+          <p className="error-desc">
+            {formatPlayerErrorMessage(engineState.error, currentStreamUrl)}
+          </p>
           <div className="error-actions">
             <Focusable
               id="btn-retry-stream"
@@ -896,14 +1115,24 @@ export const VideoPlayerScreen: React.FC<VideoPlayerScreenProps> = ({
               autoFocus={true}
               className="tv-action-pill"
               onSelect={() => {
+                failedStreamUrlsRef.current.delete(currentStreamUrl);
+                addonService.clearFailedStreams(currentStreamUrl);
+                setHasExhaustedFallbacks(false);
                 if (engineRef.current) {
-                  engineRef.current.loadMedia(currentStreamUrl, currentDriverType, engineState.currentTime);
+                  engineRef.current.loadMedia(
+                    currentStreamUrl,
+                    currentDriverType,
+                    engineState.currentTime,
+                    undefined,
+                    engineState.duration || source.durationSeconds || 7200,
+                    currentProxyHeaders
+                  );
                 }
               }}
             >
               {(isFocused) => (
-                <div className={`tv-btn-inner ${isFocused ? 'focused' : ''}`}>
-                  <RefreshCw size={18} />
+                <div className={`tv-btn-inner primary ${isFocused ? 'focused' : ''}`}>
+                  <RefreshCw size={16} />
                   <span>Try Again</span>
                 </div>
               )}
@@ -914,15 +1143,12 @@ export const VideoPlayerScreen: React.FC<VideoPlayerScreenProps> = ({
               groupId="player-error-group"
               indexInGroup={1}
               className="tv-action-pill"
-              onSelect={() => {
-                setMenuTab('sources');
-                setIsMenuOpen(true);
-              }}
+              onSelect={() => openSheet('sources')}
             >
               {(isFocused) => (
                 <div className={`tv-btn-inner ${isFocused ? 'focused' : ''}`}>
-                  <Layers size={18} />
-                  <span>Choose Backup Mirror</span>
+                  <Layers size={16} />
+                  <span>Sources</span>
                 </div>
               )}
             </Focusable>
@@ -932,12 +1158,11 @@ export const VideoPlayerScreen: React.FC<VideoPlayerScreenProps> = ({
               groupId="player-error-group"
               indexInGroup={2}
               className="tv-action-pill"
-              onSelect={() => triggerVidSrcFallback('Manual fallback requested from error dialog')}
+              onSelect={() => triggerNextFallback('Manual fallback requested from error dialog', true)}
             >
               {(isFocused) => (
                 <div className={`tv-btn-inner ${isFocused ? 'focused' : ''}`}>
-                  <Layers size={18} />
-                  <span>VidSrc Server 2</span>
+                  <span>Backup Mirror</span>
                 </div>
               )}
             </Focusable>
@@ -945,52 +1170,46 @@ export const VideoPlayerScreen: React.FC<VideoPlayerScreenProps> = ({
         </div>
       )}
 
-      {/* 6. 10-Foot TV HUD Overlay (Auto-hiding) */}
+      {/* 6. Apple TV / Cinema Minimal HUD Overlay */}
       <div className={`tv-player-hud ${isHudVisible || isMenuOpen ? 'visible' : 'hidden'}`}>
-        {/* Top Header Row */}
+        {/* Top Scrim & Minimal Header */}
         <div className="tv-hud-top">
-          <Focusable
-            id="player-hud-back-btn"
-            groupId="player-hud-top"
-            indexInGroup={0}
-            className="tv-hud-btn-focusable"
-            onSelect={onExit}
-          >
-            {(isFocused) => (
-              <div className={`tv-hud-back-btn ${isFocused ? 'focused' : ''}`}>
-                <ArrowLeft size={20} />
-                <span>Back</span>
-              </div>
-            )}
-          </Focusable>
+          <div className="tv-hud-top-left">
+            <Focusable
+              id="player-hud-back-btn"
+              groupId="player-hud-top"
+              indexInGroup={0}
+              className="tv-hud-btn-focusable"
+              ariaLabel="Back"
+              onSelect={onExit}
+            >
+              {(isFocused) => (
+                <div className={`tv-hud-back-btn ${isFocused ? 'focused' : ''}`}>
+                  <ArrowLeft size={18} />
+                  <span>Back</span>
+                </div>
+              )}
+            </Focusable>
 
-          <div className="tv-hud-title-col">
-            <h1 className="tv-hud-title">{source.title}</h1>
-            <div className="tv-hud-meta-row">
-              {source.subtitle && <span className="tv-hud-subtitle">{source.subtitle}</span>}
-              <span className="tv-hud-stream-badge">
-                <Zap size={12} />
-                {currentDriverType === 'direct'
-                  ? 'Direct Hardware Stream'
-                  : currentDriverType === 'youtube'
-                  ? 'YouTube Studio'
-                  : 'Fast CDN Mirror'}
-              </span>
+            <div className="tv-hud-title-col">
+              <h1 className="tv-hud-title">{source.title}</h1>
+              {inlineSubtitle && <span className="tv-hud-subtitle">{inlineSubtitle}</span>}
             </div>
           </div>
 
-          <div style={{ display: 'flex', gap: '12px' }}>
+          <div className={`tv-hud-top-right ${isMenuOpen ? 'sheet-open' : ''}`}>
             {onMinimizeToPiP && (
               <Focusable
                 id="player-hud-pip-btn"
                 groupId="player-hud-top"
                 indexInGroup={1}
                 className="tv-hud-btn-focusable"
+                ariaLabel="Picture in Picture"
                 onSelect={onMinimizeToPiP}
               >
                 {(isFocused) => (
-                  <div className={`tv-hud-menu-pill ${isFocused ? 'focused' : ''}`} title="Picture in Picture">
-                    <Minimize2 size={18} />
+                  <div className={`tv-hud-menu-pill icon-only ${isFocused ? 'focused' : ''}`} title="Picture in Picture">
+                    <Minimize2 size={17} />
                   </div>
                 )}
               </Focusable>
@@ -1001,11 +1220,12 @@ export const VideoPlayerScreen: React.FC<VideoPlayerScreenProps> = ({
               groupId="player-hud-top"
               indexInGroup={2}
               className="tv-hud-btn-focusable"
-              onSelect={() => setIsMenuOpen((prev) => !prev)}
+              ariaLabel="Player Settings"
+              onSelect={() => (isMenuOpen ? closeSheet() : openSheet())}
             >
               {(isFocused) => (
-                <div className={`tv-hud-menu-pill ${isFocused ? 'focused' : ''}`}>
-                  <Sliders size={18} />
+                <div className={`tv-hud-menu-pill ${isMenuOpen ? 'active' : ''} ${isFocused ? 'focused' : ''}`}>
+                  <SlidersHorizontal size={16} />
                   <span>Settings</span>
                 </div>
               )}
@@ -1013,258 +1233,299 @@ export const VideoPlayerScreen: React.FC<VideoPlayerScreenProps> = ({
           </div>
         </div>
 
-        {/* Bottom Transport Controls (Rendered for Direct hardware streams) */}
+        {/* Bottom Cinema Timeline & 3-Zone Transport (Rendered for Direct / YouTube streams) */}
         {currentDriverType !== 'embed' && (
           <div className="tv-hud-bottom">
-          {/* Timeline Row */}
-          <div className="tv-hud-timeline-row">
-            <span className="tv-hud-time">{formatTime(displayCurrentTime)}</span>
-
-            <Focusable
-              id="player-scrubber-bar"
-              groupId="player-hud-timeline"
-              indexInGroup={0}
-              className="tv-hud-scrubber-focusable"
-              scaleEffect={false}
-              onSelect={() => {
-                handleTogglePlayPause();
-              }}
-            >
-              {(isFocused) => (
-                <div
-                  className={`tv-hud-progress-bar-container ${isFocused ? 'focused' : ''} ${
-                    isScrubbing ? 'scrubbing' : ''
-                  }`}
-                  onPointerDown={(e) => {
-                    setIsScrubbing(true);
-                    try {
-                      (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
-                    } catch (_) {}
-                    const rect = e.currentTarget.getBoundingClientRect();
-                    if (rect.width > 0) {
-                      const pos = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
-                      setScrubPosition(pos);
-                      setHoverPosition(pos);
-                    }
-                  }}
-                  onPointerMove={handleScrubberMove}
-                  onPointerUp={(e) => {
-                    try {
-                      (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
-                    } catch (_) {}
-                    if (isScrubbing) {
-                      const rect = e.currentTarget.getBoundingClientRect();
-                      const pos = rect.width > 0 ? Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width)) : 0;
-                      handleScrubberCommit(scrubPosition !== null ? scrubPosition : pos);
-                    }
-                    setIsScrubbing(false);
-                    setScrubPosition(null);
-                  }}
-                  onPointerCancel={(e) => {
-                    try {
-                      (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
-                    } catch (_) {}
-                    setIsScrubbing(false);
-                    setScrubPosition(null);
-                    setHoverPosition(null);
-                  }}
-                >
-                  <div className="tv-hud-progress-track">
-                    <div className="tv-hud-chapter-tick" style={{ left: '20%' }} />
-                    <div className="tv-hud-chapter-tick" style={{ left: '50%' }} />
-                    <div className="tv-hud-chapter-tick" style={{ left: '80%' }} />
-
-                    <div className="tv-hud-progress-fill" style={{ width: `${progressPct}%` }} />
-                    <div className="tv-hud-scrubber-head" style={{ left: `${progressPct}%` }} />
-
-                    {(isFocused || isScrubbing || hoverPosition !== null) && (
-                      <div
-                        className="tv-hud-scrubber-tooltip"
-                        style={{ left: `${hoverPosition !== null ? hoverPosition * 100 : progressPct}%` }}
-                      >
-                        {formatTime(
-                          (hoverPosition !== null ? hoverPosition : progressPct / 100) * currentEffectiveDur
-                        )}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )}
-            </Focusable>
-
-            <span className="tv-hud-time">
-              {formatTime(currentEffectiveDur)}
-            </span>
-          </div>
-
-          {/* Transport Buttons Bar */}
-          <div className="tv-hud-controls-row">
-            {/* Seek Back 10s */}
-            <Focusable
-              id="player-seek-back-btn"
-              groupId="player-hud-transport"
-              indexInGroup={0}
-              className="tv-hud-ctrl-btn-wrapper"
-              onSelect={() => seekBy(-10)}
-            >
-              {(isFocused) => (
-                <div
-                  className={`tv-hud-ctrl-btn ${isFocused ? 'focused' : ''}`}
-                  onClick={(e) => { e.stopPropagation(); seekBy(-10); }}
-                >
-                  <RotateCcw size={22} />
-                  <span className="tv-hud-badge-10">10s</span>
-                </div>
-              )}
-            </Focusable>
-
-            {/* Primary Play / Pause Button */}
-            <Focusable
-              id="player-playpause-main-btn"
-              groupId="player-hud-transport"
-              indexInGroup={1}
-              autoFocus={true}
-              className="tv-hud-ctrl-btn-wrapper"
-              onSelect={handleTogglePlayPause}
-            >
-              {(isFocused) => (
-                <div
-                  className={`tv-hud-ctrl-btn primary ${isFocused ? 'focused' : ''}`}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleTogglePlayPause();
-                  }}
-                >
-                  {engineState.status === 'playing' ? (
-                    <Pause size={32} fill="currentColor" />
-                  ) : (
-                    <Play size={32} fill="currentColor" />
-                  )}
-                </div>
-              )}
-            </Focusable>
-
-            {/* Seek Forward 10s */}
-            <Focusable
-              id="player-seek-fwd-btn"
-              groupId="player-hud-transport"
-              indexInGroup={2}
-              className="tv-hud-ctrl-btn-wrapper"
-              onSelect={() => seekBy(10)}
-            >
-              {(isFocused) => (
-                <div
-                  className={`tv-hud-ctrl-btn ${isFocused ? 'focused' : ''}`}
-                  onClick={(e) => { e.stopPropagation(); seekBy(10); }}
-                >
-                  <RotateCw size={22} />
-                  <span className="tv-hud-badge-10">10s</span>
-                </div>
-              )}
-            </Focusable>
-
-            {/* Volume Control Button & Slider */}
-            <div className="tv-hud-volume-cluster">
+            {/* Full-Width Hairline Timeline */}
+            <div className="tv-hud-timeline-block">
               <Focusable
-                id="player-volume-btn"
-                groupId="player-hud-transport"
-                indexInGroup={3}
-                className="tv-hud-ctrl-btn-wrapper"
-                onSelect={() => {
-                  const muted = engineRef.current ? engineRef.current.toggleMute() : false;
-                  const curVol = engineRef.current ? engineRef.current.getState().volume : 1;
-                  setVolumeToast({ level: muted ? 0 : Math.round(curVol * 100), muted });
-                  if (volumeToastTimerRef.current) clearTimeout(volumeToastTimerRef.current);
-                  volumeToastTimerRef.current = setTimeout(() => setVolumeToast(null), 1800);
-                  triggerFeedback(muted ? 'Muted' : `Volume: ${Math.round(curVol * 100)}%`);
-                }}
+                id="player-scrubber-bar"
+                groupId="player-hud-timeline"
+                indexInGroup={0}
+                className="tv-hud-scrubber-focusable"
+                scaleEffect={false}
+                ariaLabel="Seek timeline"
+                onSelect={handleTogglePlayPause}
               >
                 {(isFocused) => (
                   <div
-                    className={`tv-hud-ctrl-btn ${isFocused ? 'focused' : ''}`}
-                    title="Volume / Mute (M)"
-                    onClick={(e) => {
+                    className={`tv-hud-progress-bar-container ${isFocused ? 'focused' : ''} ${
+                      isScrubbing ? 'scrubbing' : ''
+                    }`}
+                    onPointerDown={(e) => {
                       e.stopPropagation();
-                      const muted = engineRef.current ? engineRef.current.toggleMute() : false;
-                      const curVol = engineRef.current ? engineRef.current.getState().volume : 1;
-                      setVolumeToast({ level: muted ? 0 : Math.round(curVol * 100), muted });
-                      if (volumeToastTimerRef.current) clearTimeout(volumeToastTimerRef.current);
-                      volumeToastTimerRef.current = setTimeout(() => setVolumeToast(null), 1800);
-                      triggerFeedback(muted ? 'Muted' : `Volume: ${Math.round(curVol * 100)}%`);
+                      setIsScrubbing(true);
+                      try {
+                        (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+                      } catch (_) {}
+                      const rect = e.currentTarget.getBoundingClientRect();
+                      if (rect.width > 0) {
+                        const pos = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+                        setScrubPosition(pos);
+                        setHoverPosition(pos);
+                      }
+                    }}
+                    onPointerMove={handleScrubberMove}
+                    onPointerLeave={() => {
+                      if (!isScrubbing) setHoverPosition(null);
+                    }}
+                    onPointerUp={(e) => {
+                      e.stopPropagation();
+                      try {
+                        (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
+                      } catch (_) {}
+                      if (isScrubbing) {
+                        const rect = e.currentTarget.getBoundingClientRect();
+                        const pos =
+                          rect.width > 0 ? Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width)) : 0;
+                        handleScrubberCommit(scrubPosition !== null ? scrubPosition : pos);
+                      }
+                      setIsScrubbing(false);
+                      setScrubPosition(null);
+                    }}
+                    onPointerCancel={(e) => {
+                      try {
+                        (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
+                      } catch (_) {}
+                      setIsScrubbing(false);
+                      setScrubPosition(null);
+                      setHoverPosition(null);
                     }}
                   >
-                    {engineState.isMuted || engineState.volume === 0 ? (
-                      <VolumeX size={22} />
-                    ) : engineState.volume < 0.5 ? (
-                      <Volume1 size={22} />
-                    ) : (
-                      <Volume2 size={22} />
-                    )}
+                    <div className="tv-hud-progress-track">
+                      {/* Buffered Range */}
+                      <div className="tv-hud-progress-buffered" style={{ width: `${bufferedPct}%` }} />
+
+                      {/* Real Intro Segment Marker (only rendered when detected) */}
+                      {introRange && (
+                        <div
+                          className="tv-hud-intro-range"
+                          style={{ left: `${introRange.leftPct}%`, width: `${introRange.widthPct}%` }}
+                          title="Intro segment"
+                        />
+                      )}
+
+                      {/* Monochrome White Played Fill */}
+                      <div className="tv-hud-progress-fill" style={{ width: `${progressPct}%` }} />
+                      <div className="tv-hud-scrubber-head" style={{ left: `${progressPct}%` }} />
+
+                      {(isFocused || isScrubbing || hoverPosition !== null) && (
+                        <div
+                          className="tv-hud-scrubber-tooltip"
+                          style={{
+                            left: `${Math.max(4, Math.min(96, hoverPosition !== null ? hoverPosition * 100 : progressPct))}%`,
+                          }}
+                        >
+                          {formatTime(
+                            (hoverPosition !== null ? hoverPosition : progressPct / 100) * currentEffectiveDur
+                          )}
+                        </div>
+                      )}
+                    </div>
                   </div>
                 )}
               </Focusable>
 
-              <div
-                className="tv-hud-volume-slider-track"
-                title="Adjust Volume (Click or drag)"
-                onPointerDown={(e) => {
-                  const rect = e.currentTarget.getBoundingClientRect();
-                  const pos = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
-                  engineRef.current?.setVolume(pos);
-                  setVolumeToast({ level: Math.round(pos * 100), muted: pos === 0 });
-                  if (volumeToastTimerRef.current) clearTimeout(volumeToastTimerRef.current);
-                  volumeToastTimerRef.current = setTimeout(() => setVolumeToast(null), 1800);
-                  triggerFeedback(`Volume: ${Math.round(pos * 100)}%`);
-                }}
-              >
-                <div
-                  className="tv-hud-volume-slider-fill"
-                  style={{ width: `${engineState.isMuted ? 0 : Math.round(engineState.volume * 100)}%` }}
-                />
+              {/* Time Metadata Row: Elapsed left, Remaining · Ends HH:MM PM right */}
+              <div className="tv-hud-time-meta-row">
+                <span className="tv-hud-time">{formatTime(displayCurrentTime)}</span>
+                <div className="tv-hud-time-right">
+                  <span className="tv-hud-time tv-hud-time-remaining">
+                    {formatRemainingTime(displayCurrentTime, currentEffectiveDur)}
+                  </span>
+                  {endsAtLabel && (
+                    <>
+                      <span className="tv-hud-time-dot" aria-hidden="true">·</span>
+                      <span className="tv-hud-time-ends">{endsAtLabel}</span>
+                    </>
+                  )}
+                </div>
               </div>
             </div>
 
-            {/* Subtitles Menu */}
-            <Focusable
-              id="player-subtitles-btn"
-              groupId="player-hud-transport"
-              indexInGroup={4}
-              className="tv-hud-ctrl-btn-wrapper"
-              onSelect={() => {
-                setMenuTab('subtitles');
-                setIsMenuOpen(true);
-              }}
-            >
-              {(isFocused) => (
-                <div className={`tv-hud-ctrl-btn ${isFocused ? 'focused' : ''}`}>
-                  <Subtitles size={22} />
-                </div>
-              )}
-            </Focusable>
+            {/* 3-Zone Transport Bar */}
+            <div className="tv-hud-controls-row">
+              {/* Left Zone: Active non-default status indicators (quiet when defaults) */}
+              <div className="tv-hud-zone-left">
+                {engineState.playbackSpeed !== 1 && (
+                  <Focusable
+                    id="player-speed-indicator-btn"
+                    groupId="player-hud-transport"
+                    indexInGroup={0}
+                    className="tv-hud-ctrl-pill-focusable"
+                    ariaLabel={`Playback speed ${engineState.playbackSpeed}x`}
+                    onSelect={() => openSheet('playback')}
+                  >
+                    {(isFocused) => (
+                      <div className={`tv-hud-util-chip ${isFocused ? 'focused' : ''}`}>
+                        <Gauge size={14} />
+                        <span>{engineState.playbackSpeed}x</span>
+                      </div>
+                    )}
+                  </Focusable>
+                )}
+              </div>
 
-            {/* Mirrors / Quality Selector */}
-            <Focusable
-              id="player-mirrors-btn"
-              groupId="player-hud-transport"
-              indexInGroup={5}
-              className="tv-hud-ctrl-btn-wrapper"
-              onSelect={() => {
-                setMenuTab('sources');
-                setIsMenuOpen(true);
-              }}
-            >
-              {(isFocused) => (
-                <div className={`tv-hud-ctrl-btn ${isFocused ? 'focused' : ''}`}>
-                  <Layers size={22} />
+              {/* Center Zone: Primary Transport (-10s, Play/Pause, +10s) */}
+              <div className="tv-hud-zone-center">
+                <Focusable
+                  id="player-seek-back-btn"
+                  groupId="player-hud-transport"
+                  indexInGroup={1}
+                  className="tv-hud-ctrl-btn-wrapper"
+                  ariaLabel="Rewind 10 seconds"
+                  onSelect={() => seekBy(-10)}
+                >
+                  {(isFocused) => (
+                    <div className={`tv-hud-ctrl-btn seek-btn ${isFocused ? 'focused' : ''}`} title="Rewind 10s (J)">
+                      <RotateCcw size={24} strokeWidth={1.75} />
+                      <span className="tv-hud-badge-10">10</span>
+                    </div>
+                  )}
+                </Focusable>
+
+                <Focusable
+                  id="player-playpause-main-btn"
+                  groupId="player-hud-transport"
+                  indexInGroup={2}
+                  autoFocus={true}
+                  className="tv-hud-ctrl-btn-wrapper"
+                  ariaLabel={engineState.status === 'playing' ? 'Pause' : 'Play'}
+                  onSelect={handleTogglePlayPause}
+                >
+                  {(isFocused) => (
+                    <div className={`tv-hud-ctrl-btn primary ${isFocused ? 'focused' : ''}`}>
+                      {engineState.status === 'playing' ? (
+                        <Pause size={24} fill="currentColor" />
+                      ) : (
+                        <Play size={24} fill="currentColor" style={{ marginLeft: '2px' }} />
+                      )}
+                    </div>
+                  )}
+                </Focusable>
+
+                <Focusable
+                  id="player-seek-fwd-btn"
+                  groupId="player-hud-transport"
+                  indexInGroup={3}
+                  className="tv-hud-ctrl-btn-wrapper"
+                  ariaLabel="Forward 10 seconds"
+                  onSelect={() => seekBy(10)}
+                >
+                  {(isFocused) => (
+                    <div className={`tv-hud-ctrl-btn seek-btn ${isFocused ? 'focused' : ''}`} title="Forward 10s (L)">
+                      <RotateCw size={24} strokeWidth={1.75} />
+                      <span className="tv-hud-badge-10">10</span>
+                    </div>
+                  )}
+                </Focusable>
+              </div>
+
+              {/* Right Zone: Volume + CC + Sources + Episodes (TV only) */}
+              <div className="tv-hud-zone-right">
+                <div className="tv-hud-volume-cluster">
+                  <Focusable
+                    id="player-volume-btn"
+                    groupId="player-hud-transport"
+                    indexInGroup={4}
+                    className="tv-hud-ctrl-btn-wrapper"
+                    ariaLabel={engineState.isMuted ? 'Unmute' : 'Mute'}
+                    onSelect={() => {
+                      const muted = engineRef.current ? engineRef.current.toggleMute() : false;
+                      const curVol = engineRef.current ? engineRef.current.getState().volume : 1;
+                      showVolumeOsd(muted ? 0 : Math.round(curVol * 100), muted);
+                    }}
+                  >
+                    {(isFocused) => (
+                      <div className={`tv-hud-ctrl-btn subtle ${isFocused ? 'focused' : ''}`} title="Mute (M)">
+                        {engineState.isMuted || engineState.volume === 0 ? (
+                          <VolumeX size={18} />
+                        ) : engineState.volume < 0.5 ? (
+                          <Volume1 size={18} />
+                        ) : (
+                          <Volume2 size={18} />
+                        )}
+                      </div>
+                    )}
+                  </Focusable>
+
+                  <div
+                    className="tv-hud-volume-slider-track"
+                    title="Volume"
+                    onPointerDown={(e) => {
+                      e.stopPropagation();
+                      const rect = e.currentTarget.getBoundingClientRect();
+                      if (rect.width <= 0) return;
+                      const pos = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+                      engineRef.current?.setVolume(pos);
+                      showVolumeOsd(Math.round(pos * 100), pos === 0);
+                    }}
+                  >
+                    <div
+                      className="tv-hud-volume-slider-fill"
+                      style={{ width: `${engineState.isMuted ? 0 : Math.round(engineState.volume * 100)}%` }}
+                    />
+                  </div>
                 </div>
-              )}
-            </Focusable>
+
+                <Focusable
+                  id="player-subtitles-btn"
+                  groupId="player-hud-transport"
+                  indexInGroup={5}
+                  className="tv-hud-ctrl-btn-wrapper"
+                  ariaLabel="Audio and Subtitles"
+                  onSelect={() => openSheet('audio_subs')}
+                >
+                  {(isFocused) => (
+                    <div
+                      className={`tv-hud-ctrl-btn subtle ${selectedSubId ? 'is-active' : ''} ${
+                        isFocused ? 'focused' : ''
+                      }`}
+                      title="Audio & Subtitles (S)"
+                    >
+                      <Subtitles size={18} />
+                    </div>
+                  )}
+                </Focusable>
+
+                <Focusable
+                  id="player-mirrors-btn"
+                  groupId="player-hud-transport"
+                  indexInGroup={6}
+                  className="tv-hud-ctrl-btn-wrapper"
+                  ariaLabel="Video Sources"
+                  onSelect={() => openSheet('sources')}
+                >
+                  {(isFocused) => (
+                    <div className={`tv-hud-ctrl-btn subtle ${isFocused ? 'focused' : ''}`} title="Sources (Y)">
+                      <Layers size={18} />
+                    </div>
+                  )}
+                </Focusable>
+
+                {isEpisode && (
+                  <Focusable
+                    id="player-episodes-btn"
+                    groupId="player-hud-transport"
+                    indexInGroup={7}
+                    className="tv-hud-ctrl-btn-wrapper"
+                    ariaLabel="Episodes"
+                    onSelect={() => openSheet('episodes')}
+                  >
+                    {(isFocused) => (
+                      <div className={`tv-hud-ctrl-btn subtle ${isFocused ? 'focused' : ''}`} title="Episodes">
+                        <ListVideo size={18} />
+                      </div>
+                    )}
+                  </Focusable>
+                )}
+              </div>
+            </div>
           </div>
-        </div>
-      )}
-    </div>
+        )}
+      </div>
 
-      {/* 7. Floating Skip Intro Button (Appears during intro window) */}
+      {/* 7. Floating Skip Intro Pill */}
       {isInsideIntro && !isMenuOpen && (
         <div className={`tv-player-floating-skip-intro ${isHudVisible ? 'hud-visible' : 'hud-hidden'} animate-pop`}>
           <Focusable
@@ -1276,31 +1537,20 @@ export const VideoPlayerScreen: React.FC<VideoPlayerScreenProps> = ({
             onSelect={handleSkipIntro}
           >
             {(isFocused) => (
-              <div
-                className={`tv-skip-intro-btn ${isFocused ? 'focused' : ''}`}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleSkipIntro();
-                }}
-              >
-                <div className="tv-skip-intro-icon-wrap">
-                  <FastForward size={16} strokeWidth={2.6} className="tv-skip-intro-icon" />
-                </div>
+              <div className={`tv-skip-intro-btn ${isFocused ? 'focused' : ''}`}>
+                <FastForward size={15} strokeWidth={2.4} className="tv-skip-intro-icon" />
                 <span className="tv-skip-intro-title">Skip Intro</span>
                 <span className="tv-skip-intro-divider" />
-                <div className="tv-skip-intro-badge">
-                  <span className="tv-skip-intro-timer">
-                    {Math.max(0, Math.ceil((introSegment?.end || 0) - engineState.currentTime))}s
-                  </span>
-                  <span className="tv-skip-intro-keyhint">Press ↵</span>
-                </div>
+                <span className="tv-skip-intro-timer">
+                  {Math.max(0, Math.ceil((introSegment?.end || 0) - engineState.currentTime))}s
+                </span>
               </div>
             )}
           </Focusable>
         </div>
       )}
 
-      {/* 7b. Floating Play Next Episode Prompt (During Credits / Outro, Strictly for TV Shows) */}
+      {/* 7b. Floating Play Next Episode Pill (TV Shows Outro) */}
       {isOutroOrNearEnd && nextEpisode && (
         <div className={`tv-player-floating-next-prompt ${isHudVisible ? 'hud-visible' : 'hud-hidden'} animate-pop`}>
           <Focusable
@@ -1311,24 +1561,18 @@ export const VideoPlayerScreen: React.FC<VideoPlayerScreenProps> = ({
             onSelect={handlePlayNextEpisode}
           >
             {(isFocused) => (
-              <div
-                className={`tv-floating-next-btn ${isFocused ? 'focused' : ''}`}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handlePlayNextEpisode();
-                }}
-              >
+              <div className={`tv-floating-next-btn ${isFocused ? 'focused' : ''}`}>
                 <div className="tv-floating-next-icon-wrap">
                   {isLoadingNext ? (
-                    <Loader2 size={18} className="spin-animate" />
+                    <Loader2 size={16} className="spin-animate" />
                   ) : (
-                    <Play size={18} fill="currentColor" />
+                    <Play size={15} fill="currentColor" style={{ marginLeft: '1px' }} />
                   )}
                 </div>
                 <div className="tv-floating-next-text-col">
-                  <span className="tv-floating-next-action">Play Next Episode</span>
+                  <span className="tv-floating-next-action">Next Episode</span>
                   <span className="tv-floating-next-title">
-                    S{nextEpisode.seasonNumber} E{nextEpisode.number}: {nextEpisode.title}
+                    S{nextEpisode.seasonNumber} E{nextEpisode.number} · {nextEpisode.title}
                   </span>
                 </div>
               </div>
@@ -1337,282 +1581,283 @@ export const VideoPlayerScreen: React.FC<VideoPlayerScreenProps> = ({
         </div>
       )}
 
-      {/* 8. In-Player Quick Settings & Stream Switcher Modal (Press Y) */}
+      {/* 8. Right-Side Slide-Over Cinema Settings Sheet (Video stays visible on left) */}
       {isMenuOpen && (
-        <div className="tv-player-menu-backdrop" role="dialog" aria-label="Player Settings Modal">
-          <div className="tv-player-menu-card animate-scale-up">
-            {/* Modal Header Tabs */}
-            <div className="tv-player-menu-header">
-              <div className="tv-player-menu-tabs" role="tablist">
-                <Focusable
-                  id="tab-opt-sources"
-                  groupId="player-modal-tabs"
-                  indexInGroup={0}
-                  className="tv-menu-tab-btn"
-                  onSelect={() => setMenuTab('sources')}
-                >
-                  {(isFocused) => (
-                    <div
-                      className={`tv-menu-tab-pill ${menuTab === 'sources' ? 'active' : ''} ${
-                        isFocused ? 'focused' : ''
-                      }`}
-                    >
-                      <Layers size={16} />
-                      <span>Stream Mirrors ({availableStreams.length})</span>
-                    </div>
-                  )}
-                </Focusable>
-
-                <Focusable
-                  id="tab-opt-subtitles"
-                  groupId="player-modal-tabs"
-                  indexInGroup={1}
-                  className="tv-menu-tab-btn"
-                  onSelect={() => setMenuTab('subtitles')}
-                >
-                  {(isFocused) => (
-                    <div
-                      className={`tv-menu-tab-pill ${menuTab === 'subtitles' ? 'active' : ''} ${
-                        isFocused ? 'focused' : ''
-                      }`}
-                    >
-                      <Subtitles size={16} />
-                      <span>Subtitles</span>
-                    </div>
-                  )}
-                </Focusable>
-
-                <Focusable
-                  id="tab-opt-audio"
-                  groupId="player-modal-tabs"
-                  indexInGroup={2}
-                  className="tv-menu-tab-btn"
-                  onSelect={() => setMenuTab('audio')}
-                >
-                  {(isFocused) => (
-                    <div
-                      className={`tv-menu-tab-pill ${menuTab === 'audio' ? 'active' : ''} ${
-                        isFocused ? 'focused' : ''
-                      }`}
-                    >
-                      <Volume2 size={16} />
-                      <span>Vocal Boost EQ</span>
-                    </div>
-                  )}
-                </Focusable>
-
-                <Focusable
-                  id="tab-opt-speed"
-                  groupId="player-modal-tabs"
-                  indexInGroup={3}
-                  className="tv-menu-tab-btn"
-                  onSelect={() => setMenuTab('speed')}
-                >
-                  {(isFocused) => (
-                    <div
-                      className={`tv-menu-tab-pill ${menuTab === 'speed' ? 'active' : ''} ${
-                        isFocused ? 'focused' : ''
-                      }`}
-                    >
-                      <Sliders size={16} />
-                      <span>Speed</span>
-                    </div>
-                  )}
-                </Focusable>
-
-                <Focusable
-                  id="tab-opt-intro"
-                  groupId="player-modal-tabs"
-                  indexInGroup={4}
-                  className="tv-menu-tab-btn"
-                  onSelect={() => setMenuTab('intro')}
-                >
-                  {(isFocused) => (
-                    <div
-                      className={`tv-menu-tab-pill ${menuTab === 'intro' ? 'active' : ''} ${
-                        isFocused ? 'focused' : ''
-                      }`}
-                    >
-                      <FastForward size={16} />
-                      <span>Intro Skip</span>
-                    </div>
-                  )}
-                </Focusable>
-              </div>
-
+        <div
+          className="tv-player-sheet-backdrop"
+          role="dialog"
+          aria-label="Player Settings"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) closeSheet();
+          }}
+        >
+          <aside className="tv-player-sheet" onClick={(e) => e.stopPropagation()}>
+            {/* Sheet Header */}
+            <div className="tv-sheet-header">
+              <h2 className="tv-sheet-title">Settings</h2>
               <Focusable
                 id="btn-close-player-menu"
                 groupId="player-modal-tabs"
-                indexInGroup={5}
+                indexInGroup={10}
                 className="tv-menu-close-focusable"
-                onSelect={() => setIsMenuOpen(false)}
+                ariaLabel="Close Settings"
+                onSelect={closeSheet}
               >
                 {(isFocused) => (
-                  <div className={`tv-menu-close-btn ${isFocused ? 'focused' : ''}`}>
-                    <X size={18} />
-                    <span>Close</span>
+                  <div className={`tv-menu-close-btn icon-only ${isFocused ? 'focused' : ''}`}>
+                    <X size={16} />
                   </div>
                 )}
               </Focusable>
             </div>
 
-            {/* Modal Body Content */}
-            <div className="tv-player-menu-content">
-              {/* Tab 1: Stream Mirrors */}
-              {menuTab === 'sources' && (
-                <div className="tv-menu-sources-list">
-                  {availableStreams.map((st, idx) => (
-                    <Focusable
-                      key={st.url}
-                      id={`opt-stream-${idx}`}
-                      groupId="menu-sources-list"
-                      indexInGroup={idx}
-                      className="tv-menu-source-card-focusable"
-                      onSelect={() => {
-                        setHasFallenBackToVidSrc(false);
-                        setCurrentStreamUrl(st.url);
-                        const driver: DriverType =
-                          st.streamType === 'youtube' ? 'youtube' : st.streamType === 'embed' ? 'embed' : 'direct';
-                        setCurrentDriverType(driver);
-                        engineRef.current?.loadMedia(
-                          st.url,
-                          driver,
-                          engineState.currentTime,
-                          undefined,
-                          engineState.duration || source.durationSeconds || 7200
-                        );
-                        triggerFeedback(`Switched to: ${st.name}`);
-                        setIsMenuOpen(false);
-                      }}
+            {/* Compact Segmented Tab Strip */}
+            <div className="tv-sheet-tabs" role="tablist">
+              <Focusable
+                id="tab-opt-audio-subs"
+                groupId="player-modal-tabs"
+                indexInGroup={0}
+                autoFocus={menuTab === 'audio_subs'}
+                className="tv-sheet-tab-focusable"
+                role="tab"
+                ariaSelected={menuTab === 'audio_subs'}
+                onSelect={() => setMenuTab('audio_subs')}
+              >
+                {(isFocused) => (
+                  <div
+                    className={`tv-sheet-tab ${menuTab === 'audio_subs' ? 'active' : ''} ${
+                      isFocused ? 'focused' : ''
+                    }`}
+                  >
+                    Audio &amp; CC
+                  </div>
+                )}
+              </Focusable>
+
+              <Focusable
+                id="tab-opt-sources"
+                groupId="player-modal-tabs"
+                indexInGroup={1}
+                autoFocus={menuTab === 'sources'}
+                className="tv-sheet-tab-focusable"
+                role="tab"
+                ariaSelected={menuTab === 'sources'}
+                onSelect={() => setMenuTab('sources')}
+              >
+                {(isFocused) => (
+                  <div
+                    className={`tv-sheet-tab ${menuTab === 'sources' ? 'active' : ''} ${
+                      isFocused ? 'focused' : ''
+                    }`}
+                  >
+                    Sources{availableStreams.length > 0 ? ` (${availableStreams.length})` : ''}
+                  </div>
+                )}
+              </Focusable>
+
+              <Focusable
+                id="tab-opt-playback"
+                groupId="player-modal-tabs"
+                indexInGroup={2}
+                autoFocus={menuTab === 'playback'}
+                className="tv-sheet-tab-focusable"
+                role="tab"
+                ariaSelected={menuTab === 'playback'}
+                onSelect={() => setMenuTab('playback')}
+              >
+                {(isFocused) => (
+                  <div
+                    className={`tv-sheet-tab ${menuTab === 'playback' ? 'active' : ''} ${
+                      isFocused ? 'focused' : ''
+                    }`}
+                  >
+                    Playback
+                  </div>
+                )}
+              </Focusable>
+
+              {isEpisode && (
+                <Focusable
+                  id="tab-opt-episodes"
+                  groupId="player-modal-tabs"
+                  indexInGroup={3}
+                  autoFocus={menuTab === 'episodes'}
+                  className="tv-sheet-tab-focusable"
+                  role="tab"
+                  ariaSelected={menuTab === 'episodes'}
+                  onSelect={() => setMenuTab('episodes')}
+                >
+                  {(isFocused) => (
+                    <div
+                      className={`tv-sheet-tab ${menuTab === 'episodes' ? 'active' : ''} ${
+                        isFocused ? 'focused' : ''
+                      }`}
                     >
-                      {(isFocused) => (
-                        <div
-                          className={`tv-menu-source-card ${currentStreamUrl === st.url ? 'active' : ''} ${
-                            isFocused ? 'focused' : ''
-                          }`}
+                      Episodes
+                    </div>
+                  )}
+                </Focusable>
+              )}
+            </div>
+
+            {/* Sheet Scroll Body */}
+            <div className="tv-sheet-body">
+              {/* TAB 1: Audio & Subtitles */}
+              {menuTab === 'audio_subs' && (
+                <div className="tv-sheet-stack">
+                  {/* Subtitles Track Picker */}
+                  <section className="tv-sheet-section">
+                    <div className="tv-sheet-section-label">
+                      Subtitles{dedupedSubtitles.length > 0 ? ` (${dedupedSubtitles.length})` : ''}
+                    </div>
+                    <div className="tv-sheet-list tv-sheet-subtitles-scroll">
+                      <Focusable
+                        id="sub-opt-off"
+                        groupId="menu-subs-list"
+                        indexInGroup={0}
+                        className="tv-sheet-row-focusable"
+                        onSelect={() => {
+                          setSelectedSubId(null);
+                          engineRef.current?.clearSubtitles();
+                          triggerFeedback('Subtitles Off');
+                        }}
+                      >
+                        {(isFocused) => (
+                          <div
+                            className={`tv-sheet-row ${selectedSubId === null ? 'active' : ''} ${
+                              isFocused ? 'focused' : ''
+                            }`}
+                          >
+                            <span className="tv-sheet-row-label">Off</span>
+                            {selectedSubId === null && <Check size={16} className="tv-sheet-check" />}
+                          </div>
+                        )}
+                      </Focusable>
+
+                      {dedupedSubtitles.map((sub, idx) => (
+                        <Focusable
+                          key={sub.id}
+                          id={`sub-opt-${sub.id}`}
+                          groupId="menu-subs-list"
+                          indexInGroup={idx + 1}
+                          className="tv-sheet-row-focusable"
+                          onSelect={() => {
+                            setSelectedSubId(sub.id);
+                            engineRef.current?.loadSubtitleTrack(sub.url);
+                            triggerFeedback(`Subtitles: ${sub.label || sub.lang}`);
+                          }}
                         >
-                          <div className="tv-source-info-left">
-                            <span
-                              className={`tv-source-quality-badge ${
-                                st.quality === '4K' ? 'q-4k' : st.quality === '720p' ? 'q-720p' : 'q-1080p'
+                          {(isFocused) => (
+                            <div
+                              className={`tv-sheet-row ${selectedSubId === sub.id ? 'active' : ''} ${
+                                isFocused ? 'focused' : ''
                               }`}
                             >
-                              {st.quality || '1080p'}
-                            </span>
-                            <div className="tv-source-titles">
-                              <span className="tv-source-name">{st.name}</span>
-                              <span className="tv-source-desc">{st.description || st.title}</span>
+                              <span className="tv-sheet-row-label">{sub.label || sub.lang.toUpperCase()}</span>
+                              {selectedSubId === sub.id && <Check size={16} className="tv-sheet-check" />}
                             </div>
-                          </div>
+                          )}
+                        </Focusable>
+                      ))}
+                    </div>
+                  </section>
 
-                          <div className="tv-source-info-right">
-                            {currentStreamUrl === st.url && (
-                              <span className="tv-source-active-tag">
-                                <Check size={16} /> Active Mirror
-                              </span>
+                  {/* Live Subtitle Appearance Controls */}
+                  <section className="tv-sheet-section">
+                    <div className="tv-sheet-section-label">Subtitle Style</div>
+                    <div className="tv-sheet-control-pair">
+                      <span className="tv-sheet-control-name">Size</span>
+                      <div className="tv-sheet-segmented">
+                        {(['sm', 'md', 'lg'] as SubtitleSize[]).map((sz, idx) => (
+                          <Focusable
+                            key={sz}
+                            id={`sub-size-${sz}`}
+                            groupId="menu-sub-size"
+                            indexInGroup={idx}
+                            className="tv-sheet-seg-focusable"
+                            onSelect={() => updateSubtitleStyle({ size: sz })}
+                          >
+                            {(isFocused) => (
+                              <div
+                                className={`tv-sheet-seg-opt ${subtitleStyle.size === sz ? 'active' : ''} ${
+                                  isFocused ? 'focused' : ''
+                                }`}
+                              >
+                                {sz === 'sm' ? 'Small' : sz === 'md' ? 'Medium' : 'Large'}
+                              </div>
                             )}
-                          </div>
-                        </div>
-                      )}
-                    </Focusable>
-                  ))}
-                </div>
-              )}
-
-              {/* Tab 2: Subtitle Selection */}
-              {menuTab === 'subtitles' && (
-                <div className="tv-menu-items-grid">
-                  <Focusable
-                    id="sub-opt-off"
-                    groupId="menu-subs-list"
-                    indexInGroup={0}
-                    className="tv-menu-option-btn-focusable"
-                    onSelect={() => {
-                      setSelectedSubId(null);
-                      engineRef.current?.clearSubtitles();
-                      triggerFeedback('Subtitles: Off');
-                    }}
-                  >
-                    {(isFocused) => (
-                      <div className={`tv-menu-option-card ${selectedSubId === null ? 'active' : ''} ${isFocused ? 'focused' : ''}`}>
-                        <span>Subtitles Off</span>
-                        {selectedSubId === null && <Check size={18} />}
+                          </Focusable>
+                        ))}
                       </div>
-                    )}
-                  </Focusable>
+                    </div>
 
-                  {availableSubtitles.map((sub, idx) => (
-                    <Focusable
-                      key={sub.id}
-                      id={`sub-opt-${sub.id}`}
-                      groupId="menu-subs-list"
-                      indexInGroup={idx + 1}
-                      className="tv-menu-option-btn-focusable"
-                      onSelect={() => {
-                        setSelectedSubId(sub.id);
-                        engineRef.current?.loadSubtitleTrack(sub.url);
-                        triggerFeedback(`Subtitles: ${sub.label || sub.lang}`);
-                      }}
-                    >
-                      {(isFocused) => (
-                        <div className={`tv-menu-option-card ${selectedSubId === sub.id ? 'active' : ''} ${isFocused ? 'focused' : ''}`}>
-                          <span>{sub.label || sub.lang.toUpperCase()}</span>
-                          {selectedSubId === sub.id && <Check size={18} />}
-                        </div>
-                      )}
-                    </Focusable>
-                  ))}
-                </div>
-              )}
+                    <div className="tv-sheet-control-pair">
+                      <span className="tv-sheet-control-name">Backdrop</span>
+                      <div className="tv-sheet-segmented">
+                        {(['none', 'dim', 'box'] as SubtitleBackdrop[]).map((bg, idx) => (
+                          <Focusable
+                            key={bg}
+                            id={`sub-bg-${bg}`}
+                            groupId="menu-sub-bg"
+                            indexInGroup={idx}
+                            className="tv-sheet-seg-focusable"
+                            onSelect={() => updateSubtitleStyle({ backdrop: bg })}
+                          >
+                            {(isFocused) => (
+                              <div
+                                className={`tv-sheet-seg-opt ${subtitleStyle.backdrop === bg ? 'active' : ''} ${
+                                  isFocused ? 'focused' : ''
+                                }`}
+                              >
+                                {bg === 'none' ? 'None' : bg === 'dim' ? 'Dim' : 'Box'}
+                              </div>
+                            )}
+                          </Focusable>
+                        ))}
+                      </div>
+                    </div>
+                  </section>
 
-              {/* Tab 3: Audio Settings & No Sound Fix */}
-              {menuTab === 'audio' && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                  {/* Dialogue Clarity Boost */}
-                  <div className="tv-menu-items-grid">
-                    <Focusable
-                      id="audio-boost-toggle"
-                      groupId="menu-audio-list"
-                      indexInGroup={0}
-                      className="tv-menu-option-btn-focusable"
-                      onSelect={() => {
-                        const next = !engineState.vocalBoostEnabled;
-                        engineRef.current?.setVocalBoost(next);
-                        triggerFeedback(next ? 'Vocal Boost: On' : 'Standard Audio');
-                      }}
-                    >
-                      {(isFocused) => (
-                        <div
-                          className={`tv-menu-option-card ${engineState.vocalBoostEnabled ? 'active' : ''} ${
-                            isFocused ? 'focused' : ''
-                          }`}
-                        >
-                          <div>
-                            <div style={{ fontWeight: 700 }}>Dialogue Clarity Boost</div>
-                            <div style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>
-                              Enhances quiet speech and whispered dialogue for easier listening
+                  {/* Audio Enhancement & Tracks */}
+                  <section className="tv-sheet-section">
+                    <div className="tv-sheet-section-label">Audio</div>
+                    <div className="tv-sheet-list">
+                      <Focusable
+                        id="audio-boost-toggle"
+                        groupId="menu-audio-list"
+                        indexInGroup={0}
+                        className="tv-sheet-row-focusable"
+                        onSelect={() => {
+                          const next = !engineState.vocalBoostEnabled;
+                          engineRef.current?.setVocalBoost(next);
+                          triggerFeedback(next ? 'Dialogue Boost On' : 'Dialogue Boost Off');
+                        }}
+                      >
+                        {(isFocused) => (
+                          <div
+                            className={`tv-sheet-row ${engineState.vocalBoostEnabled ? 'active' : ''} ${
+                              isFocused ? 'focused' : ''
+                            }`}
+                          >
+                            <div className="tv-sheet-row-text">
+                              <span className="tv-sheet-row-label">Dialogue Clarity</span>
+                              <span className="tv-sheet-row-sub">Boost quiet speech &amp; voices</span>
                             </div>
+                            <span className={`tv-sheet-switch ${engineState.vocalBoostEnabled ? 'on' : ''}`}>
+                              <span className="tv-sheet-switch-knob" />
+                            </span>
                           </div>
-                          {engineState.vocalBoostEnabled && <Check size={18} />}
-                        </div>
-                      )}
-                    </Focusable>
-                  </div>
+                        )}
+                      </Focusable>
 
-                  {/* Multi Audio Tracks Selection (if available) */}
-                  {audioTracks.length > 1 && (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                      <div style={{ fontSize: '13px', fontWeight: 700, color: 'var(--google-blue)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                        Audio Tracks ({audioTracks.length} Detected)
-                      </div>
-                      <div className="tv-menu-items-grid">
-                        {audioTracks.map((tr, idx) => (
+                      {audioTracks.length > 1 &&
+                        audioTracks.map((tr, idx) => (
                           <Focusable
                             key={tr.id || idx}
                             id={`audio-track-${idx}`}
                             groupId="menu-audio-list"
                             indexInGroup={idx + 1}
-                            className="tv-menu-option-btn-focusable"
+                            className="tv-sheet-row-focusable"
                             onSelect={() => {
                               setSelectedAudioTrackIdx(idx);
                               engineRef.current?.selectAudioTrack(idx);
@@ -1621,201 +1866,348 @@ export const VideoPlayerScreen: React.FC<VideoPlayerScreenProps> = ({
                           >
                             {(isFocused) => (
                               <div
-                                className={`tv-menu-option-card ${selectedAudioTrackIdx === idx ? 'active' : ''} ${
+                                className={`tv-sheet-row ${selectedAudioTrackIdx === idx ? 'active' : ''} ${
                                   isFocused ? 'focused' : ''
                                 }`}
                               >
-                                <div>
-                                  <div style={{ fontWeight: 600 }}>{tr.label}</div>
-                                  <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
-                                    {tr.language ? `Language: ${tr.language}` : 'Multi-channel / Stereo'}
-                                  </div>
+                                <div className="tv-sheet-row-text">
+                                  <span className="tv-sheet-row-label">{tr.label}</span>
+                                  <span className="tv-sheet-row-sub">
+                                    {tr.language ? tr.language.toUpperCase() : 'Stereo'}
+                                  </span>
                                 </div>
-                                {selectedAudioTrackIdx === idx && <Check size={18} />}
+                                {selectedAudioTrackIdx === idx && <Check size={16} className="tv-sheet-check" />}
                               </div>
                             )}
                           </Focusable>
                         ))}
-                      </div>
                     </div>
-                  )}
+                  </section>
 
-                  {/* No Sound Fix & Troubleshooting Tools */}
-                  <div
-                    style={{
-                      padding: '14px 16px',
-                      borderRadius: '12px',
-                      background: 'rgba(255, 255, 255, 0.04)',
-                      border: '1px solid rgba(255, 255, 255, 0.08)',
-                      display: 'flex',
-                      flexDirection: 'column',
-                      gap: '10px',
-                    }}
-                  >
-                    <div style={{ fontSize: '13px', fontWeight: 700, color: '#fff', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <Volume2 size={15} color="var(--google-blue)" /> No Sound? Quick Fix & Codec Tools
-                    </div>
-                    <div style={{ fontSize: '12px', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
-                      Torrent streams frequently use AC3, EAC3 5.1, or DTS audio tracks which browsers cannot decode directly. Click below to transcode to AAC Stereo or switch to a web mirror.
-                    </div>
+                  {/* Collapsible No-Sound Codec Troubleshooting Disclosure */}
+                  <section className="tv-sheet-section tv-sheet-disclosure-section">
+                    <Focusable
+                      id="audio-codec-disclosure-btn"
+                      groupId="menu-audio-list"
+                      indexInGroup={audioTracks.length + 1}
+                      className="tv-sheet-row-focusable"
+                      onSelect={() => setShowCodecTools((prev) => !prev)}
+                    >
+                      {(isFocused) => (
+                        <div className={`tv-sheet-row disclosure ${isFocused ? 'focused' : ''}`}>
+                          <span className="tv-sheet-row-label">No sound? Audio tools</span>
+                          {showCodecTools ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                        </div>
+                      )}
+                    </Focusable>
 
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
-                      <Focusable
-                        id="audio-fix-aac-btn"
-                        groupId="menu-audio-list"
-                        indexInGroup={audioTracks.length + 1}
-                        className="tv-addon-btn-focusable"
-                        onSelect={() => {
-                          if (!currentStreamUrl) return;
-                          let fixedUrl = currentStreamUrl;
-                          if (!fixedUrl.includes('audio=aac')) {
-                            fixedUrl += (fixedUrl.includes('?') ? '&' : '?') + 'audio=aac&transcode=1&downmix=stereo';
-                          }
-                          setCurrentStreamUrl(fixedUrl);
-                          engineRef.current?.loadMedia(
-                            fixedUrl,
-                            'direct',
-                            engineState.currentTime,
-                            undefined,
-                            engineState.duration || source.durationSeconds || 7200
-                          );
-                          triggerFeedback('Forced Stereo AAC Transcode');
-                        }}
-                      >
-                        {(isFocused) => (
-                          <div className={`tv-addon-action-pill ${isFocused ? 'focused' : ''}`}>
-                            <Zap size={14} />
-                            <span>Force AAC Stereo Transcode</span>
-                          </div>
-                        )}
-                      </Focusable>
-
-                      {availableStreams.some((s) => s.streamType === 'embed') && (
-                        <Focusable
-                          id="audio-fix-web-btn"
-                          groupId="menu-audio-list"
-                          indexInGroup={audioTracks.length + 2}
-                          className="tv-addon-btn-focusable"
-                          onSelect={() => {
-                            const webStream = availableStreams.find((s) => s.streamType === 'embed');
-                            if (webStream) {
-                              setCurrentStreamUrl(webStream.url);
-                              setCurrentDriverType('embed');
+                    {showCodecTools && (
+                      <div className="tv-sheet-disclosure-body">
+                        <p className="tv-sheet-help-text">
+                          Some surround streams (AC3/DTS) need stereo downmixing or a web mirror to play audio in the browser.
+                        </p>
+                        <div className="tv-sheet-action-stack">
+                          <Focusable
+                            id="audio-fix-aac-btn"
+                            groupId="menu-audio-tools"
+                            indexInGroup={0}
+                            className="tv-sheet-row-focusable"
+                            onSelect={() => {
+                              if (!currentStreamUrl) return;
+                              let fixedUrl = currentStreamUrl;
+                              if (!fixedUrl.includes('audio=aac')) {
+                                fixedUrl += (fixedUrl.includes('?') ? '&' : '?') + 'audio=aac&transcode=1&downmix=stereo';
+                              }
+                              setCurrentStreamUrl(fixedUrl);
                               engineRef.current?.loadMedia(
-                                webStream.url,
-                                'embed',
+                                fixedUrl,
+                                'direct',
                                 engineState.currentTime,
                                 undefined,
                                 engineState.duration || source.durationSeconds || 7200
                               );
-                              triggerFeedback(`Switched to: ${webStream.name}`);
-                            }
+                              triggerFeedback('AAC Stereo Transcode');
+                            }}
+                          >
+                            {(isFocused) => (
+                              <div className={`tv-addon-action-pill tv-sheet-tool-btn ${isFocused ? 'focused' : ''}`}>
+                                <span>Force AAC Stereo Transcode</span>
+                              </div>
+                            )}
+                          </Focusable>
+
+                          {availableStreams.some((s) => s.streamType === 'embed') && (
+                            <Focusable
+                              id="audio-fix-web-btn"
+                              groupId="menu-audio-tools"
+                              indexInGroup={1}
+                              className="tv-sheet-row-focusable"
+                              onSelect={() => {
+                                const webStream = availableStreams.find((s) => s.streamType === 'embed');
+                                if (webStream) {
+                                  setCurrentStreamUrl(webStream.url);
+                                  setCurrentDriverType('embed');
+                                  engineRef.current?.loadMedia(
+                                    webStream.url,
+                                    'embed',
+                                    engineState.currentTime,
+                                    undefined,
+                                    engineState.duration || source.durationSeconds || 7200
+                                  );
+                                  triggerFeedback(`Mirror: ${webStream.name}`);
+                                  closeSheet();
+                                }
+                              }}
+                            >
+                              {(isFocused) => (
+                                <div className={`tv-addon-action-pill tv-sheet-tool-btn ${isFocused ? 'focused' : ''}`}>
+                                  <span>Switch to Web Mirror (Stereo)</span>
+                                </div>
+                              )}
+                            </Focusable>
+                          )}
+
+                          <Focusable
+                            id="audio-test-chime-btn"
+                            groupId="menu-audio-tools"
+                            indexInGroup={2}
+                            className="tv-sheet-row-focusable"
+                            onSelect={() => {
+                              engineRef.current?.playTestChime();
+                              triggerFeedback('Speaker Test');
+                            }}
+                          >
+                            {(isFocused) => (
+                              <div className={`tv-addon-action-pill tv-sheet-tool-btn ${isFocused ? 'focused' : ''}`}>
+                                <span>Play Test Tone</span>
+                              </div>
+                            )}
+                          </Focusable>
+                        </div>
+                      </div>
+                    )}
+                  </section>
+                </div>
+              )}
+
+              {/* TAB 2: Video Sources / Mirrors */}
+              {menuTab === 'sources' && (
+                <div className="tv-sheet-stack">
+                  <div className="tv-sheet-section-label">Available Streams</div>
+                  {availableStreams.length === 0 ? (
+                    <div className="tv-sheet-empty">
+                      No alternate mirrors detected for this title yet.
+                    </div>
+                  ) : (
+                    <div className="tv-sheet-list">
+                      {availableStreams.map((st, idx) => {
+                        const isActive = idx === resolvedActiveStreamIdx;
+                        const playerBadge = getStreamPlayerBadge(st.streamType);
+                        return (
+                          <Focusable
+                            key={`${st.url}-${idx}`}
+                            id={`opt-stream-${idx}`}
+                            groupId="menu-sources-list"
+                            indexInGroup={idx}
+                            className="tv-sheet-row-focusable"
+                            onSelect={() => {
+                              failedStreamUrlsRef.current.delete(st.url);
+                              addonService.clearFailedStreams(st.url);
+                              setHasExhaustedFallbacks(false);
+                              setActiveStreamIdx(idx);
+                              setCurrentStreamUrl(st.url);
+                              setCurrentProxyHeaders(st.proxyHeaders);
+                              const driver: DriverType =
+                                st.streamType === 'youtube'
+                                  ? 'youtube'
+                                  : st.streamType === 'embed'
+                                  ? 'embed'
+                                  : 'direct';
+                              setCurrentDriverType(driver);
+                              engineRef.current?.loadMedia(
+                                st.url,
+                                driver,
+                                engineState.currentTime,
+                                undefined,
+                                st.durationSeconds || engineState.duration || source.durationSeconds || 7200,
+                                st.proxyHeaders
+                              );
+                              triggerFeedback(st.name);
+                              closeSheet();
+                            }}
+                          >
+                            {(isFocused) => (
+                              <div
+                                className={`tv-sheet-row source-row ${isActive ? 'active' : ''} ${
+                                  isFocused ? 'focused' : ''
+                                }`}
+                              >
+                                <div className="tv-sheet-row-text">
+                                  <div className="tv-sheet-source-heading">
+                                    <span className="tv-sheet-row-label">{st.name}</span>
+                                    <span className="tv-sheet-quality-tag">{st.quality || 'HD'}</span>
+                                  </div>
+                                  <div className="tv-sheet-source-meta">
+                                    <span className={`tv-sheet-engine-tag tone-${playerBadge.tone}`}>
+                                      {playerBadge.label}
+                                    </span>
+                                    {(st.description || st.title) && (
+                                      <span className="tv-sheet-row-sub">{st.description || st.title}</span>
+                                    )}
+                                  </div>
+                                </div>
+                                {isActive && <Check size={16} className="tv-sheet-check" />}
+                              </div>
+                            )}
+                          </Focusable>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {!availableStreams.some((s) => s.streamType === 'direct') && (
+                    <p className="tv-sheet-source-hint">
+                      Using third-party web embeds. Add a Direct-URL Stremio addon in Settings → Addons &amp; Streams for native Kaira Player playback.
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {/* TAB 3: Playback Speed & Auto-Skip Intro */}
+              {menuTab === 'playback' && (
+                <div className="tv-sheet-stack">
+                  <section className="tv-sheet-section">
+                    <div className="tv-sheet-section-label">Playback Speed</div>
+                    <div className="tv-sheet-segmented speed-grid">
+                      {[0.75, 1.0, 1.25, 1.5, 2.0].map((spd, idx) => (
+                        <Focusable
+                          key={spd}
+                          id={`speed-opt-${spd}`}
+                          groupId="menu-speed-list"
+                          indexInGroup={idx}
+                          className="tv-sheet-seg-focusable"
+                          onSelect={() => {
+                            engineRef.current?.setSpeed(spd);
+                            triggerFeedback(`${spd}x`);
                           }}
                         >
                           {(isFocused) => (
-                            <div className={`tv-addon-action-pill ${isFocused ? 'focused' : ''}`}>
-                              <Layers size={14} />
-                              <span>Switch to Web Mirror (Stereo)</span>
+                            <div
+                              className={`tv-sheet-seg-opt ${engineState.playbackSpeed === spd ? 'active' : ''} ${
+                                isFocused ? 'focused' : ''
+                              }`}
+                            >
+                              {spd === 1 ? '1x' : `${spd}x`}
                             </div>
                           )}
                         </Focusable>
-                      )}
+                      ))}
+                    </div>
+                  </section>
 
+                  <section className="tv-sheet-section">
+                    <div className="tv-sheet-section-label">Automation</div>
+                    <div className="tv-sheet-list">
                       <Focusable
-                        id="audio-test-chime-btn"
-                        groupId="menu-audio-list"
-                        indexInGroup={audioTracks.length + 3}
-                        className="tv-addon-btn-focusable"
+                        id="intro-auto-toggle"
+                        groupId="menu-intro-list"
+                        indexInGroup={0}
+                        className="tv-sheet-row-focusable"
                         onSelect={() => {
-                          engineRef.current?.playTestChime();
-                          triggerFeedback('Playing Test Tone');
+                          const next = !autoSkipIntro;
+                          setAutoSkipIntro(next);
+                          introService.setAutoSkipEnabled(next);
+                          triggerFeedback(next ? 'Auto-Skip On' : 'Auto-Skip Off');
                         }}
                       >
                         {(isFocused) => (
-                          <div className={`tv-addon-action-pill ${isFocused ? 'focused' : ''}`}>
-                            <Volume2 size={14} />
-                            <span>Test Speaker Tone</span>
+                          <div className={`tv-sheet-row ${autoSkipIntro ? 'active' : ''} ${isFocused ? 'focused' : ''}`}>
+                            <div className="tv-sheet-row-text">
+                              <span className="tv-sheet-row-label">Auto-Skip Intros</span>
+                              <span className="tv-sheet-row-sub">Jump past opening credits on TV episodes</span>
+                            </div>
+                            <span className={`tv-sheet-switch ${autoSkipIntro ? 'on' : ''}`}>
+                              <span className="tv-sheet-switch-knob" />
+                            </span>
                           </div>
                         )}
                       </Focusable>
                     </div>
+                  </section>
+                </div>
+              )}
+
+              {/* TAB 4: Episodes (TV Shows only) */}
+              {menuTab === 'episodes' && isEpisode && (
+                <div className="tv-sheet-stack">
+                  <div className="tv-sheet-section-label">
+                    Season {source.seasonNumber || 1} Episodes
                   </div>
-                </div>
-              )}
-
-              {/* Tab 4: Playback Speed */}
-              {menuTab === 'speed' && (
-                <div className="tv-menu-items-grid">
-                  {[0.75, 1.0, 1.25, 1.5, 2.0].map((spd, idx) => (
-                    <Focusable
-                      key={spd}
-                      id={`speed-opt-${spd}`}
-                      groupId="menu-speed-list"
-                      indexInGroup={idx}
-                      className="tv-menu-option-btn-focusable"
-                      onSelect={() => {
-                        engineRef.current?.setSpeed(spd);
-                        triggerFeedback(`${spd}x Speed`);
-                      }}
-                    >
-                      {(isFocused) => (
-                        <div
-                          className={`tv-menu-option-card ${engineState.playbackSpeed === spd ? 'active' : ''} ${
-                            isFocused ? 'focused' : ''
-                          }`}
-                        >
-                          <span>{spd === 1 ? '1.0x Normal Speed' : `${spd}x Speed`}</span>
-                          {engineState.playbackSpeed === spd && <Check size={18} />}
-                        </div>
-                      )}
-                    </Focusable>
-                  ))}
-                </div>
-              )}
-
-              {/* Tab 5: Intro Settings */}
-              {menuTab === 'intro' && (
-                <div className="tv-menu-items-grid">
-                  <Focusable
-                    id="intro-auto-toggle"
-                    groupId="menu-intro-list"
-                    indexInGroup={0}
-                    className="tv-menu-option-btn-focusable"
-                    onSelect={() => {
-                      const next = !autoSkipIntro;
-                      setAutoSkipIntro(next);
-                      introService.setAutoSkipEnabled(next);
-                      triggerFeedback(next ? 'Auto-Skip: On' : 'Auto-Skip: Off');
-                    }}
-                  >
-                    {(isFocused) => (
-                      <div className={`tv-menu-option-card ${autoSkipIntro ? 'active' : ''} ${isFocused ? 'focused' : ''}`}>
-                        <div>
-                          <div style={{ fontWeight: 700 }}>Auto-Skip TV Show Intros</div>
-                          <div style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>
-                            Automatically skip opening theme songs and title cards on episodes
-                          </div>
-                        </div>
-                        {autoSkipIntro && <Check size={18} />}
-                      </div>
-                    )}
-                  </Focusable>
+                  {isLoadingEpisodes ? (
+                    <div className="tv-sheet-empty">Loading episodes...</div>
+                  ) : seasonEpisodes.length === 0 ? (
+                    <div className="tv-sheet-empty">No episode list available for this season.</div>
+                  ) : (
+                    <div className="tv-sheet-episodes-list">
+                      {seasonEpisodes.map((ep, idx) => {
+                        const isCurrent =
+                          ep.number === source.episodeNumber &&
+                          (ep.seasonNumber || 1) === (source.seasonNumber || 1);
+                        return (
+                          <Focusable
+                            key={ep.id || `ep-${ep.number}`}
+                            id={`sheet-ep-${ep.number}`}
+                            groupId="menu-episodes-list"
+                            indexInGroup={idx}
+                            className="tv-sheet-row-focusable"
+                            onSelect={() => {
+                              if (!isCurrent) handleSelectEpisode(ep);
+                              else closeSheet();
+                            }}
+                          >
+                            {(isFocused) => (
+                              <div
+                                className={`tv-sheet-ep-card ${isCurrent ? 'active' : ''} ${
+                                  isFocused ? 'focused' : ''
+                                }`}
+                              >
+                                <div className="tv-sheet-ep-thumb">
+                                  {ep.thumbnail ? (
+                                    <img src={ep.thumbnail} alt={ep.title} />
+                                  ) : (
+                                    <div className="tv-sheet-ep-thumb-fallback">E{ep.number}</div>
+                                  )}
+                                  {ep.runtime && <span className="tv-sheet-ep-runtime">{ep.runtime}</span>}
+                                </div>
+                                <div className="tv-sheet-ep-info">
+                                  <span className="tv-sheet-ep-meta">
+                                    Episode {ep.number}
+                                    {isCurrent ? ' · Playing' : ''}
+                                  </span>
+                                  <span className="tv-sheet-ep-title">{ep.title}</span>
+                                </div>
+                              </div>
+                            )}
+                          </Focusable>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
               )}
             </div>
-          </div>
+          </aside>
         </div>
       )}
 
-      {/* 8.5. End-Screen Overlay (Displayed when playback ends) */}
+      {/* 8.5. End-Screen Overlay (Calm Monochrome Cinema) */}
       {engineState.status === 'ended' && !isMenuOpen && (
         <div className="tv-player-end-screen-overlay animate-scale-up" role="dialog" aria-label="Playback Ended">
-          {/* Cinematic Background Backdrop */}
           <div
             className="tv-end-screen-backdrop"
             style={{
               backgroundImage:
-                source.mediaType === 'episode' && nextEpisode?.thumbnail
+                isEpisode && nextEpisode?.thumbnail
                   ? `url(${nextEpisode.thumbnail})`
                   : source.backdrop || source.artwork
                   ? `url(${source.backdrop || source.artwork})`
@@ -1825,12 +2217,9 @@ export const VideoPlayerScreen: React.FC<VideoPlayerScreenProps> = ({
           <div className="tv-end-screen-scrim" />
 
           <div className="tv-end-screen-card">
-            {source.mediaType === 'episode' && nextEpisode ? (
+            {isEpisode && nextEpisode ? (
               <>
-                <div className="tv-end-badge">
-                  <Play size={14} className="tv-end-badge-icon" />
-                  <span>UP NEXT</span>
-                </div>
+                <span className="tv-end-eyebrow">Up Next</span>
 
                 <div className="tv-end-episode-info">
                   <div className="tv-end-thumb-container">
@@ -1846,7 +2235,7 @@ export const VideoPlayerScreen: React.FC<VideoPlayerScreenProps> = ({
 
                   <div className="tv-end-text-col">
                     <span className="tv-end-sub-label">
-                      Season {nextEpisode.seasonNumber} • Episode {nextEpisode.number}
+                      Season {nextEpisode.seasonNumber} · Episode {nextEpisode.number}
                     </span>
                     <h2 className="tv-end-ep-title">{nextEpisode.title}</h2>
                     {nextEpisode.description && (
@@ -1865,17 +2254,11 @@ export const VideoPlayerScreen: React.FC<VideoPlayerScreenProps> = ({
                     onSelect={handlePlayNextEpisode}
                   >
                     {(isFocused) => (
-                      <div
-                        className={`tv-end-primary-btn ${isFocused ? 'focused' : ''}`}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handlePlayNextEpisode();
-                        }}
-                      >
+                      <div className={`tv-end-primary-btn ${isFocused ? 'focused' : ''}`}>
                         {isLoadingNext ? (
-                          <Loader2 size={22} className="spin-animate" />
+                          <Loader2 size={18} className="spin-animate" />
                         ) : (
-                          <Play size={22} fill="currentColor" />
+                          <Play size={18} fill="currentColor" />
                         )}
                         <span>Play Next Episode</span>
                       </div>
@@ -1890,15 +2273,9 @@ export const VideoPlayerScreen: React.FC<VideoPlayerScreenProps> = ({
                     onSelect={handleReplayCurrent}
                   >
                     {(isFocused) => (
-                      <div
-                        className={`tv-end-secondary-btn ${isFocused ? 'focused' : ''}`}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleReplayCurrent();
-                        }}
-                      >
-                        <RotateCcw size={18} />
-                        <span>Replay Episode</span>
+                      <div className={`tv-end-secondary-btn ${isFocused ? 'focused' : ''}`}>
+                        <RotateCcw size={16} />
+                        <span>Replay</span>
                       </div>
                     )}
                   </Focusable>
@@ -1911,33 +2288,20 @@ export const VideoPlayerScreen: React.FC<VideoPlayerScreenProps> = ({
                     onSelect={onExit}
                   >
                     {(isFocused) => (
-                      <div
-                        className={`tv-end-secondary-btn ${isFocused ? 'focused' : ''}`}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onExit();
-                        }}
-                      >
-                        <ArrowLeft size={18} />
+                      <div className={`tv-end-secondary-btn ${isFocused ? 'focused' : ''}`}>
+                        <ArrowLeft size={16} />
                         <span>Back</span>
                       </div>
                     )}
                   </Focusable>
                 </div>
               </>
-            ) : source.mediaType === 'episode' && !nextEpisode ? (
+            ) : isEpisode && !nextEpisode ? (
               <>
-                <div className="tv-end-badge series-end">
-                  <Check size={14} />
-                  <span>SEASON / SERIES COMPLETE</span>
-                </div>
-                <h2 className="tv-end-ep-title" style={{ marginTop: '12px' }}>
-                  {source.title}
-                </h2>
-                <p className="tv-end-ep-desc">
-                  You've watched the latest available episode of this show.
-                </p>
-                <div className="tv-end-actions-row" style={{ marginTop: '24px' }}>
+                <span className="tv-end-eyebrow">Season Complete</span>
+                <h2 className="tv-end-ep-title">{source.title}</h2>
+                <p className="tv-end-ep-desc">You have finished the latest available episode.</p>
+                <div className="tv-end-actions-row">
                   <Focusable
                     id="player-replay-btn"
                     groupId="player-end-screen-group"
@@ -1947,14 +2311,8 @@ export const VideoPlayerScreen: React.FC<VideoPlayerScreenProps> = ({
                     onSelect={handleReplayCurrent}
                   >
                     {(isFocused) => (
-                      <div
-                        className={`tv-end-primary-btn ${isFocused ? 'focused' : ''}`}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleReplayCurrent();
-                        }}
-                      >
-                        <RotateCcw size={20} />
+                      <div className={`tv-end-primary-btn ${isFocused ? 'focused' : ''}`}>
+                        <RotateCcw size={18} />
                         <span>Replay Episode</span>
                       </div>
                     )}
@@ -1968,14 +2326,8 @@ export const VideoPlayerScreen: React.FC<VideoPlayerScreenProps> = ({
                     onSelect={onExit}
                   >
                     {(isFocused) => (
-                      <div
-                        className={`tv-end-secondary-btn ${isFocused ? 'focused' : ''}`}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onExit();
-                        }}
-                      >
-                        <ArrowLeft size={18} />
+                      <div className={`tv-end-secondary-btn ${isFocused ? 'focused' : ''}`}>
+                        <ArrowLeft size={16} />
                         <span>Back</span>
                       </div>
                     )}
@@ -1983,17 +2335,11 @@ export const VideoPlayerScreen: React.FC<VideoPlayerScreenProps> = ({
                 </div>
               </>
             ) : (
-              /* Strictly for Movies: NO "Play Next Episode" button */
               <>
-                <div className="tv-end-badge">
-                  <Check size={14} />
-                  <span>COMPLETED</span>
-                </div>
-                <h2 className="tv-end-ep-title" style={{ marginTop: '12px' }}>
-                  {source.title}
-                </h2>
+                <span className="tv-end-eyebrow">Finished</span>
+                <h2 className="tv-end-ep-title">{source.title}</h2>
                 {source.subtitle && <p className="tv-end-ep-desc">{source.subtitle}</p>}
-                <div className="tv-end-actions-row" style={{ marginTop: '24px' }}>
+                <div className="tv-end-actions-row">
                   <Focusable
                     id="player-replay-btn"
                     groupId="player-end-screen-group"
@@ -2003,14 +2349,8 @@ export const VideoPlayerScreen: React.FC<VideoPlayerScreenProps> = ({
                     onSelect={handleReplayCurrent}
                   >
                     {(isFocused) => (
-                      <div
-                        className={`tv-end-primary-btn ${isFocused ? 'focused' : ''}`}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleReplayCurrent();
-                        }}
-                      >
-                        <RotateCcw size={20} />
+                      <div className={`tv-end-primary-btn ${isFocused ? 'focused' : ''}`}>
+                        <RotateCcw size={18} />
                         <span>Replay Movie</span>
                       </div>
                     )}
@@ -2024,14 +2364,8 @@ export const VideoPlayerScreen: React.FC<VideoPlayerScreenProps> = ({
                     onSelect={onExit}
                   >
                     {(isFocused) => (
-                      <div
-                        className={`tv-end-secondary-btn ${isFocused ? 'focused' : ''}`}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onExit();
-                        }}
-                      >
-                        <ArrowLeft size={18} />
+                      <div className={`tv-end-secondary-btn ${isFocused ? 'focused' : ''}`}>
+                        <ArrowLeft size={16} />
                         <span>Back</span>
                       </div>
                     )}
@@ -2045,40 +2379,22 @@ export const VideoPlayerScreen: React.FC<VideoPlayerScreenProps> = ({
 
       {/* 9. Diagnostics Overlay (Press D to Toggle) */}
       {debugOverlayOpen && (
-        <div
-          style={{
-            position: 'absolute',
-            top: '24px',
-            left: '24px',
-            background: 'rgba(15, 23, 42, 0.94)',
-            backdropFilter: 'blur(16px)',
-            border: '1px solid rgba(255, 255, 255, 0.2)',
-            borderRadius: '12px',
-            padding: '16px 20px',
-            color: '#ffffff',
-            fontFamily: 'monospace',
-            fontSize: '13px',
-            lineHeight: '1.6',
-            zIndex: 9999,
-            pointerEvents: 'none',
-            boxShadow: '0 8px 32px rgba(0,0,0,0.7)',
-          }}
-        >
-          <div style={{ color: 'var(--google-blue-light, #8ab4f8)', fontWeight: 'bold', marginBottom: '8px', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
-            PLAYER ENGINE RUNTIME DIAGNOSTICS (D to toggle)
+        <div className="tv-player-diagnostics-overlay">
+          <div className="tv-diag-heading">PLAYER DIAGNOSTICS (D to close)</div>
+          <div>Driver: {engineState.driverType.toUpperCase()}</div>
+          <div>Status: {engineState.status.toUpperCase()}</div>
+          <div>
+            Time: {formatTime(engineState.currentTime)} / {formatTime(engineState.duration)}
           </div>
-          <div><strong>Active Driver:</strong> {engineState.driverType.toUpperCase()}</div>
-          <div><strong>Status:</strong> {engineState.status.toUpperCase()}</div>
-          <div><strong>Paused:</strong> {engineState.status === 'paused' ? 'TRUE (video.paused = true)' : 'FALSE (video.paused = false)'}</div>
-          <div><strong>Time:</strong> {formatTime(engineState.currentTime)} ({Math.round(engineState.currentTime)}s) / {formatTime(engineState.duration)} ({Math.round(engineState.duration)}s)</div>
-          <div><strong>Volume / Mute:</strong> {Math.round(engineState.volume * 100)}% {engineState.isMuted ? 'MUTED' : 'UNMUTED'}</div>
-          <div><strong>Subtitles:</strong> {availableSubtitles.length} tracks | {engineState.currentSubtitleText ? `"${engineState.currentSubtitleText.slice(0, 30)}..."` : 'None active'}</div>
-          <div><strong>Intro Window:</strong> {introSegment ? `${formatTime(introSegment.start)} → ${formatTime(introSegment.end)}` : 'None detected'}</div>
-          <div><strong>Auto-Skip Intro:</strong> {autoSkipIntro ? 'ENABLED' : 'DISABLED'}</div>
-          <div><strong>Last Triggered Action:</strong> <span style={{ color: '#4ade80' }}>{lastAction || 'None'}</span></div>
-          <div style={{ maxWidth: '440px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', opacity: 0.8 }}>
-            <strong>Source URL:</strong> {currentStreamUrl}
+          <div>
+            Volume: {Math.round(engineState.volume * 100)}% {engineState.isMuted ? '(Muted)' : ''}
           </div>
+          <div>Subtitles: {availableSubtitles.length} tracks</div>
+          <div>
+            Intro: {introSegment ? `${formatTime(introSegment.start)} - ${formatTime(introSegment.end)}` : 'None'}
+          </div>
+          <div>Last Action: {lastAction}</div>
+          <div className="tv-diag-url">URL: {currentStreamUrl}</div>
         </div>
       )}
     </div>

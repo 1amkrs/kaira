@@ -4,17 +4,17 @@
  */
 
 :root {
-  /* Material Design 3 Tonal Surface Roles (Dark Cinema Palette) */
-  --md-sys-color-background: #0e1014;
-  --md-sys-color-surface: #12141a;
-  --md-sys-color-surface-container-low: #171a22;
-  --md-sys-color-surface-container: #1d212b;
-  --md-sys-color-surface-container-high: #262b38;
-  --md-sys-color-surface-container-highest: #313747;
-  --md-sys-color-on-surface: #e6e8ee;
-  --md-sys-color-on-surface-variant: #c4c7d0;
-  --md-sys-color-outline: #8e919d;
-  --md-sys-color-outline-variant: rgba(255, 255, 255, 0.12);
+  /* Material Design 3 Tonal Surface Roles (True OLED Black Cinema Palette) */
+  --md-sys-color-background: #000000;
+  --md-sys-color-surface: #070709;
+  --md-sys-color-surface-container-low: #0b0b0e;
+  --md-sys-color-surface-container: #111115;
+  --md-sys-color-surface-container-high: #19191f;
+  --md-sys-color-surface-container-highest: #23232b;
+  --md-sys-color-on-surface: #f4f4f7;
+  --md-sys-color-on-surface-variant: #b4b6be;
+  --md-sys-color-outline: #7c7f8a;
+  --md-sys-color-outline-variant: rgba(255, 255, 255, 0.11);
 
   /* M3 Primary & Accent Roles */
   --md-sys-color-primary: #a8c7fa;
@@ -22,9 +22,9 @@
   --md-sys-color-primary-container: #0842a0;
   --md-sys-color-on-primary-container: #d3e3fd;
   --md-sys-color-secondary: #bec6dc;
-  --md-sys-color-secondary-container: #3a4457;
-  --md-sys-color-on-secondary-container: #dce2f9;
-  --md-sys-color-focus-ring: #e8eefc;
+  --md-sys-color-secondary-container: #222631;
+  --md-sys-color-on-secondary-container: #e4e9f7;
+  --md-sys-color-focus-ring: #f0f4ff;
 
   /* Mapped Application Surface Tokens */
   --bg-app: var(--md-sys-color-background);
@@ -33,12 +33,12 @@
   --bg-surface-3: var(--md-sys-color-surface-container-high);
   --bg-surface-card: var(--md-sys-color-surface-container-low);
   --bg-surface-card-hover: var(--md-sys-color-surface-container-high);
-  --bg-overlay: rgba(14, 16, 20, 0.9);
+  --bg-overlay: rgba(0, 0, 0, 0.92);
 
   /* Text Colors */
   --text-primary: var(--md-sys-color-on-surface);
   --text-secondary: var(--md-sys-color-on-surface-variant);
-  --text-tertiary: rgba(230, 232, 238, 0.48);
+  --text-tertiary: rgba(244, 244, 247, 0.5);
   --text-inverse: var(--md-sys-color-on-primary);
 
   /* Functional & Brand Accents */
@@ -59,15 +59,21 @@
 
   /* Border & Separator */
   --border-subtle: var(--md-sys-color-outline-variant);
-  --border-medium: rgba(255, 255, 255, 0.22);
+  --border-medium: rgba(255, 255, 255, 0.2);
   --border-focus: var(--md-sys-color-focus-ring);
+  --cta-stroke-width: 1px;
+  --cta-stroke-gradient: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.2) 0%,
+    rgba(255, 255, 255, 0) 100%
+  );
 
   /* M3 TV Focus Dynamics (Scale + Crisp Focus Ring + Tonal Elevation) */
   --focus-scale: 1.04;
   --focus-duration: 210ms;
   --focus-easing: cubic-bezier(0.2, 0.0, 0, 1.0);
-  --focus-shadow: 0 18px 38px -6px rgba(0, 0, 0, 0.78), 0 0 0 2px var(--md-sys-color-focus-ring);
-  --focus-border-glow: 0 0 0 2px var(--md-sys-color-focus-ring), 0 0 22px rgba(168, 199, 250, 0.26);
+  --focus-shadow: 0 18px 38px -6px rgba(0, 0, 0, 0.9), 0 0 0 2px var(--md-sys-color-focus-ring);
+  --focus-border-glow: 0 0 0 2px var(--md-sys-color-focus-ring), 0 0 22px rgba(168, 199, 250, 0.24);
 
   /* Spacing Scale - Airy & Uncongested */
   --space-xs: 4px;

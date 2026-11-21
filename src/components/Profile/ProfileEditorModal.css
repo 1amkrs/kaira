@@ -25,8 +25,8 @@
   width: clamp(620px, 68vw, 860px);
   min-width: 620px;
   max-height: 88vh;
-  background: linear-gradient(145deg, rgba(26, 29, 38, 0.97) 0%, rgba(16, 18, 24, 0.98) 100%);
-  border: 1.5px solid rgba(255, 255, 255, 0.12);
+  background: linear-gradient(145deg, rgba(16, 16, 20, 0.98) 0%, rgba(7, 7, 9, 0.99) 100%);
+  border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: var(--radius-xl);
   padding: 36px 44px;
   box-shadow: 0 32px 80px rgba(0, 0, 0, 0.95), inset 0 1px 0 rgba(255, 255, 255, 0.12);
@@ -85,7 +85,7 @@
   padding: 0 20px;
   border-radius: var(--radius-pill);
   background: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  border: none;
   color: #ffffff;
   font-size: 13px;
   font-weight: 600;
@@ -100,7 +100,6 @@
 .tv-editor-close-btn.focused {
   background: #ffffff;
   color: #000000;
-  border-color: #ffffff;
   transform: scale(1.04);
   box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.8), 0 8px 24px rgba(0, 0, 0, 0.6);
 }
@@ -137,7 +136,7 @@
   height: 26px;
   border-radius: 50%;
   background: #ea4335;
-  border: 2.5px solid #16161c;
+  border: 2.5px solid #0b0b0e;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -271,7 +270,7 @@
   padding: 5px 12px;
   border-radius: var(--radius-pill);
   background: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  border: none;
   color: var(--text-secondary, #9aa0a6);
   font-size: 12px;
   font-weight: 600;
@@ -281,14 +280,13 @@
 
 .tv-editor-osk-pill.active {
   background: rgba(138, 180, 248, 0.2);
-  border-color: var(--google-blue, #8ab4f8);
   color: var(--google-blue, #8ab4f8);
 }
 
 .tv-editor-osk-pill.focused {
   background: var(--google-blue, #8ab4f8);
   color: #0f0f0f;
-  border-color: #ffffff;
+  box-shadow: 0 0 0 2px var(--md-sys-color-focus-ring, #e8eefc);
 }
 
 /* Name Preset Suggestions */
@@ -524,7 +522,7 @@
   padding: 0 18px;
   border-radius: var(--radius-pill);
   background: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  border: none;
   color: var(--text-secondary, #9aa0a6);
   font-size: 13px;
   font-weight: 600;
@@ -535,14 +533,12 @@
 
 .tv-pin-toggle-btn.active {
   background: rgba(234, 67, 53, 0.2);
-  border-color: #ea4335;
   color: #ffffff;
 }
 
 .tv-pin-toggle-btn.focused {
-  border-color: #ffffff;
   transform: scale(1.04);
-  box-shadow: 0 0 16px rgba(255, 255, 255, 0.3);
+  box-shadow: 0 0 0 2px var(--md-sys-color-focus-ring, #e8eefc), 0 0 16px rgba(255, 255, 255, 0.3);
 }
 
 .tv-pin-inputs-row {
@@ -656,7 +652,7 @@
   color: #ffffff;
   font-size: 15px;
   font-weight: 700;
-  border: 1.5px solid transparent;
+  border: none;
   cursor: pointer;
   white-space: nowrap;
   box-sizing: border-box;
@@ -667,7 +663,6 @@
 .tv-btn-primary.focused {
   background: #ffffff;
   color: #000000;
-  border-color: #ffffff;
   transform: scale(1.04);
   box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.8), 0 8px 24px rgba(0, 0, 0, 0.6);
 }
@@ -684,7 +679,7 @@
   color: #ffffff;
   font-size: 15px;
   font-weight: 600;
-  border: 1.5px solid rgba(255, 255, 255, 0.12);
+  border: none;
   cursor: pointer;
   white-space: nowrap;
   box-sizing: border-box;
@@ -695,7 +690,6 @@
 .tv-btn-secondary.focused {
   background: #ffffff;
   color: #000000;
-  border-color: #ffffff;
   transform: scale(1.04);
   box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.8), 0 8px 24px rgba(0, 0, 0, 0.6);
 }
@@ -712,7 +706,7 @@
   color: #f28b82;
   font-size: 15px;
   font-weight: 600;
-  border: 1.5px solid rgba(234, 67, 53, 0.35);
+  border: none;
   cursor: pointer;
   white-space: nowrap;
   box-sizing: border-box;
@@ -723,7 +717,6 @@
 .tv-btn-danger.focused {
   background: #ea4335;
   color: #ffffff;
-  border-color: #ffffff;
   transform: scale(1.04);
   box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.8), 0 8px 24px rgba(234, 67, 53, 0.6);
 }

@@ -55,6 +55,7 @@ class MusicEngine {
   private lastEndedTime: number = 0;
   private streamCandidates: string[] = [];
   private currentCandidateIndex: number = 0;
+  private playRequestId: number = 0;
 
   constructor() {
     this.loadPersistedSettings();
@@ -178,8 +179,6 @@ class MusicEngine {
       console.warn('[MusicEngine] Audio element stream error:', e);
       this.handleStreamError();
     });
-
-    this.setupMediaSessionHandlers();
   }
 
   // ─── WEB AUDIO API GRAPH INITIALIZATION ─────────────────────────────────────
@@ -363,11 +362,6 @@ class MusicEngine {
   // ─── PLAYBACK CONTROL & QUEUE MANAGEMENT ───────────────────────────────────
 
   public async playTrack(track: Track, queue: Track[] = [], startIndex?: number): Promise<void> {
-    if (!this.audioEl) return;
-
-    this.initWebAudio();
-    this.resumeAudioContext();
-
     const fullQueue = queue.length > 0 ? [...queue] : [track];
     const initialIndex =
       typeof startIndex === 'number' && startIndex >= 0
@@ -380,7 +374,24 @@ class MusicEngine {
       : [...fullQueue];
 
     const actualIdx = this.state.queue.findIndex((t) => t.id === track.id);
-    this.state.queueIndex = actualIdx >= 0 ? actualIdx : 0;
+    this.state.queueIndex = actualIdx >= 0 ? actualIdx : Math.max(0, initialIndex);
+
+    await this.loadTrackIntoEngine(track);
+  }
+
+  private async playFromCurrentQueue(index: number): Promise<void> {
+    if (index < 0 || index >= this.state.queue.length) return;
+    const track = this.state.queue[index];
+    if (!track) return;
+    this.state.queueIndex = index;
+    await this.loadTrackIntoEngine(track);
+  }
+
+  private async loadTrackIntoEngine(track: Track): Promise<void> {
+    const requestId = ++this.playRequestId;
+    this.streamCandidates = [];
+    this.currentCandidateIndex = 0;
+
     this.state.currentTrack = track;
     this.state.currentTime = 0;
     this.state.duration = track.durationSeconds || 210;
@@ -403,9 +414,12 @@ class MusicEngine {
       lyrics: track.lyrics,
     };
     this.state.currentSource = source;
-
-    this.updateMediaSessionMetadata(track);
     this.notify();
+
+    if (!this.audioEl) return;
+
+    this.initWebAudio();
+    this.resumeAudioContext();
 
     // 1. Check if track can be played via official YouTube Audio/Video Engine
     let ytId = track.ytVideoId || youTubeAudioPlayer.resolveVideoId(track.title, track.artist, track.ytVideoId);
@@ -417,8 +431,13 @@ class MusicEngine {
       }
     }
 
+    // Abort if a newer track request or stop() superseded this one while resolving
+    if (requestId !== this.playRequestId) return;
+
     if (ytId) {
       this.isYouTubeMode = true;
+      this.streamCandidates = [];
+      this.currentCandidateIndex = 0;
       if (this.audioEl) {
         this.audioEl.pause();
       }
@@ -427,6 +446,7 @@ class MusicEngine {
       this.state.currentSource = source;
       try {
         await youTubeAudioPlayer.play(ytId, 0);
+        if (requestId !== this.playRequestId) return;
         this.state.status = 'playing';
       } catch (err) {
         console.warn('[MusicEngine] YouTube player start notice:', err);
@@ -448,6 +468,8 @@ class MusicEngine {
         this.currentCandidateIndex = 0;
       }
 
+      if (requestId !== this.playRequestId) return;
+
       const streamUrl = this.streamCandidates[0] || track.audioUrl;
 
       if (streamUrl) {
@@ -458,8 +480,10 @@ class MusicEngine {
 
         try {
           await this.audioEl.play();
+          if (requestId !== this.playRequestId) return;
           this.state.status = 'playing';
         } catch (err) {
+          if (requestId !== this.playRequestId) return;
           console.warn('[MusicEngine] Audio play call prevented by browser policy, waiting for user trigger:', err);
           this.state.status = 'paused';
         }
@@ -469,13 +493,15 @@ class MusicEngine {
       }
     }
 
+    if (requestId !== this.playRequestId) return;
+
     // 2. Fetch synced lyrics asynchronously in background
     if (track.lyrics && track.lyrics.length > 0) {
       this.state.lyrics = track.lyrics;
       this.state.plainLyrics = track.plainLyrics;
     } else {
       lyricsService.fetchLyrics(track.title, track.artist).then((res) => {
-        if (this.state.currentTrack?.id === track.id) {
+        if (requestId === this.playRequestId && this.state.currentTrack?.id === track.id) {
           this.state.lyrics = res.synced;
           this.state.plainLyrics = res.plain;
           if (this.state.currentSource) {
@@ -558,9 +584,13 @@ class MusicEngine {
   }
 
   public stop(): void {
+    this.playRequestId++;
     if (this.isYouTubeMode) {
       youTubeAudioPlayer.stop();
     }
+    this.isYouTubeMode = false;
+    this.streamCandidates = [];
+    this.currentCandidateIndex = 0;
     if (this.audioEl) {
       this.audioEl.pause();
       this.audioEl.removeAttribute('src');
@@ -595,12 +625,9 @@ class MusicEngine {
   public next(): void {
     if (this.state.queue.length === 0) return;
 
-    // In 'one' repeat mode, next() manually moves to the next song
+    // In 'one' repeat mode, next() manually moves to the next song without re-shuffling or clobbering originalQueue
     const nextIdx = (this.state.queueIndex + 1) % this.state.queue.length;
-    const nextTrack = this.state.queue[nextIdx];
-    if (nextTrack) {
-      this.playTrack(nextTrack, this.state.queue, nextIdx);
-    }
+    void this.playFromCurrentQueue(nextIdx);
   }
 
   public previous(): void {
@@ -611,15 +638,12 @@ class MusicEngine {
     }
     if (this.state.queue.length === 0) return;
     const prevIdx = (this.state.queueIndex - 1 + this.state.queue.length) % this.state.queue.length;
-    const prevTrack = this.state.queue[prevIdx];
-    if (prevTrack) {
-      this.playTrack(prevTrack, this.state.queue, prevIdx);
-    }
+    void this.playFromCurrentQueue(prevIdx);
   }
 
   public playIndex(index: number): void {
     if (index >= 0 && index < this.state.queue.length) {
-      this.playTrack(this.state.queue[index], this.state.queue, index);
+      void this.playFromCurrentQueue(index);
     }
   }
 
@@ -804,7 +828,11 @@ class MusicEngine {
     // Repeat One Mode
     if (this.state.repeatMode === 'one' && this.state.currentTrack) {
       this.seek(0);
-      this.audioEl?.play().catch(() => {});
+      if (this.isYouTubeMode) {
+        youTubeAudioPlayer.resume();
+      } else {
+        this.audioEl?.play().catch(() => {});
+      }
       return;
     }
 
@@ -822,7 +850,7 @@ class MusicEngine {
   }
 
   private handleStreamError(): void {
-    if (this.currentCandidateIndex < this.streamCandidates.length - 1) {
+    if (!this.isYouTubeMode && this.currentCandidateIndex < this.streamCandidates.length - 1) {
       this.currentCandidateIndex++;
       const nextCandidate = this.streamCandidates[this.currentCandidateIndex];
       console.log(
@@ -860,67 +888,14 @@ class MusicEngine {
     }
   }
 
-  // ─── MEDIA SESSION API ────────────────────────────────────────────────────
+  // ─── MEDIA SESSION API (Delegated to PlaybackService / mediaSessionBridge) ─
 
-  private setupMediaSessionHandlers(): void {
-    if (typeof navigator === 'undefined' || !('mediaSession' in navigator)) return;
-
-    try {
-      navigator.mediaSession.setActionHandler('play', () => this.resume());
-      navigator.mediaSession.setActionHandler('pause', () => this.pause());
-      navigator.mediaSession.setActionHandler('previoustrack', () => this.previous());
-      navigator.mediaSession.setActionHandler('nexttrack', () => this.next());
-      navigator.mediaSession.setActionHandler('seekto', (details) => {
-        if (details.seekTime !== undefined) {
-          this.seek(details.seekTime);
-        }
-      });
-      navigator.mediaSession.setActionHandler('seekbackward', (details) => {
-        this.seekRelative(-(details.seekOffset || 10));
-      });
-      navigator.mediaSession.setActionHandler('seekforward', (details) => {
-        this.seekRelative(details.seekOffset || 10);
-      });
-      navigator.mediaSession.setActionHandler('stop', () => this.stop());
-    } catch (e) {}
-  }
-
-  private updateMediaSessionMetadata(track: Track): void {
-    if (typeof navigator === 'undefined' || !('mediaSession' in navigator)) return;
-
-    try {
-      navigator.mediaSession.metadata = new MediaMetadata({
-        title: track.title,
-        artist: track.artist,
-        album: track.album,
-        artwork: [
-          { src: track.artwork, sizes: '96x96', type: 'image/jpeg' },
-          { src: track.artwork, sizes: '128x128', type: 'image/jpeg' },
-          { src: track.artwork, sizes: '256x256', type: 'image/jpeg' },
-          { src: track.artwork, sizes: '512x512', type: 'image/jpeg' },
-        ],
-      });
-    } catch (e) {}
-  }
-
-  private updateMediaSessionPlaybackState(state: 'none' | 'paused' | 'playing'): void {
-    if (typeof navigator === 'undefined' || !('mediaSession' in navigator)) return;
-    try {
-      navigator.mediaSession.playbackState = state;
-    } catch (e) {}
+  private updateMediaSessionPlaybackState(_state: 'none' | 'paused' | 'playing'): void {
+    // Intentionally delegated to PlaybackService -> mediaSessionBridge to maintain a single owner
   }
 
   private updateMediaSessionPosition(): void {
-    if (typeof navigator === 'undefined' || !('mediaSession' in navigator)) return;
-    if (!navigator.mediaSession.setPositionState || !this.state.duration) return;
-
-    try {
-      navigator.mediaSession.setPositionState({
-        duration: this.state.duration,
-        playbackRate: 1.0,
-        position: Math.min(this.state.currentTime, this.state.duration),
-      });
-    } catch (e) {}
+    // Intentionally delegated to PlaybackService -> mediaSessionBridge to maintain a single owner
   }
 
   // ─── HELPERS & SUBSCRIPTIONS ──────────────────────────────────────────────

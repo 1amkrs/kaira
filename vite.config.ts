@@ -4,6 +4,7 @@ import { VitePWA } from 'vite-plugin-pwa';
 import os from 'os';
 import crypto from 'crypto';
 import { spawn } from 'child_process';
+import { Readable } from 'stream';
 import localtunnel from 'localtunnel';
 
 interface NetworkInterfaceInfo {
@@ -159,21 +160,8 @@ function kairaRemotePlugin(): Plugin {
   const sseClients = new Set<any>();
   const wsClients = new Set<any>();
 
-  function broadcastToAll(message: any) {
-    const jsonStr = JSON.stringify(message);
-
-    // 1. Broadcast to SSE clients
-    const eventPayload = `data: ${jsonStr}\n\n`;
-    for (const client of sseClients) {
-      try {
-        client.write(eventPayload);
-      } catch (e) {
-        sseClients.delete(client);
-      }
-    }
-
-    // 2. Broadcast to WebSocket clients
-    const payloadBuffer = Buffer.from(jsonStr);
+  function encodeWebSocketFrame(jsonStr: string): Buffer {
+    const payloadBuffer = Buffer.from(jsonStr, 'utf8');
     const length = payloadBuffer.length;
     let header: Buffer;
 
@@ -191,7 +179,24 @@ function kairaRemotePlugin(): Plugin {
       header.writeBigUInt64BE(BigInt(length), 2);
     }
 
-    const frame = Buffer.concat([header, payloadBuffer]);
+    return Buffer.concat([header, payloadBuffer]);
+  }
+
+  function broadcastToAll(message: any) {
+    const jsonStr = JSON.stringify(message);
+
+    // 1. Broadcast to SSE clients
+    const eventPayload = `data: ${jsonStr}\n\n`;
+    for (const client of sseClients) {
+      try {
+        client.write(eventPayload);
+      } catch (e) {
+        sseClients.delete(client);
+      }
+    }
+
+    // 2. Broadcast to WebSocket clients
+    const frame = encodeWebSocketFrame(jsonStr);
     for (const client of wsClients) {
       try {
         client.write(frame);
@@ -232,9 +237,7 @@ function kairaRemotePlugin(): Plugin {
 
           // Send immediate state update upon connection
           if (latestTVState) {
-            const payloadBuffer = Buffer.from(JSON.stringify({ type: 'STATE_UPDATE', payload: latestTVState }));
-            const header = Buffer.from([0x81, payloadBuffer.length]);
-            socket.write(Buffer.concat([header, payloadBuffer]));
+            socket.write(encodeWebSocketFrame(JSON.stringify({ type: 'STATE_UPDATE', payload: latestTVState })));
           }
 
           // Handle incoming frames
@@ -301,8 +304,7 @@ function kairaRemotePlugin(): Plugin {
                     broadcastToAll({ type: 'STATE_UPDATE', payload: latestTVState });
                   } else if (msg.type === 'REQUEST_STATE') {
                     if (latestTVState) {
-                      const snap = Buffer.from(JSON.stringify({ type: 'STATE_UPDATE', payload: latestTVState }));
-                      socket.write(Buffer.concat([Buffer.from([0x81, snap.length]), snap]));
+                      socket.write(encodeWebSocketFrame(JSON.stringify({ type: 'STATE_UPDATE', payload: latestTVState })));
                     }
                   }
                 } catch (err) {
@@ -323,12 +325,189 @@ function kairaRemotePlugin(): Plugin {
 
         // Global CORS headers
         res.setHeader('Access-Control-Allow-Origin', '*');
-        res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-        res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+        res.setHeader('Access-Control-Allow-Methods', 'GET, HEAD, POST, OPTIONS');
+        res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Range');
+        res.setHeader('Access-Control-Expose-Headers', 'Content-Length, Content-Range, Accept-Ranges, Content-Type');
 
         if (req.method === 'OPTIONS') {
           res.statusCode = 204;
           return res.end();
+        }
+
+        // Endpoint: /api/stream-proxy (Direct Stremio HTTP & HLS stream proxy with Range + .m3u8 rewriting)
+        if (url.startsWith('/api/stream-proxy')) {
+          (async () => {
+            try {
+              const parsedReq = new URL(url, 'http://localhost:3000');
+              const targetRaw = parsedReq.searchParams.get('url') || '';
+              const headersRaw = parsedReq.searchParams.get('headers');
+
+              if (!targetRaw) {
+                res.statusCode = 400;
+                return res.end('Missing url parameter');
+              }
+
+              let targetUrl: URL;
+              try {
+                targetUrl = new URL(targetRaw);
+              } catch {
+                res.statusCode = 400;
+                return res.end('Invalid target url');
+              }
+
+              if (targetUrl.protocol !== 'http:' && targetUrl.protocol !== 'https:') {
+                res.statusCode = 400;
+                return res.end('Unsupported protocol');
+              }
+
+              // Block loopback & private RFC1918/link-local hosts to prevent SSRF
+              const host = targetUrl.hostname.toLowerCase();
+              const isPrivateHost =
+                host === 'localhost' ||
+                host === '::1' ||
+                host === '0.0.0.0' ||
+                host.endsWith('.local') ||
+                /^127\./.test(host) ||
+                /^10\./.test(host) ||
+                /^192\.168\./.test(host) ||
+                /^169\.254\./.test(host) ||
+                /^172\.(1[6-9]|2\d|3[01])\./.test(host);
+
+              if (isPrivateHost) {
+                res.statusCode = 403;
+                return res.end('Private network addresses are not allowed');
+              }
+
+              const upstreamHeaders: Record<string, string> = {};
+              const allowedHeaderKeys = new Set([
+                'referer',
+                'origin',
+                'user-agent',
+                'authorization',
+                'cookie',
+                'accept',
+                'accept-language',
+              ]);
+
+              if (headersRaw) {
+                try {
+                  const parsedHeaders = JSON.parse(headersRaw);
+                  if (parsedHeaders && typeof parsedHeaders === 'object') {
+                    for (const [k, v] of Object.entries(parsedHeaders)) {
+                      if (typeof v === 'string' && allowedHeaderKeys.has(k.toLowerCase())) {
+                        upstreamHeaders[k] = v;
+                      }
+                    }
+                  }
+                } catch {}
+              }
+
+              if (req.headers.range) {
+                upstreamHeaders['Range'] = String(req.headers.range);
+              }
+              if (!Object.keys(upstreamHeaders).some((k) => k.toLowerCase() === 'user-agent')) {
+                upstreamHeaders['User-Agent'] =
+                  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36';
+              }
+
+              const controller = new AbortController();
+              req.on('close', () => controller.abort());
+
+              const upstream = await fetch(targetUrl.toString(), {
+                method: req.method === 'HEAD' ? 'HEAD' : 'GET',
+                headers: upstreamHeaders,
+                redirect: 'follow',
+                signal: controller.signal,
+              });
+
+              const contentType = upstream.headers.get('content-type') || '';
+              const finalUrl = upstream.url || targetUrl.toString();
+              const isM3u8 =
+                /mpegurl|x-mpegurl/i.test(contentType) ||
+                /\.m3u8(\?|$|#)/i.test(finalUrl);
+
+              if (isM3u8 && req.method !== 'HEAD' && upstream.ok) {
+                const playlistText = await upstream.text();
+                const base = new URL(finalUrl);
+                const encodedHeadersParam = headersRaw ? `&headers=${encodeURIComponent(headersRaw)}` : '';
+
+                const toProxy = (uri: string): string => {
+                  const resolved = new URL(uri, base).toString();
+                  return `/api/stream-proxy?url=${encodeURIComponent(resolved)}${encodedHeadersParam}`;
+                };
+
+                const rewritten = playlistText
+                  .split(/\r?\n/)
+                  .map((line) => {
+                    const trimmed = line.trim();
+                    if (!trimmed) return line;
+                    if (trimmed.startsWith('#')) {
+                      return line.replace(/URI="([^"]+)"/gi, (_m, uri) => {
+                        try {
+                          return `URI="${toProxy(uri)}"`;
+                        } catch {
+                          return `URI="${uri}"`;
+                        }
+                      });
+                    }
+                    try {
+                      return toProxy(trimmed);
+                    } catch {
+                      return line;
+                    }
+                  })
+                  .join('\n');
+
+                res.statusCode = 200;
+                res.setHeader('Content-Type', 'application/vnd.apple.mpegurl');
+                res.setHeader('Cache-Control', 'no-store');
+                return res.end(rewritten);
+              }
+
+              // Reject HTML/JSON error pages before piping to <video> so FFmpegDemuxer doesn't choke on markup
+              if (/^\s*(text\/html|application\/json)/i.test(contentType)) {
+                res.statusCode = upstream.status >= 400 ? upstream.status : 502;
+                res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+                return res.end(`Upstream returned non-video response (${contentType})`);
+              }
+
+              let resolvedContentType = contentType;
+              if (!resolvedContentType || /application\/octet-stream/i.test(resolvedContentType)) {
+                if (/\.mp4(\?|$|#)/i.test(finalUrl) || /\.m4v(\?|$|#)/i.test(finalUrl)) {
+                  resolvedContentType = 'video/mp4';
+                } else if (/\.mkv(\?|$|#)/i.test(finalUrl)) {
+                  resolvedContentType = 'video/x-matroska';
+                } else if (/\.webm(\?|$|#)/i.test(finalUrl)) {
+                  resolvedContentType = 'video/webm';
+                }
+              }
+
+              res.statusCode = upstream.status;
+              if (resolvedContentType) res.setHeader('Content-Type', resolvedContentType);
+              const contentLength = upstream.headers.get('content-length');
+              if (contentLength) res.setHeader('Content-Length', contentLength);
+              const contentRange = upstream.headers.get('content-range');
+              if (contentRange) res.setHeader('Content-Range', contentRange);
+              const acceptRanges = upstream.headers.get('accept-ranges');
+              if (acceptRanges) res.setHeader('Accept-Ranges', acceptRanges);
+
+              if (req.method === 'HEAD' || !upstream.body) {
+                return res.end();
+              }
+
+              const nodeStream = Readable.fromWeb(upstream.body as any);
+              nodeStream.on('error', () => {
+                if (!res.writableEnded) res.end();
+              });
+              nodeStream.pipe(res);
+            } catch (err: any) {
+              if (!res.writableEnded) {
+                res.statusCode = 502;
+                res.end(`Stream proxy error: ${err?.message || 'Upstream unavailable'}`);
+              }
+            }
+          })();
+          return;
         }
 
         // Endpoint: /api/remote/info (Dynamic Real IP discovery)
@@ -478,8 +657,8 @@ export default defineConfig({
         name: 'Kaira TV & Media Center',
         short_name: 'Kaira',
         description: 'Kaira TV OS Launcher and Media Center for Android, Android TV, and Desktop.',
-        theme_color: '#0d0e12',
-        background_color: '#0d0e12',
+        theme_color: '#000000',
+        background_color: '#000000',
         display: 'standalone',
         orientation: 'any',
         start_url: '/',

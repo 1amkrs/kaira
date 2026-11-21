@@ -25,8 +25,8 @@
   position: relative;
   width: clamp(460px, 48vw, 560px);
   min-width: 460px;
-  background: linear-gradient(145deg, rgba(26, 29, 38, 0.97) 0%, rgba(16, 18, 24, 0.98) 100%);
-  border: 1.5px solid rgba(255, 255, 255, 0.12);
+  background: linear-gradient(145deg, rgba(16, 16, 20, 0.98) 0%, rgba(7, 7, 9, 0.99) 100%);
+  border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: var(--radius-xl);
   padding: 36px 40px;
   box-shadow: 0 32px 80px rgba(0, 0, 0, 0.95), inset 0 1px 0 rgba(255, 255, 255, 0.12);
@@ -85,7 +85,7 @@
   padding: 0 18px;
   border-radius: var(--radius-pill);
   background: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  border: none;
   color: #ffffff;
   font-size: 13px;
   font-weight: 600;
@@ -99,7 +99,6 @@
 .tv-pin-cancel-btn.focused {
   background: #ffffff;
   color: #000000;
-  border-color: #ffffff;
   transform: scale(1.04);
   box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.8), 0 8px 24px rgba(0, 0, 0, 0.6);
 }
@@ -133,7 +132,7 @@
   height: 26px;
   border-radius: 50%;
   background: #ea4335;
-  border: 2.5px solid #16161c;
+  border: 2.5px solid #0b0b0e;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -294,7 +293,7 @@
   padding: 8px 16px;
   border-radius: var(--radius-pill);
   background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  border: none;
   color: var(--text-secondary, #9aa0a6);
   font-size: 12px;
   font-weight: 500;
@@ -305,16 +304,14 @@
 
 .tv-pin-memory-pill.active {
   background: rgba(26, 115, 232, 0.18);
-  border-color: var(--google-blue-light, #8ab4f8);
   color: #ffffff;
 }
 
 .tv-pin-memory-pill.focused {
   background: rgba(255, 255, 255, 0.2);
-  border-color: #ffffff;
   color: #ffffff;
   transform: scale(1.04);
-  box-shadow: 0 0 16px rgba(255, 255, 255, 0.3);
+  box-shadow: 0 0 0 2px var(--md-sys-color-focus-ring, #e8eefc), 0 0 16px rgba(255, 255, 255, 0.3);
 }
 
 @media (max-width: 768px) {

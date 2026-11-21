@@ -205,6 +205,9 @@ export class YouTubeAudioPlayer {
     if (typeof window === 'undefined') return;
 
     window.addEventListener('message', (event) => {
+      if (!this.iframeEl || !this.iframeEl.contentWindow || event.source !== this.iframeEl.contentWindow) {
+        return;
+      }
       try {
         const data = typeof event.data === 'string' ? JSON.parse(event.data) : event.data;
         if (!data) return;

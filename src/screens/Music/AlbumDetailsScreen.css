@@ -23,7 +23,7 @@
 .tv-album-details-scrim {
   position: absolute;
   inset: 0;
-  background: linear-gradient(180deg, rgba(15, 15, 15, 0.2) 0%, rgba(15, 15, 15, 0.8) 45%, var(--bg-app) 75%);
+  background: linear-gradient(180deg, rgba(0, 0, 0, 0.22) 0%, rgba(0, 0, 0, 0.82) 45%, var(--bg-app) 75%);
 }
 
 .tv-album-top-bar {
@@ -159,19 +159,19 @@
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
   color: var(--text-primary);
-  border: 1px solid var(--border-subtle);
+  border: none;
   border-radius: var(--radius-pill);
   font-size: var(--font-body);
   font-weight: 600;
   cursor: pointer;
   transition: background-color var(--duration-base) var(--easing-standard),
-              border-color var(--duration-base) var(--easing-standard),
+              box-shadow var(--duration-base) var(--easing-standard),
               transform var(--duration-micro) var(--easing-enter);
 }
 
 .tv-album-actions-row .tv-details-fav-btn.focused {
   background-color: rgba(255, 255, 255, 0.22);
-  border-color: rgba(138, 180, 248, 0.5);
+  box-shadow: 0 0 0 2px var(--md-sys-color-focus-ring, #e8eefc);
 }
 
 .tv-album-tracks-section {

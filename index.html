@@ -7,7 +7,7 @@
     <meta name="description" content="Kaira TV OS Launcher and Media Center web application" />
     <meta property="og:title" content="Kaira — TV OS &amp; Android Media Center" />
     <meta property="og:description" content="Kaira TV OS Launcher and Media Center web application" />
-    <meta name="theme-color" content="#0d0e12" />
+    <meta name="theme-color" content="#000000" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
@@ -21,12 +21,9 @@
     <!-- Asynchronous non-blocking YouTube iframe API -->
     <script async src="https://www.youtube.com/iframe_api"></script>
   </head>
-  <body class="tv-mode">
+  <body class="tv-mode" style="margin:0;background:#000000;">
     <div id="root">
-      <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;background:#0a0a0c;color:#fff;font-family:system-ui,-apple-system,sans-serif;">
-        <div style="font-size:56px;font-weight:700;letter-spacing:1px;margin-bottom:12px;background:linear-gradient(135deg,#4285f4,#ea4335,#fbbc05,#34a853);-webkit-background-clip:text;-webkit-text-fill-color:transparent;">Kaira</div>
-        <div style="font-size:18px;color:#9aa0a6;letter-spacing:1px;text-transform:uppercase;">ANDROID &amp; TV</div>
-      </div>
+      <div style="width:100vw;height:100vh;background:#000000;"></div>
     </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

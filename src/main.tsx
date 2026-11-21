@@ -1,9 +1,10 @@
-import React from 'react';
+import React, { Suspense, lazy } from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';
-import CompanionRemoteApp from './remote/CompanionRemoteApp';
 import { detectAndroidEnvironment } from './platform/android/androidDetection';
 import './styles/globals.css';
+
+const CompanionRemoteApp = lazy(() => import('./remote/CompanionRemoteApp'));
 
 const isRemoteMode =
   window.location.pathname.startsWith('/remote') ||
@@ -74,6 +75,12 @@ if ('serviceWorker' in navigator && !window.AndroidBridge && !window.Capacitor?.
 
 ReactDOM.createRoot(document.getElementById('root') as HTMLElement).render(
   <React.StrictMode>
-    {isRemoteMode ? <CompanionRemoteApp /> : <App />}
+    {isRemoteMode ? (
+      <Suspense fallback={null}>
+        <CompanionRemoteApp />
+      </Suspense>
+    ) : (
+      <App />
+    )}
   </React.StrictMode>,
 );

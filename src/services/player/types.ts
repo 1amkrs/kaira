@@ -34,7 +34,12 @@ export interface AudioTrackInfo {
 export interface IPlaybackDriver {
   readonly type: DriverType;
   initialize(container: HTMLElement, callbacks: DriverCallbacks): Promise<void> | void;
-  loadSource(url: string, initialPosition?: number, expectedDuration?: number): Promise<void> | void;
+  loadSource(
+    url: string,
+    initialPosition?: number,
+    expectedDuration?: number,
+    proxyHeaders?: Record<string, string>
+  ): Promise<void> | void;
   play(): Promise<void> | void;
   pause(): void;
   togglePlayPause?(): void;

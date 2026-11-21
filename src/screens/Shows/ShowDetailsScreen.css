@@ -58,16 +58,16 @@
   height: 80vh;
   background: linear-gradient(
     90deg,
-    rgba(14, 16, 20, 0.94) 0%,
-    rgba(14, 16, 20, 0.74) 32%,
-    rgba(14, 16, 20, 0.22) 60%,
-    rgba(14, 16, 20, 0) 80%
+    rgba(0, 0, 0, 0.95) 0%,
+    rgba(0, 0, 0, 0.74) 32%,
+    rgba(0, 0, 0, 0.22) 60%,
+    rgba(0, 0, 0, 0) 80%
   ),
   linear-gradient(
     180deg,
-    rgba(14, 16, 20, 0.25) 0%,
-    rgba(14, 16, 20, 0) 35%,
-    rgba(14, 16, 20, 0.88) 80%,
+    rgba(0, 0, 0, 0.28) 0%,
+    rgba(0, 0, 0, 0) 35%,
+    rgba(0, 0, 0, 0.9) 80%,
     var(--md-sys-color-background, var(--bg-app)) 100%
   );
   z-index: 3;
@@ -283,13 +283,12 @@
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
   color: var(--md-sys-color-on-surface, var(--text-primary));
-  border: 1px solid var(--md-sys-color-outline-variant, var(--border-subtle));
+  border: none;
   border-radius: var(--radius-pill);
   font-size: var(--font-body);
   font-weight: 600;
   cursor: pointer;
   transition: background-color var(--duration-base) var(--easing-standard),
-              border-color var(--duration-base) var(--easing-standard),
               box-shadow var(--duration-base) var(--easing-standard),
               transform var(--duration-micro) var(--easing-enter);
 }
@@ -297,7 +296,6 @@
 .tv-details-audio-btn.focused,
 .tv-details-fav-btn.focused {
   background-color: var(--md-sys-color-surface-container-highest, rgba(255, 255, 255, 0.22));
-  border-color: var(--md-sys-color-focus-ring, #e8eefc);
   box-shadow: 0 0 0 2px var(--md-sys-color-focus-ring, #e8eefc);
 }
 

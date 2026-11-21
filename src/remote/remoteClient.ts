@@ -32,9 +32,7 @@ class RemoteClient {
   private isExplicitlyClosed: boolean = false;
   private targetPeerId: string | null = null;
 
-  constructor() {
-    this.initBroadcastChannel();
-  }
+  constructor() {}
 
   public connect(host?: string, port?: number): void {
     this.isExplicitlyClosed = false;
@@ -56,6 +54,7 @@ class RemoteClient {
     }
 
     this.setStatus('connecting');
+    this.initBroadcastChannel();
 
     // 2. If targetPeerId is available, connect via WebRTC PeerJS (Works on GitHub Pages & Static Hosts)
     if (this.targetPeerId) {
@@ -71,8 +70,14 @@ class RemoteClient {
 
   public disconnect(): void {
     this.isExplicitlyClosed = true;
-    if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
-    if (this.pollTimer) clearInterval(this.pollTimer);
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
+    if (this.pollTimer) {
+      clearInterval(this.pollTimer);
+      this.pollTimer = null;
+    }
     if (this.peerConnection) {
       this.peerConnection.close();
       this.peerConnection = null;
@@ -88,6 +93,12 @@ class RemoteClient {
     if (this.sse) {
       this.sse.close();
       this.sse = null;
+    }
+    if (this.broadcastChannel) {
+      try {
+        this.broadcastChannel.close();
+      } catch (e) {}
+      this.broadcastChannel = null;
     }
     this.setStatus('disconnected');
   }
@@ -170,26 +181,38 @@ class RemoteClient {
   private connectWebRTCPeer(targetId: string): void {
     try {
       if (this.peer) {
-        this.peer.destroy();
+        try {
+          this.peer.destroy();
+        } catch (e) {}
+        this.peer = null;
       }
 
       const clientPeerId = `phone-${Math.random().toString(36).substring(2, 8)}`;
-      this.peer = new Peer(clientPeerId, { debug: 1 });
+      const peer = new Peer(clientPeerId, { debug: 0 });
+      this.peer = peer;
 
-      this.peer.on('open', () => {
-        console.log(`[RemoteClient] 📱 Client Peer ready, connecting to TV ${targetId}...`);
-        const conn = this.peer!.connect(targetId, {
+      peer.on('open', () => {
+        if (this.peer !== peer || this.isExplicitlyClosed) return;
+        const conn = peer.connect(targetId, {
           reliable: true,
         });
 
         this.setupPeerConnection(conn);
       });
 
-      this.peer.on('error', (err) => {
-        console.warn('[RemoteClient] PeerJS client error:', err);
+      peer.on('disconnected', () => {
+        if (!this.isExplicitlyClosed && this.peer === peer && !peer.destroyed) {
+          this.scheduleReconnect();
+        }
+      });
+
+      peer.on('error', () => {
+        if (!this.isExplicitlyClosed && !this.peerConnection?.open) {
+          this.scheduleReconnect();
+        }
       });
     } catch (e) {
-      console.warn('[RemoteClient] WebRTC connection error:', e);
+      // Graceful fallback when WebRTC signaling server is unreachable
     }
   }
 
@@ -331,6 +354,13 @@ class RemoteClient {
     if (typeof window === 'undefined' || typeof BroadcastChannel === 'undefined') return;
 
     try {
+      if (this.broadcastChannel) {
+        try {
+          this.broadcastChannel.close();
+        } catch (e) {}
+        this.broadcastChannel = null;
+      }
+
       this.broadcastChannel = new BroadcastChannel('tvos_remote_channel');
 
       this.broadcastChannel.onmessage = (event) => {

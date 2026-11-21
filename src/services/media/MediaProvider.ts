@@ -66,6 +66,7 @@ export interface MediaProvider {
   getContinueWatching(): Promise<ContinueWatchingItem[]>;
   getRecentlyAdded(): Promise<{ movies: Movie[]; shows: Show[]; albums: Album[] }>;
   getFavorites(): Promise<{ movies: Movie[]; shows: Show[]; albums: Album[] }>;
+  isFavorite(id: string): boolean;
   toggleFavorite(id: string, type: 'movie' | 'show' | 'album'): Promise<boolean>;
   getRecommendedForYou(profileId?: string): Promise<Movie[]>;
   getPersonalizedRecommendations(profileId?: string): Promise<{

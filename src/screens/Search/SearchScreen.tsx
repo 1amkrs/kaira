@@ -23,6 +23,7 @@ import { spatialNav } from '../../services/spatialNav/spatialNavEngine';
 import './SearchScreen.css';
 
 interface SearchScreenProps {
+  initialQuery?: string;
   onClose: () => void;
   onSelectMovie: (movie: Movie) => void;
   onSelectShow: (show: Show) => void;
@@ -48,13 +49,14 @@ const TRENDING_QUICK_SEARCHES = [
 ];
 
 export const SearchScreen: React.FC<SearchScreenProps> = ({
+  initialQuery,
   onClose,
   onSelectMovie,
   onSelectShow,
   onSelectAlbum,
   onPlayTrack,
 }) => {
-  const [searchQuery, setSearchQuery] = useState<string>('');
+  const [searchQuery, setSearchQuery] = useState<string>(initialQuery || '');
   const [activeFilter, setActiveFilter] = useState<SearchFilter>('all');
   const [results, setResults] = useState<MediaSearchCategoryResult>({
     movies: [],
@@ -75,7 +77,13 @@ export const SearchScreen: React.FC<SearchScreenProps> = ({
     };
   }, []);
 
-  // Debounced Universal Live Search
+  useEffect(() => {
+    if (initialQuery && initialQuery.trim()) {
+      setSearchQuery(initialQuery);
+    }
+  }, [initialQuery]);
+
+  // Debounced Universal Live Search (with stale-response cancellation)
   useEffect(() => {
     const trimmed = searchQuery.trim();
     if (!trimmed) {
@@ -84,15 +92,26 @@ export const SearchScreen: React.FC<SearchScreenProps> = ({
       return;
     }
 
+    let cancelled = false;
     setIsSearching(true);
     const timer = setTimeout(() => {
-      mediaProvider.search(trimmed).then((res) => {
-        setResults(res);
-        setIsSearching(false);
-      });
+      mediaProvider
+        .search(trimmed)
+        .then((res) => {
+          if (cancelled) return;
+          setResults(res);
+          setIsSearching(false);
+        })
+        .catch(() => {
+          if (cancelled) return;
+          setIsSearching(false);
+        });
     }, 180);
 
-    return () => clearTimeout(timer);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
   }, [searchQuery]);
 
   // Physical Keyboard Listener
@@ -102,6 +121,7 @@ export const SearchScreen: React.FC<SearchScreenProps> = ({
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
         if (e.key === 'Escape') {
           e.preventDefault();
+          e.stopImmediatePropagation();
           onClose();
         }
         return;
@@ -109,6 +129,7 @@ export const SearchScreen: React.FC<SearchScreenProps> = ({
 
       if (e.key === 'Escape') {
         e.preventDefault();
+        e.stopImmediatePropagation();
         onClose();
         return;
       }
@@ -120,8 +141,23 @@ export const SearchScreen: React.FC<SearchScreenProps> = ({
         return;
       }
 
+      // Preserve Space activation on focused chips/buttons/cards instead of appending to query
+      if (e.key === ' ') {
+        const activeEl = document.activeElement as HTMLElement | null;
+        if (
+          activeEl &&
+          (activeEl.closest('[data-focus-id]') ||
+            activeEl.tagName === 'BUTTON' ||
+            activeEl.getAttribute('role') === 'button')
+        ) {
+          return;
+        }
+      }
+
       // Normal typing characters (ignore modifiers and control keys)
       if (e.key.length === 1 && !e.ctrlKey && !e.altKey && !e.metaKey) {
+        e.preventDefault();
+        e.stopImmediatePropagation();
         setSearchQuery((prev) => prev + e.key);
       }
     };

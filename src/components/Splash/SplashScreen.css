@@ -3,89 +3,310 @@
   inset: 0;
   width: 100vw;
   height: 100vh;
-  background-color: #0d0e12;
+  background-color: #000000;
   z-index: 9999;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   overflow: hidden;
+  cursor: pointer;
   opacity: 1;
-  transition: opacity 600ms var(--easing-enter), transform 600ms var(--easing-enter);
+  transform: scale(1);
+  transition:
+    opacity 680ms cubic-bezier(0.22, 1, 0.36, 1),
+    transform 680ms cubic-bezier(0.22, 1, 0.36, 1);
+  will-change: opacity, transform;
+}
+
+.tv-splash-overlay.is-android {
+  transition:
+    opacity 320ms cubic-bezier(0.22, 1, 0.36, 1),
+    transform 320ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .tv-splash-overlay.fade-out {
   opacity: 0;
-  transform: scale(1.04);
+  transform: scale(1.035);
   pointer-events: none;
 }
 
-.tv-splash-ambient-glow {
+/* Monochrome cinema projector bloom behind the wordmark (zero neon/purple slop) */
+.tv-splash-projector-bloom {
   position: absolute;
   top: 50%;
   left: 50%;
-  transform: translate(-50%, -50%);
-  width: 600px;
-  height: 600px;
-  background: radial-gradient(circle, rgba(66, 133, 244, 0.18) 0%, rgba(168, 85, 247, 0.08) 50%, rgba(0, 0, 0, 0) 70%);
-  filter: blur(40px);
+  width: min(760px, 85vw);
+  height: min(360px, 45vh);
+  transform: translate(-50%, -50%) scale(0.86);
+  background: radial-gradient(
+    ellipse at center,
+    rgba(255, 255, 255, 0.11) 0%,
+    rgba(210, 220, 235, 0.045) 36%,
+    rgba(0, 0, 0, 0) 72%
+  );
+  filter: blur(42px);
   pointer-events: none;
-  animation: splashPulse 3s ease-in-out infinite alternate;
+  opacity: 0;
+  animation: kairaBloomReveal 1800ms cubic-bezier(0.16, 1, 0.3, 1) 140ms forwards;
+  will-change: opacity, transform;
 }
 
-@keyframes splashPulse {
+@keyframes kairaBloomReveal {
   0% {
-    opacity: 0.6;
-    transform: translate(-50%, -50%) scale(0.9);
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.75);
+  }
+  45% {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1.02);
   }
   100% {
-    opacity: 1;
-    transform: translate(-50%, -50%) scale(1.15);
+    opacity: 0.72;
+    transform: translate(-50%, -50%) scale(1.08);
   }
 }
 
+/* Act I: Razor-thin Apple TV+ cinema aperture light beam */
+.tv-splash-aperture-line {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: min(520px, 68vw);
+  height: 1px;
+  transform: translate(-50%, -50%) scaleX(0);
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0) 0%,
+    rgba(255, 255, 255, 0.25) 20%,
+    rgba(255, 255, 255, 0.92) 50%,
+    rgba(255, 255, 255, 0.25) 80%,
+    rgba(255, 255, 255, 0) 100%
+  );
+  box-shadow: 0 0 24px rgba(255, 255, 255, 0.45);
+  pointer-events: none;
+  opacity: 0;
+  animation: kairaApertureBeam 1150ms cubic-bezier(0.16, 1, 0.3, 1) 40ms forwards;
+  will-change: transform, opacity;
+}
 
-.tv-splash-brand {
+@keyframes kairaApertureBeam {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scaleX(0.04);
+  }
+  28% {
+    opacity: 0.95;
+    transform: translate(-50%, -50%) scaleX(1);
+  }
+  70% {
+    opacity: 0.35;
+    transform: translate(-50%, -50%) scaleX(1.12);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scaleX(1.22);
+  }
+}
+
+/* Center Stage Lockup */
+.tv-splash-stage {
+  position: relative;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 16px;
+  justify-content: center;
   z-index: 2;
-  animation: logoFadeIn 900ms var(--easing-enter) forwards;
+  user-select: none;
 }
 
-@keyframes logoFadeIn {
+/* Act II: Sculpted optical-focus emergence of the Kaira wordmark */
+.tv-splash-wordmark-wrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transform: scale(0.93);
+  filter: blur(12px);
+  animation: kairaWordmarkEmerge 1250ms cubic-bezier(0.16, 1, 0.3, 1) 240ms forwards;
+  will-change: opacity, transform, filter;
+}
+
+@keyframes kairaWordmarkEmerge {
   0% {
     opacity: 0;
-    transform: scale(0.92) translateY(10px);
+    transform: scale(0.91);
+    filter: blur(14px);
+  }
+  60% {
+    opacity: 1;
+    filter: blur(0px);
   }
   100% {
     opacity: 1;
-    transform: scale(1) translateY(0);
+    transform: scale(1);
+    filter: blur(0px);
   }
 }
 
 .tv-splash-logo-img {
-  height: 80px;
+  display: block;
+  height: clamp(58px, 8.2vw, 96px);
   width: auto;
   object-fit: contain;
-  filter: drop-shadow(0 4px 32px rgba(255, 255, 255, 0.3));
+  opacity: 0.8;
+  filter: drop-shadow(0 8px 32px rgba(255, 255, 255, 0.14));
+  animation: kairaLogoLuster 1200ms cubic-bezier(0.22, 1, 0.36, 1) 820ms forwards;
 }
 
-.tv-splash-tagline {
-  font-size: var(--font-body);
-  font-weight: 500;
-  color: rgba(255, 255, 255, 0.5);
-  letter-spacing: 2px;
-  text-transform: uppercase;
+@keyframes kairaLogoLuster {
+  0% {
+    opacity: 0.78;
+  }
+  50% {
+    opacity: 0.94;
+  }
+  100% {
+    opacity: 0.9;
+  }
 }
 
+/* Masked silver-glass specular light sweep across the wordmark */
+.tv-splash-logo-sheen {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  -webkit-mask-size: contain;
+  mask-size: contain;
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  -webkit-mask-position: center;
+  mask-position: center;
+  overflow: hidden;
+}
+
+.tv-splash-logo-sheen::after {
+  content: '';
+  position: absolute;
+  top: -35%;
+  bottom: -35%;
+  left: -65%;
+  width: 52%;
+  background: linear-gradient(
+    108deg,
+    rgba(255, 255, 255, 0) 0%,
+    rgba(235, 242, 255, 0.28) 32%,
+    rgba(255, 255, 255, 1) 50%,
+    rgba(235, 242, 255, 0.28) 68%,
+    rgba(255, 255, 255, 0) 100%
+  );
+  transform: translateX(0) skewX(-16deg);
+  opacity: 0;
+  animation: kairaSpecularSweep 1150ms cubic-bezier(0.25, 0.85, 0.35, 1) 780ms forwards;
+  will-change: transform, opacity;
+}
+
+@keyframes kairaSpecularSweep {
+  0% {
+    opacity: 0;
+    transform: translateX(0%) skewX(-16deg);
+  }
+  15% {
+    opacity: 1;
+  }
+  85% {
+    opacity: 0.95;
+  }
+  100% {
+    opacity: 0;
+    transform: translateX(420%) skewX(-16deg);
+  }
+}
+
+/* Soft obsidian studio reflection directly beneath the wordmark */
+.tv-splash-reflection {
+  margin-top: 8px;
+  height: clamp(22px, 3.2vw, 36px);
+  overflow: hidden;
+  pointer-events: none;
+  opacity: 0;
+  transform: scaleY(-1);
+  -webkit-mask-image: linear-gradient(
+    to top,
+    rgba(0, 0, 0, 0.35) 0%,
+    rgba(0, 0, 0, 0.08) 48%,
+    rgba(0, 0, 0, 0) 90%
+  );
+  mask-image: linear-gradient(
+    to top,
+    rgba(0, 0, 0, 0.35) 0%,
+    rgba(0, 0, 0, 0.08) 48%,
+    rgba(0, 0, 0, 0) 90%
+  );
+  filter: blur(2.5px);
+  animation: kairaReflectionFade 1100ms cubic-bezier(0.16, 1, 0.3, 1) 620ms forwards;
+}
+
+.tv-splash-reflection-img {
+  display: block;
+  height: clamp(58px, 8.2vw, 96px);
+  width: auto;
+  object-fit: contain;
+  opacity: 0.38;
+}
+
+@keyframes kairaReflectionFade {
+  0% {
+    opacity: 0;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+
+/* Quiet bottom skip hint — fades in gently only after ident settles */
 .tv-splash-skip-hint {
   position: absolute;
-  bottom: 36px;
-  font-size: var(--font-caption);
-  font-weight: 500;
-  color: rgba(255, 255, 255, 0.35);
-  letter-spacing: 0.5px;
+  bottom: 38px;
+  font-size: 13px;
+  font-weight: 400;
+  letter-spacing: 0.02em;
+  color: rgba(255, 255, 255, 0.34);
   z-index: 2;
+  opacity: 0;
+  transform: translateY(4px);
+  transition: opacity 500ms ease, transform 500ms ease;
+  pointer-events: none;
+}
+
+.tv-splash-skip-hint.visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* Full prefers-reduced-motion accessibility compliance */
+@media (prefers-reduced-motion: reduce) {
+  .tv-splash-projector-bloom,
+  .tv-splash-aperture-line,
+  .tv-splash-logo-sheen::after {
+    animation: none;
+    opacity: 0;
+  }
+
+  .tv-splash-wordmark-wrap {
+    animation: none;
+    opacity: 1;
+    transform: none;
+    filter: none;
+  }
+
+  .tv-splash-reflection {
+    animation: none;
+    opacity: 0.65;
+  }
+
+  .tv-splash-overlay.fade-out {
+    transform: none;
+  }
 }

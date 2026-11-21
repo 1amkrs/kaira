@@ -4,7 +4,7 @@
   overflow-y: auto;
   overflow-x: hidden;
   padding-bottom: 80px;
-  background-color: #0f0f0f;
+  background-color: var(--bg-app);
 }
 
 .tv-games-hero {
@@ -19,8 +19,8 @@
 .tv-games-hero-overlay {
   position: absolute;
   inset: 0;
-  background: linear-gradient(180deg, rgba(15, 15, 15, 0.2) 0%, rgba(15, 15, 15, 0.85) 75%, #0f0f0f 100%),
-              linear-gradient(90deg, rgba(15, 15, 15, 0.95) 0%, rgba(15, 15, 15, 0.5) 50%, transparent 100%);
+  background: linear-gradient(180deg, rgba(0, 0, 0, 0.22) 0%, rgba(0, 0, 0, 0.88) 75%, var(--bg-app) 100%),
+              linear-gradient(90deg, rgba(0, 0, 0, 0.95) 0%, rgba(0, 0, 0, 0.5) 50%, transparent 100%);
 }
 
 .tv-games-hero-content {
@@ -160,7 +160,7 @@
   height: 310px;
   border-radius: 14px;
   overflow: hidden;
-  background: #1e1e1e;
+  background: var(--bg-surface-2);
   position: relative;
   cursor: pointer;
   border: 1px solid var(--border-subtle);

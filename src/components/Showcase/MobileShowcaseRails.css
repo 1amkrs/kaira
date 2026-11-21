@@ -101,7 +101,7 @@
   position: absolute;
   top: 8px;
   right: 8px;
-  background: rgba(14, 15, 20, 0.72);
+  background: rgba(0, 0, 0, 0.78);
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
   color: #ffffff;

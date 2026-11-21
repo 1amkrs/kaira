@@ -45,7 +45,7 @@
   background: var(--md-sys-color-surface-container-high, rgba(255, 255, 255, 0.08));
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
-  border: 1px solid var(--md-sys-color-outline-variant, var(--border-subtle));
+  border: none;
   color: var(--text-primary);
   font-size: var(--font-body);
   font-weight: 600;
@@ -55,7 +55,6 @@
 .tv-search-icon-btn.focused {
   background: var(--md-sys-color-primary, #a8c7fa);
   color: var(--md-sys-color-on-primary, #062e6f);
-  border-color: var(--md-sys-color-focus-ring, #e8eefc);
   transform: scale(var(--focus-scale));
   box-shadow: 0 0 0 2px var(--md-sys-color-focus-ring, #e8eefc);
 }

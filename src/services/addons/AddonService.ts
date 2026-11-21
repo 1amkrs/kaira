@@ -1,5 +1,45 @@
 import { AddonManifest, AddonStream, InstalledAddon, DebridConfig, SubtitleTrack } from '../../types/addons';
-import { DIRECT_CINEMA_STREAMS, getDirectFallbackStream } from '../../data/media/directStreams';
+import {
+  normalizeAddonManifestUrl,
+  manifestSupportsResource,
+  classifyStremioStream,
+  sortStreamsForDisplay,
+  isTorrentioAddon,
+  torrentioManifestHasDebrid,
+  isTorrentioErrorStream,
+  getBrowserPlayabilityScore,
+} from './stremioProtocol';
+import {
+  isValidStreamUrl,
+  extractImdbId,
+  buildEmergencyFallbackStreams,
+  deduplicateStreams,
+  createFailedStreamTracker,
+  pickNextFallbackStream,
+} from './streamFallback';
+
+export interface ResolveStreamPlanParams {
+  type: 'movie' | 'series';
+  id: string;
+  imdbId?: string;
+  seasonNumber?: number;
+  episodeNumber?: number;
+  titleHint?: string;
+  ytTrailerId?: string;
+  preferredStreamUrl?: string;
+  preferredStreamType?: AddonStream['streamType'];
+  preferredProxyHeaders?: Record<string, string>;
+  preferredDurationSeconds?: number;
+  preloadedStreams?: AddonStream[];
+}
+
+export interface StreamResolutionPlan {
+  primary: AddonStream | null;
+  candidates: AddonStream[];
+  imdbId: string;
+  warnings: string[];
+  usedFallback: boolean;
+}
 
 const DEFAULT_ADDONS: InstalledAddon[] = [
   {
@@ -7,11 +47,11 @@ const DEFAULT_ADDONS: InstalledAddon[] = [
     name: 'Torrentio 4K & Debrid',
     manifestUrl: 'https://torrentio.strem.fun/manifest.json',
     manifest: {
-      id: 'com.stremio.torrentio',
+      id: 'com.stremio.torrentio.addon',
       name: 'Torrentio',
-      version: '1.0.14',
-      description: 'Scrapes 4K HDR10+, 1080p Remux, and 720p streams across major global indexers with optional Debrid cloud playback.',
-      icon: 'https://torrentio.strem.fun/logo.png',
+      version: '0.0.15',
+      description: 'Scrapes 4K HDR10+, 1080p, and 720p streams across global indexers. Requires Debrid (Real-Debrid / AllDebrid / TorBox / Self-Debrid) for browser playback.',
+      icon: 'https://torrentio.strem.fun/images/logo_v1.png',
       resources: ['stream'],
       types: ['movie', 'series', 'anime'],
     },
@@ -51,22 +91,6 @@ const DEFAULT_ADDONS: InstalledAddon[] = [
     installedAt: Date.now(),
   },
   {
-    id: 'aiostreams',
-    name: 'AIOStreams Aggregator',
-    manifestUrl: 'https://aiostreams.am/manifest.json',
-    manifest: {
-      id: 'com.aiostreams.aggregator',
-      name: 'AIOStreams',
-      version: '2.0.0',
-      description: 'Unified multi-provider aggregator for community streams and Debrid caching.',
-      icon: 'https://v3-cinemeta.strem.io/logo.png',
-      resources: ['stream'],
-      types: ['movie', 'series'],
-    },
-    enabled: true,
-    installedAt: Date.now(),
-  },
-  {
     id: 'streaming-catalogs',
     name: 'Streaming Catalogs Provider',
     manifestUrl: 'https://streaming-catalogs.strem.fun/manifest.json',
@@ -92,26 +116,152 @@ class AddonService {
     enabled: false,
   };
   private cachedTorrentHashes: Set<string> = new Set();
+  private uninstalledDefaultIds: Set<string> = new Set();
+  private failedStreamTracker = createFailedStreamTracker();
+  private lastFetchWarnings: string[] = [];
 
   constructor() {
     this.loadState();
   }
 
+  public reloadState() {
+    this.loadState();
+  }
+
+  public markStreamFailed(url: string, reason: string = 'Playback error'): void {
+    this.failedStreamTracker.markFailed(url, reason);
+  }
+
+  public isStreamFailed(url: string): boolean {
+    return this.failedStreamTracker.isFailed(url);
+  }
+
+  public clearFailedStreams(url?: string): void {
+    this.failedStreamTracker.clearFailed(url);
+  }
+
+  public getLastFetchWarnings(): string[] {
+    return [...this.lastFetchWarnings];
+  }
+
+  public getNextFallbackStream(
+    candidates: AddonStream[],
+    extraFailedUrls?: Iterable<string>,
+    options?: { allowDirect?: boolean; allowSelfDebrid?: boolean; maxDirectAttemptsReached?: boolean }
+  ): AddonStream | null {
+    const combinedFailed = this.failedStreamTracker.getFailedUrls();
+    if (extraFailedUrls) {
+      for (const u of extraFailedUrls) {
+        if (typeof u === 'string' && u.trim()) {
+          combinedFailed.add(u.trim());
+        }
+      }
+    }
+    return pickNextFallbackStream(candidates, combinedFailed, options);
+  }
+
+  private async fetchJsonWithRetry(
+    url: string,
+    timeoutMs: number,
+    maxRetries: number = 1
+  ): Promise<{ ok: boolean; status: number; data: any | null; error?: string }> {
+    let lastError = 'Unknown network error';
+    let lastStatus = 0;
+
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+      try {
+        const res = await fetch(url, { signal: controller.signal });
+        clearTimeout(timeoutId);
+        lastStatus = res.status;
+
+        if (!res.ok) {
+          lastError = `HTTP ${res.status}`;
+          const isRetryable = res.status === 429 || res.status >= 500;
+          if (isRetryable && attempt < maxRetries) {
+            await new Promise((r) => setTimeout(r, 350 * (attempt + 1)));
+            continue;
+          }
+          return { ok: false, status: res.status, data: null, error: lastError };
+        }
+
+        const rawText = await res.text();
+        try {
+          const data = JSON.parse(rawText);
+          return { ok: true, status: res.status, data };
+        } catch {
+          return { ok: false, status: res.status, data: null, error: 'Invalid JSON response' };
+        }
+      } catch (err: any) {
+        clearTimeout(timeoutId);
+        lastError = err?.name === 'AbortError' ? 'Request timed out' : err?.message || 'Network error';
+        if (attempt < maxRetries) {
+          await new Promise((r) => setTimeout(r, 350 * (attempt + 1)));
+          continue;
+        }
+      }
+    }
+
+    return { ok: false, status: lastStatus, data: null, error: lastError };
+  }
+
   private loadState() {
     try {
+      const storedUninstalled = localStorage.getItem('tv_uninstalled_default_addons');
+      if (storedUninstalled) {
+        const parsedUninstalled = JSON.parse(storedUninstalled);
+        this.uninstalledDefaultIds = new Set(Array.isArray(parsedUninstalled) ? parsedUninstalled : []);
+      } else {
+        this.uninstalledDefaultIds = new Set();
+      }
+
       const storedAddons = localStorage.getItem('tv_installed_addons');
       if (storedAddons) {
-        const loaded = JSON.parse(storedAddons) as InstalledAddon[];
-        // Ensure all default addons are always present and enabled
+        // Prune legacy unreachable aiostreams.am default entry if present
+        const rawLoaded = (JSON.parse(storedAddons) as InstalledAddon[]).filter(
+          (a) => a.manifestUrl !== 'https://aiostreams.am/manifest.json'
+        );
+
+        // Deduplicate Torrentio entries (legacy 'com.stremio.torrentio' vs official 'com.stremio.torrentio.addon'),
+        // preferring any configured URL with Debrid parameters over the default unconfigured URL.
+        const loaded: InstalledAddon[] = [];
+        let seenTorrentioIndex = -1;
+        for (const addon of rawLoaded) {
+          if (isTorrentioAddon(addon)) {
+            if (seenTorrentioIndex === -1) {
+              seenTorrentioIndex = loaded.length;
+              loaded.push(addon);
+            } else if (
+              torrentioManifestHasDebrid(addon.manifestUrl) &&
+              !torrentioManifestHasDebrid(loaded[seenTorrentioIndex].manifestUrl)
+            ) {
+              loaded[seenTorrentioIndex] = addon;
+            }
+          } else {
+            loaded.push(addon);
+          }
+        }
+
+        // Ensure default addons that the user has not explicitly uninstalled are present
         const existingIds = new Set(loaded.map((a) => a.id));
+        const existingManifestIds = new Set(loaded.map((a) => a.manifest?.id).filter(Boolean));
+        const hasTorrentio = loaded.some((a) => isTorrentioAddon(a));
         DEFAULT_ADDONS.forEach((def) => {
-          if (!existingIds.has(def.id)) {
-            loaded.push(def);
+          const isUninstalled =
+            this.uninstalledDefaultIds.has(def.id) ||
+            this.uninstalledDefaultIds.has(def.manifest.id) ||
+            (def.id === 'torrentio' && this.uninstalledDefaultIds.has('com.stremio.torrentio'));
+          if (def.id === 'torrentio' && hasTorrentio) return;
+          if (!isUninstalled && !existingIds.has(def.id) && !existingManifestIds.has(def.manifest.id)) {
+            loaded.push({ ...def });
           }
         });
         this.installedAddons = loaded;
       } else {
-        this.installedAddons = DEFAULT_ADDONS;
+        this.installedAddons = DEFAULT_ADDONS.filter(
+          (def) => !this.uninstalledDefaultIds.has(def.id) && !this.uninstalledDefaultIds.has(def.manifest.id)
+        ).map((def) => ({ ...def }));
         this.saveAddons();
       }
 
@@ -120,8 +270,17 @@ class AddonService {
         this.debridConfig = JSON.parse(storedDebrid);
       }
     } catch (e) {
-      this.installedAddons = DEFAULT_ADDONS;
+      this.installedAddons = DEFAULT_ADDONS.map((def) => ({ ...def }));
     }
+  }
+
+  private saveUninstalledDefaults() {
+    try {
+      localStorage.setItem(
+        'tv_uninstalled_default_addons',
+        JSON.stringify(Array.from(this.uninstalledDefaultIds))
+      );
+    } catch (e) {}
   }
 
   private saveAddons() {
@@ -135,18 +294,32 @@ class AddonService {
   }
 
   public async installAddon(manifestUrl: string): Promise<InstalledAddon> {
-    const cleanUrl = manifestUrl.trim().replace(/\/+$/, '');
-    const targetUrl = cleanUrl.endsWith('manifest.json') ? cleanUrl : `${cleanUrl}/manifest.json`;
+    const targetUrl = normalizeAddonManifestUrl(manifestUrl);
 
     console.log(`[AddonService] Fetching manifest from: ${targetUrl}`);
-    const res = await fetch(targetUrl);
-    if (!res.ok) {
-      throw new Error(`HTTP Error ${res.status} when fetching manifest`);
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 8000);
+    let res: Response;
+    try {
+      res = await fetch(targetUrl, { signal: controller.signal });
+    } finally {
+      clearTimeout(timeoutId);
     }
 
-    const manifest: AddonManifest = await res.json();
-    if (!manifest.id || !manifest.resources) {
-      throw new Error('Invalid Nuvio / Stremio Addon manifest format');
+    if (!res.ok) {
+      throw new Error(`HTTP ${res.status} when fetching manifest`);
+    }
+
+    const rawText = await res.text();
+    let manifest: AddonManifest;
+    try {
+      manifest = JSON.parse(rawText);
+    } catch {
+      throw new Error('URL did not return a valid JSON Stremio manifest');
+    }
+
+    if (!manifest || !manifest.id || !manifest.name || !Array.isArray(manifest.resources)) {
+      throw new Error('Invalid Stremio / Nuvio addon manifest (missing id, name, or resources)');
     }
 
     const newEntry: InstalledAddon = {
@@ -158,24 +331,59 @@ class AddonService {
       installedAt: Date.now(),
     };
 
-    const existingIdx = this.installedAddons.findIndex((a) => a.id === manifest.id);
+    const existingIdx = this.installedAddons.findIndex(
+      (a) =>
+        a.id === manifest.id ||
+        a.manifest?.id === manifest.id ||
+        (isTorrentioAddon(newEntry) && isTorrentioAddon(a))
+    );
     if (existingIdx >= 0) {
       this.installedAddons[existingIdx] = newEntry;
     } else {
       this.installedAddons.push(newEntry);
     }
 
+    // If user re-installs a previously uninstalled default addon, clear its tombstone
+    DEFAULT_ADDONS.forEach((def) => {
+      if (
+        def.id === manifest.id ||
+        def.manifest.id === manifest.id ||
+        (def.id === 'torrentio' && isTorrentioAddon(newEntry))
+      ) {
+        this.uninstalledDefaultIds.delete(def.id);
+        this.uninstalledDefaultIds.delete(def.manifest.id);
+        this.uninstalledDefaultIds.delete('com.stremio.torrentio');
+      }
+    });
+    this.saveUninstalledDefaults();
     this.saveAddons();
     return newEntry;
   }
 
   public uninstallAddon(addonId: string): void {
-    this.installedAddons = this.installedAddons.filter((a) => a.id !== addonId);
+    const removed = this.installedAddons.find(
+      (a) => a.id === addonId || a.manifest?.id === addonId
+    );
+    this.installedAddons = this.installedAddons.filter(
+      (a) => a.id !== addonId && a.manifest?.id !== addonId
+    );
+    DEFAULT_ADDONS.forEach((def) => {
+      if (
+        def.id === addonId ||
+        def.manifest.id === addonId ||
+        (removed && (def.id === removed.id || def.manifest.id === removed.manifest?.id))
+      ) {
+        this.uninstalledDefaultIds.add(def.id);
+      }
+    });
+    this.saveUninstalledDefaults();
     this.saveAddons();
   }
 
   public toggleAddon(addonId: string, enabled: boolean): void {
-    const item = this.installedAddons.find((a) => a.id === addonId);
+    const item = this.installedAddons.find(
+      (a) => a.id === addonId || a.manifest?.id === addonId
+    );
     if (item) {
       item.enabled = enabled;
       this.saveAddons();
@@ -184,6 +392,23 @@ class AddonService {
 
   public getDebridConfig(): DebridConfig {
     return { ...this.debridConfig };
+  }
+
+  public isTorrentioConfigured(addon?: InstalledAddon): boolean {
+    if (addon && torrentioManifestHasDebrid(addon.manifestUrl)) {
+      return true;
+    }
+    if (this.debridConfig.enabled && this.debridConfig.provider === 'selfdebrid') {
+      return Boolean((this.debridConfig.endpointUrl || '').trim());
+    }
+    if (
+      this.debridConfig.enabled &&
+      this.debridConfig.provider !== 'none' &&
+      Boolean((this.debridConfig.apiKey || '').trim())
+    ) {
+      return true;
+    }
+    return false;
   }
 
   public setDebridConfig(config: DebridConfig): void {
@@ -230,232 +455,386 @@ class AddonService {
     titleHint?: string,
     ytTrailerId?: string
   ): Promise<AddonStream[]> {
-    const cleanImdbId = id.startsWith('tt') ? id : id.replace(/^mov-|^show-/, '');
+    const cleanImdbId = extractImdbId(id);
     const isImdb = cleanImdbId.startsWith('tt');
+    this.lastFetchWarnings = [];
 
-    console.log(`[AddonService] Resolving streams for [${type}]: ${cleanImdbId}`);
+    console.log(`[AddonService] Resolving streams for [${type}]: ${cleanImdbId || id}`);
 
     const streams: AddonStream[] = [];
+    let selfDebridReachable = true;
 
-    // 0. Pre-check Self-Debrid Local Disk Cache & Completed Torrents
-    const selfUrl = (this.debridConfig.provider === 'selfdebrid' && this.debridConfig.endpointUrl
-      ? this.debridConfig.endpointUrl
-      : 'http://localhost:8081'
-    ).replace(/\/+$/, '');
+    // 0. Pre-check Self-Debrid Local Disk Cache & Completed Torrents (only when explicitly enabled)
+    if (this.debridConfig.enabled && this.debridConfig.provider === 'selfdebrid') {
+      const selfUrl = (this.debridConfig.endpointUrl || 'http://localhost:8081').replace(/\/+$/, '');
 
-    try {
-      const cleanTitle = (titleHint || '')
-        .replace(/\b[sS]\d+[\.\-_ ]?[eE]\d+\b/gi, ' ')
-        .replace(/\b\d+x\d+\b/gi, ' ')
-        .replace(/\b[sS]\d+\b/gi, ' ')
-        .replace(/\b[eE]\d+\b/gi, ' ')
-        .replace(/\s+/g, ' ')
-        .trim();
+      try {
+        const cleanTitle = (titleHint || '')
+          .replace(/\b[sS]\d+[\.\-_ ]?[eE]\d+\b/gi, ' ')
+          .replace(/\b\d+x\d+\b/gi, ' ')
+          .replace(/\b[sS]\d+\b/gi, ' ')
+          .replace(/\b[eE]\d+\b/gi, ' ')
+          .replace(/\s+/g, ' ')
+          .trim();
 
-      const checkParams = new URLSearchParams();
-      if (cleanTitle) checkParams.set('title', cleanTitle);
-      if (seasonNumber !== undefined) checkParams.set('season', String(seasonNumber));
-      if (episodeNumber !== undefined) checkParams.set('episode', String(episodeNumber));
+        const checkParams = new URLSearchParams();
+        if (cleanTitle) checkParams.set('title', cleanTitle);
+        if (seasonNumber !== undefined) checkParams.set('season', String(seasonNumber));
+        if (episodeNumber !== undefined) checkParams.set('episode', String(episodeNumber));
 
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 1200);
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 1200);
 
-      const [cacheCheckRes, cacheInvRes] = await Promise.allSettled([
-        fetch(`${selfUrl}/cache/check?${checkParams.toString()}`, { signal: controller.signal }).then((r) => r.json()),
-        fetch(`${selfUrl}/cache`, { signal: controller.signal }).then((r) => r.json()),
-      ]);
-      clearTimeout(timeoutId);
+        const [cacheCheckRes, cacheInvRes] = await Promise.allSettled([
+          fetch(`${selfUrl}/cache/check?${checkParams.toString()}`, { signal: controller.signal }).then((r) => {
+            if (!r.ok) throw new Error(`HTTP ${r.status}`);
+            return r.json();
+          }),
+          fetch(`${selfUrl}/cache`, { signal: controller.signal }).then((r) => {
+            if (!r.ok) throw new Error(`HTTP ${r.status}`);
+            return r.json();
+          }),
+        ]);
+        clearTimeout(timeoutId);
 
-      if (cacheInvRes.status === 'fulfilled' && cacheInvRes.value?.cached_hashes) {
-        this.cachedTorrentHashes.clear();
-        const hashes = cacheInvRes.value.cached_hashes;
-        Object.keys(hashes).forEach((h) => {
-          if (hashes[h]?.completed) {
-            this.cachedTorrentHashes.add(h.toLowerCase());
-          }
-        });
-      }
-
-      let cachedItem: any = null;
-      if (cacheCheckRes.status === 'fulfilled' && cacheCheckRes.value?.cached) {
-        cachedItem = cacheCheckRes.value;
-      } else if (cacheInvRes.status === 'fulfilled' && Array.isArray(cacheInvRes.value?.cached_files)) {
-        // Fallback: search cached_files inventory directly
-        const titleWords = cleanTitle.toLowerCase().split(/[^a-z0-9]+/).filter((w) => w.length > 2);
-        const files: any[] = cacheInvRes.value.cached_files;
-        for (const f of files) {
-          const combined = `${f.name || ''} ${f.relpath || ''}`.toLowerCase();
-          if (seasonNumber !== undefined && episodeNumber !== undefined) {
-            const epRegex = new RegExp(`[sS]0?${seasonNumber}[\\.\\-_ ]?[eE]0?${episodeNumber}\\b|\\b0?${seasonNumber}x0?${episodeNumber}\\b`, 'i');
-            if (!epRegex.test(combined)) continue;
-          }
-          if (titleWords.length > 0) {
-            const matches = titleWords.filter((w) => combined.includes(w));
-            if (matches.length >= Math.min(1, titleWords.length)) {
-              cachedItem = f;
-              break;
-            }
-          } else {
-            cachedItem = f;
-            break;
-          }
+        if (cacheCheckRes.status === 'rejected' && cacheInvRes.status === 'rejected') {
+          selfDebridReachable = false;
+          const warning = `Self-Debrid server at ${selfUrl} is unreachable; skipping local :8081 streams.`;
+          this.lastFetchWarnings.push(warning);
+          console.warn(`[AddonService] ${warning}`);
         }
 
-        // Pass 2: if no cached item yet, match by season & episode
-        if (!cachedItem && seasonNumber !== undefined && episodeNumber !== undefined) {
+        if (cacheInvRes.status === 'fulfilled' && cacheInvRes.value?.cached_hashes) {
+          this.cachedTorrentHashes.clear();
+          const hashes = cacheInvRes.value.cached_hashes;
+          Object.keys(hashes).forEach((h) => {
+            if (hashes[h]?.completed) {
+              this.cachedTorrentHashes.add(h.toLowerCase());
+            }
+          });
+        }
+
+        let cachedItem: any = null;
+        if (cacheCheckRes.status === 'fulfilled' && cacheCheckRes.value?.cached) {
+          cachedItem = cacheCheckRes.value;
+        } else if (cacheInvRes.status === 'fulfilled' && Array.isArray(cacheInvRes.value?.cached_files)) {
+          // Fallback: search cached_files inventory directly
+          const titleWords = cleanTitle.toLowerCase().split(/[^a-z0-9]+/).filter((w) => w.length > 2);
+          const files: any[] = cacheInvRes.value.cached_files;
           for (const f of files) {
             const combined = `${f.name || ''} ${f.relpath || ''}`.toLowerCase();
-            const epRegex = new RegExp(`[sS]0?${seasonNumber}[\\.\\-_ ]?[eE]0?${episodeNumber}\\b|\\b0?${seasonNumber}x0?${episodeNumber}\\b`, 'i');
-            if (epRegex.test(combined)) {
+            if (seasonNumber !== undefined && episodeNumber !== undefined) {
+              const epRegex = new RegExp(`[sS]0?${seasonNumber}[\\.\\-_ ]?[eE]0?${episodeNumber}\\b|\\b0?${seasonNumber}x0?${episodeNumber}\\b`, 'i');
+              if (!epRegex.test(combined)) continue;
+            }
+            if (titleWords.length > 0) {
+              const matches = titleWords.filter((w) => combined.includes(w));
+              if (matches.length >= Math.min(1, titleWords.length)) {
+                cachedItem = f;
+                break;
+              }
+            } else {
               cachedItem = f;
               break;
             }
           }
-        }
-      }
 
-      if (cachedItem && cachedItem.stream_url) {
-        console.log(`[AddonService] ⚡ Found local cached file in Self-Debrid:`, cachedItem.name);
-        streams.unshift({
-          name: 'Self-Debrid [⚡ Local Disk Cache]',
-          title: `${titleHint || cachedItem.name} • Instant Disk Playback`,
-          description: `Pre-downloaded in Debrid Cache (${cachedItem.name}) • Zero Buffering`,
-          url: cachedItem.stream_url,
-          streamType: 'direct',
-          quality: '1080p',
-          resolution: '1080p Disk Cache',
-          audio: 'AAC Stereo Transcode',
-          providerName: 'Self-Debrid Local',
-          isDebrid: true,
-          isCached: true,
-          durationSeconds: cachedItem.duration ? Math.round(cachedItem.duration) : undefined,
-        });
-      }
-    } catch (err) {
-      console.warn('[AddonService] Self-Debrid local cache pre-check notice:', err);
-    }
-
-    // 1. Primary Full Feature Stream (VidLink Mirror)
-    if (isImdb) {
-      const vidLinkUrl =
-        type === 'movie'
-          ? `https://vidlink.pro/movie/${cleanImdbId}?primaryColor=ff453a&secondaryColor=ffffff&iconColor=ffffff`
-          : `https://vidlink.pro/tv/${cleanImdbId}/${seasonNumber || 1}/${episodeNumber || 1}?primaryColor=ff453a&secondaryColor=ffffff&iconColor=ffffff`;
-
-      streams.push({
-        name: 'VidLink Server 1 • High-Speed [Full Movie]',
-        title: `${titleHint || 'Full Feature'} • 1080p/4K FHD Stream`,
-        description: 'Multi-CDN Cloud Server • Instant Playback & Auto-Resolution',
-        url: vidLinkUrl,
-        streamType: 'embed',
-        quality: '1080p',
-        resolution: '1080p FHD',
-        audio: 'Dolby Digital / 5.1',
-        providerName: 'VidLink CDN',
-        isDebrid: true,
-      });
-
-      const vidSrcUrl =
-        type === 'movie'
-          ? `https://vidsrc.pm/embed/movie/${cleanImdbId}?autoplay=1`
-          : `https://vidsrc.pm/embed/tv/${cleanImdbId}/${seasonNumber || 1}/${episodeNumber || 1}?autoplay=1`;
-
-      streams.push({
-        name: 'VidSrc Server 2 • Alternate [Full Movie]',
-        title: `${titleHint || 'Full Feature'} • 1080p Web Stream`,
-        description: 'Fast Alternate Cloud Mirror (Full Feature)',
-        url: vidSrcUrl,
-        streamType: 'embed',
-        quality: '1080p',
-        resolution: '1080p Web-DL',
-        audio: 'Stereo / 5.1',
-        providerName: 'VidSrc Mirror',
-        isDebrid: false,
-      });
-    }
-
-    // 2. Official Studio Trailer (Preview Only)
-    if (ytTrailerId) {
-      streams.push({
-        name: 'Official Studio Trailer [Promo Preview]',
-        title: `${titleHint || 'Feature'} • YouTube Promo Trailer`,
-        description: '1080p FHD • Official Studio Promo Trailer',
-        url: `https://www.youtube.com/embed/${ytTrailerId}?autoplay=1&enablejsapi=1`,
-        streamType: 'youtube',
-        quality: '1080p',
-        resolution: '1080p Trailer',
-        audio: 'Stereo',
-        providerName: 'YouTube Promo',
-        isDebrid: false,
-      });
-    }
-
-    // 3. Query Torrentio (with or without Debrid config)
-    if (isImdb) {
-      try {
-        let torrentioBase = 'https://torrentio.strem.fun';
-        if (this.debridConfig.enabled && this.debridConfig.apiKey && this.debridConfig.provider !== 'none') {
-          torrentioBase = `https://torrentio.strem.fun/${this.debridConfig.provider}=${this.debridConfig.apiKey}`;
-        }
-
-        let torrentioEndpoint = '';
-        if (type === 'movie') {
-          torrentioEndpoint = `${torrentioBase}/stream/movie/${cleanImdbId}.json`;
-        } else {
-          torrentioEndpoint = `${torrentioBase}/stream/series/${cleanImdbId}:${seasonNumber || 1}:${episodeNumber || 1}.json`;
-        }
-
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 3500);
-
-        const res = await fetch(torrentioEndpoint, { signal: controller.signal });
-        clearTimeout(timeoutId);
-
-        if (res.ok) {
-          const data = await res.json();
-          if (data && Array.isArray(data.streams)) {
-            const parsedTorrentio = data.streams.slice(0, 15).map((s: any) => this.normalizeStream(s, 'Torrentio', cleanImdbId, type, seasonNumber, episodeNumber));
-            streams.push(...parsedTorrentio);
+          // Pass 2: if no cached item yet, match by season & episode
+          if (!cachedItem && seasonNumber !== undefined && episodeNumber !== undefined) {
+            for (const f of files) {
+              const combined = `${f.name || ''} ${f.relpath || ''}`.toLowerCase();
+              const epRegex = new RegExp(`[sS]0?${seasonNumber}[\\.\\-_ ]?[eE]0?${episodeNumber}\\b|\\b0?${seasonNumber}x0?${episodeNumber}\\b`, 'i');
+              if (epRegex.test(combined)) {
+                cachedItem = f;
+                break;
+              }
+            }
           }
+        }
+
+        if (cachedItem && isValidStreamUrl(cachedItem.stream_url)) {
+          console.log(`[AddonService] ⚡ Found local cached file in Self-Debrid:`, cachedItem.name);
+          streams.unshift({
+            name: 'Self-Debrid [⚡ Local Disk Cache]',
+            title: `${titleHint || cachedItem.name} • Instant Disk Playback`,
+            description: `Pre-downloaded in Debrid Cache (${cachedItem.name}) • Zero Buffering`,
+            url: cachedItem.stream_url,
+            streamType: 'direct',
+            quality: '1080p',
+            resolution: '1080p Disk Cache',
+            audio: 'AAC Stereo Transcode',
+            providerName: 'Self-Debrid Local',
+            isDebrid: true,
+            isCached: true,
+            durationSeconds: cachedItem.duration ? Math.round(cachedItem.duration) : undefined,
+          });
         }
       } catch (err) {
-        console.warn('[AddonService] Torrentio query failed:', err);
+        selfDebridReachable = false;
+        const warning = `Self-Debrid local cache pre-check failed: ${err instanceof Error ? err.message : String(err)}`;
+        this.lastFetchWarnings.push(warning);
+        console.warn('[AddonService]', warning);
       }
     }
 
-    // 4. Query other installed stream addons (e.g. AIOStreams)
-    const otherAddons = this.installedAddons.filter(
-      (a) => a.enabled && a.id !== 'torrentio' && a.manifest.resources.includes('stream')
+    // 1. Guaranteed Multi-Server Web Mirrors (VidLink, VidSrc) & Optional Studio Trailer
+    streams.push(
+      ...buildEmergencyFallbackStreams({
+        type,
+        imdbId: cleanImdbId,
+        seasonNumber,
+        episodeNumber,
+        titleHint,
+        ytTrailerId,
+      })
     );
 
-    for (const addon of otherAddons) {
-      try {
-        const baseUrl = addon.manifestUrl.replace(/\/manifest\.json$/i, '');
-        let streamEndpoint = '';
-        if (type === 'movie') {
-          streamEndpoint = `${baseUrl}/stream/movie/${encodeURIComponent(cleanImdbId)}.json`;
-        } else {
-          const epId = seasonNumber && episodeNumber ? `${cleanImdbId}:${seasonNumber}:${episodeNumber}` : cleanImdbId;
-          streamEndpoint = `${baseUrl}/stream/series/${encodeURIComponent(epId)}.json`;
-        }
+    // 2. Query Torrentio + all enabled Stremio v3 stream addons IN PARALLEL with retry-once resilience
+    if (isImdb) {
+      const addonQueries: Promise<AddonStream[]>[] = [];
 
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 3000);
+      const torrentioAddon = this.installedAddons.find((a) => isTorrentioAddon(a));
 
-        const res = await fetch(streamEndpoint, { signal: controller.signal });
-        clearTimeout(timeoutId);
+      if (torrentioAddon && torrentioAddon.enabled) {
+        addonQueries.push(
+          (async () => {
+            try {
+              let torrentioBase = torrentioAddon.manifestUrl.replace(/\/manifest\.json$/i, '').replace(/\/+$/, '');
+              const hasManifestDebrid = torrentioManifestHasDebrid(torrentioAddon.manifestUrl);
+              const cleanApiKey = (this.debridConfig.apiKey || '').trim();
 
-        if (res.ok) {
-          const data = await res.json();
-          if (data && Array.isArray(data.streams)) {
-            const parsed = data.streams.slice(0, 6).map((s: any) => this.normalizeStream(s, addon.name, cleanImdbId, type, seasonNumber, episodeNumber));
-            streams.push(...parsed);
+              if (
+                !hasManifestDebrid &&
+                this.debridConfig.enabled &&
+                cleanApiKey &&
+                this.debridConfig.provider !== 'none' &&
+                this.debridConfig.provider !== 'selfdebrid'
+              ) {
+                const isRootTorrentio = /^https?:\/\/torrentio\.strem\.fun$/i.test(torrentioBase);
+                torrentioBase = isRootTorrentio
+                  ? `${torrentioBase}/${this.debridConfig.provider}=${encodeURIComponent(cleanApiKey)}`
+                  : `${torrentioBase}|${this.debridConfig.provider}=${encodeURIComponent(cleanApiKey)}`;
+              }
+
+              const torrentioEndpoint =
+                type === 'movie'
+                  ? `${torrentioBase}/stream/movie/${cleanImdbId}.json`
+                  : `${torrentioBase}/stream/series/${cleanImdbId}:${seasonNumber || 1}:${episodeNumber || 1}.json`;
+
+              const result = await this.fetchJsonWithRetry(torrentioEndpoint, 6500, 1);
+              if (!result.ok || !result.data || !Array.isArray(result.data.streams)) {
+                const reason = result.error || 'Empty Torrentio response';
+                this.lastFetchWarnings.push(`Torrentio unavailable (${reason}); using fallback sources.`);
+                console.warn(`[AddonService] Torrentio query failed (${reason})`);
+                return [];
+              }
+
+              const normalized = result.data.streams
+                .slice(0, 20)
+                .map((s: any) =>
+                  this.normalizeStream(
+                    s,
+                    'Torrentio',
+                    cleanImdbId,
+                    type,
+                    seasonNumber,
+                    episodeNumber,
+                    selfDebridReachable
+                  )
+                )
+                .filter((s: AddonStream | null): s is AddonStream => s !== null && isValidStreamUrl(s.url));
+
+              if (normalized.length === 0 && result.data.streams.length > 0) {
+                this.lastFetchWarnings.push(
+                  'Torrentio returned no directly playable browser streams; falling back to backup mirrors.'
+                );
+              }
+              return normalized;
+            } catch (err) {
+              const msg = err instanceof Error ? err.message : String(err);
+              this.lastFetchWarnings.push(`Torrentio query error (${msg}); using fallback sources.`);
+              console.warn('[AddonService] Torrentio query failed:', err);
+              return [];
+            }
+          })()
+        );
+      }
+
+      const otherStreamAddons = this.installedAddons.filter(
+        (a) =>
+          a.enabled &&
+          !isTorrentioAddon(a) &&
+          manifestSupportsResource(a.manifest, 'stream', type, cleanImdbId)
+      );
+
+      for (const addon of otherStreamAddons) {
+        addonQueries.push(
+          (async () => {
+            try {
+              const baseUrl = addon.manifestUrl.replace(/\/manifest\.json$/i, '').replace(/\/+$/, '');
+              const streamEndpoint =
+                type === 'movie'
+                  ? `${baseUrl}/stream/movie/${encodeURIComponent(cleanImdbId)}.json`
+                  : `${baseUrl}/stream/series/${encodeURIComponent(
+                      seasonNumber && episodeNumber
+                        ? `${cleanImdbId}:${seasonNumber}:${episodeNumber}`
+                        : cleanImdbId
+                    )}.json`;
+
+              const result = await this.fetchJsonWithRetry(streamEndpoint, 6500, 1);
+              if (!result.ok || !result.data || !Array.isArray(result.data.streams)) {
+                const reason = result.error || 'Empty addon response';
+                this.lastFetchWarnings.push(`Addon "${addon.name}" failed (${reason}).`);
+                console.warn(`[AddonService] Addon "${addon.name}" stream query failed (${reason})`);
+                return [];
+              }
+
+              return result.data.streams
+                .slice(0, 12)
+                .map((s: any) =>
+                  this.normalizeStream(
+                    s,
+                    addon.manifest?.name || addon.name,
+                    cleanImdbId,
+                    type,
+                    seasonNumber,
+                    episodeNumber,
+                    selfDebridReachable
+                  )
+                )
+                .filter((s: AddonStream | null): s is AddonStream => s !== null && isValidStreamUrl(s.url));
+            } catch (err) {
+              const msg = err instanceof Error ? err.message : String(err);
+              this.lastFetchWarnings.push(`Addon "${addon.name}" failed (${msg}).`);
+              console.warn(`[AddonService] Addon "${addon.name}" stream query failed:`, err);
+              return [];
+            }
+          })()
+        );
+      }
+
+      if (addonQueries.length > 0) {
+        const settled = await Promise.allSettled(addonQueries);
+        for (const result of settled) {
+          if (result.status === 'fulfilled' && result.value.length > 0) {
+            streams.push(...result.value);
           }
         }
-      } catch (e) {}
+      }
     }
 
-    return streams;
+    return sortStreamsForDisplay(deduplicateStreams(streams));
+  }
+
+  /**
+   * High-level resilient stream resolver for handlePlayMovie / handlePlayEpisode and details screens.
+   * Never throws: validates preferred URLs, skips session-failed URLs, and always guarantees fallback candidates.
+   */
+  public async resolveStreamPlan(params: ResolveStreamPlanParams): Promise<StreamResolutionPlan> {
+    const cleanImdbId = extractImdbId(params.imdbId, params.id);
+    const warnings: string[] = [];
+    let usedFallback = false;
+
+    const emergencyFallbacks = buildEmergencyFallbackStreams({
+      type: params.type,
+      imdbId: cleanImdbId,
+      seasonNumber: params.seasonNumber,
+      episodeNumber: params.episodeNumber,
+      titleHint: params.titleHint,
+      ytTrailerId: params.ytTrailerId,
+    });
+
+    let fetchedStreams: AddonStream[] = [];
+    if (params.preloadedStreams && params.preloadedStreams.length > 0) {
+      fetchedStreams = params.preloadedStreams;
+    } else if (cleanImdbId) {
+      try {
+        fetchedStreams = await this.fetchStreams(
+          params.type,
+          cleanImdbId,
+          params.seasonNumber,
+          params.episodeNumber,
+          params.titleHint,
+          params.ytTrailerId
+        );
+        if (this.lastFetchWarnings.length > 0) {
+          warnings.push(...this.lastFetchWarnings);
+        }
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        warnings.push(`Stream resolution failed (${msg}); using emergency fallback mirrors.`);
+        console.warn('[AddonService] resolveStreamPlan fell back after fetchStreams error:', err);
+        usedFallback = true;
+      }
+    }
+
+    let candidates = sortStreamsForDisplay(
+      deduplicateStreams([...fetchedStreams, ...emergencyFallbacks])
+    );
+
+    let primary: AddonStream | null = null;
+    const rawPreferredUrl = params.preferredStreamUrl?.trim();
+
+    if (rawPreferredUrl) {
+      if (!isValidStreamUrl(rawPreferredUrl)) {
+        warnings.push('Requested stream URL is invalid; falling back to best available mirror.');
+        usedFallback = true;
+        primary = this.selectBestStream(candidates);
+      } else if (this.isStreamFailed(rawPreferredUrl)) {
+        warnings.push('Requested stream URL previously failed in this session; selecting healthy alternate.');
+        usedFallback = true;
+        primary = this.selectBestStream(candidates);
+        if (!primary) {
+          primary =
+            candidates.find((c) => c.url === rawPreferredUrl) || {
+              name: params.titleHint || 'Selected Stream',
+              title: params.titleHint || 'Selected Stream',
+              url: rawPreferredUrl,
+              streamType: params.preferredStreamType || 'direct',
+              proxyHeaders: params.preferredProxyHeaders,
+              durationSeconds: params.preferredDurationSeconds,
+            };
+        }
+      } else {
+        const matched = candidates.find((c) => c.url === rawPreferredUrl);
+        if (matched) {
+          primary = {
+            ...matched,
+            streamType: params.preferredStreamType || matched.streamType,
+            proxyHeaders: params.preferredProxyHeaders || matched.proxyHeaders,
+            durationSeconds: params.preferredDurationSeconds || matched.durationSeconds,
+          };
+        } else {
+          primary = {
+            name: params.titleHint || 'Selected Stream',
+            title: params.titleHint || 'Selected Stream',
+            url: rawPreferredUrl,
+            streamType: params.preferredStreamType || 'direct',
+            proxyHeaders: params.preferredProxyHeaders,
+            durationSeconds: params.preferredDurationSeconds,
+          };
+          candidates = deduplicateStreams([primary, ...candidates]);
+        }
+      }
+    } else {
+      primary = this.selectBestStream(candidates);
+      if (primary && primary.streamType !== 'direct' && warnings.length > 0) {
+        usedFallback = true;
+      }
+    }
+
+    if (!primary && candidates.length > 0) {
+      primary = candidates[0];
+      usedFallback = true;
+    }
+
+    return {
+      primary,
+      candidates,
+      imdbId: cleanImdbId,
+      warnings,
+      usedFallback,
+    };
   }
 
   public async testSelfDebrid(endpointUrl?: string): Promise<{ success: boolean; message: string }> {
@@ -471,23 +850,93 @@ class AddonService {
     }
   }
 
+  public async testCloudDebrid(
+    provider: 'realdebrid' | 'alldebrid' | 'torbox',
+    apiKey: string
+  ): Promise<{ success: boolean; message: string }> {
+    const cleanKey = (apiKey || '').trim();
+    if (!cleanKey) {
+      return { success: false, message: 'Enter an API token before testing.' };
+    }
+
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 7000);
+      const endpoint = `https://torrentio.strem.fun/${provider}=${encodeURIComponent(cleanKey)}/stream/movie/tt0133093.json`;
+      const res = await fetch(endpoint, { signal: controller.signal });
+      clearTimeout(timeoutId);
+
+      if (!res.ok) {
+        return { success: false, message: `Torrentio returned HTTP ${res.status}.` };
+      }
+
+      const data = await res.json();
+      const list = Array.isArray(data?.streams) ? data.streams : [];
+      if (list.length === 0) {
+        return { success: false, message: 'Torrentio returned 0 streams for this key.' };
+      }
+
+      const errorStream = list.find((s: any) => isTorrentioErrorStream(s));
+      if (errorStream) {
+        const reason = String(errorStream.title || errorStream.name || 'Invalid API key').replace(/\s+/g, ' ').trim();
+        return { success: false, message: `Torrentio rejected key: ${reason}` };
+      }
+
+      const directCount = list.filter((s: any) => typeof s?.url === 'string' && /^https?:\/\//i.test(s.url)).length;
+      if (directCount > 0) {
+        return {
+          success: true,
+          message: `Connected! Torrentio returned ${directCount} direct ${provider.toUpperCase()} streams.`,
+        };
+      }
+
+      return {
+        success: false,
+        message: 'Torrentio returned P2P torrents instead of Debrid URLs. Double-check your token.',
+      };
+    } catch (e: any) {
+      return { success: false, message: `Could not reach Torrentio: ${e?.message || 'Network timeout'}` };
+    }
+  }
+
   private normalizeStream(
     raw: any,
     providerName: string,
-    imdbId: string,
-    type: 'movie' | 'series',
-    seasonNumber?: number,
-    episodeNumber?: number
-  ): AddonStream {
-    const rawTitle = raw.title || raw.name || 'Video Stream';
-    const parsed = this.parseStreamTitle(rawTitle);
+    _imdbId: string,
+    _type: 'movie' | 'series',
+    _seasonNumber?: number,
+    _episodeNumber?: number,
+    selfDebridReachable: boolean = true
+  ): AddonStream | null {
+    if (!raw || typeof raw !== 'object') return null;
 
-    let streamUrl = raw.url || '';
+    // Filter out Torrentio error-notice pseudo-streams (e.g. "Invalid RealDebrid ApiKey/Token!")
+    if (isTorrentioErrorStream(raw)) {
+      console.warn('[AddonService] Ignoring Torrentio error notice:', raw.title || raw.name);
+      return null;
+    }
+
+    const rawTitle = raw.title || raw.description || raw.name || 'Video Stream';
+    const parsed = this.parseStreamTitle(`${raw.name || ''} ${rawTitle}`);
+
+    let streamUrl = '';
     let streamType: AddonStream['streamType'] = 'direct';
+    let isHls = false;
+    let proxyHeaders: Record<string, string> | undefined;
     const isSelfDebrid = this.debridConfig.enabled && this.debridConfig.provider === 'selfdebrid';
 
-    if (raw.url) {
-      streamUrl = raw.url;
+    const classified = classifyStremioStream(raw);
+
+    if (classified) {
+      streamUrl = classified.url;
+      streamType = classified.streamType;
+      isHls = classified.isHls;
+      proxyHeaders = classified.proxyHeaders;
+
+      if (streamUrl.includes(':8081') && !selfDebridReachable) {
+        return null;
+      }
+
       if (isSelfDebrid && streamUrl.includes(':8081') && !streamUrl.includes('audio=')) {
         const audioMode = this.debridConfig.audioMode || 'auto';
         if (audioMode !== 'direct') {
@@ -495,9 +944,8 @@ class AddonService {
           streamUrl = `${streamUrl}${sep}audio=aac&transcode=1&downmix=stereo`;
         }
       }
-      streamType = raw.url.includes('.mp4') || raw.url.includes('.mkv') || raw.url.includes('.m3u8') ? 'direct' : 'embed';
     } else if (raw.infoHash) {
-      if (isSelfDebrid) {
+      if (isSelfDebrid && selfDebridReachable) {
         const selfUrl = (this.debridConfig.endpointUrl || 'http://localhost:8081').replace(/\/+$/, '');
         // an0mal1a/self-debrid route is /stream/<torrent_hash>
         const fileParam = raw.fileIdx !== undefined ? `file=${raw.fileIdx}` : '';
@@ -505,7 +953,7 @@ class AddonService {
         const audioParam = audioMode === 'direct' ? '' : 'audio=aac&transcode=1&downmix=stereo';
         const queryParams = [fileParam, audioParam].filter(Boolean).join('&');
         const queryStr = queryParams ? `?${queryParams}` : '';
-        
+
         streamUrl = `${selfUrl}/stream/${raw.infoHash}${queryStr}`;
         streamType = 'direct';
 
@@ -515,31 +963,40 @@ class AddonService {
           fetch('http://localhost:8080/api/v2/torrents/add', {
             method: 'POST',
             body: new URLSearchParams({ urls: magnetUrl, sequentialDownload: 'true', firstLastPiecePrio: 'true' }),
-            mode: 'no-cors'
+            mode: 'no-cors',
           }).catch(() => {});
         } catch (_) {}
       } else {
-        // If direct Debrid link is not returned, route via fast web player for this exact title
-        streamType = 'embed';
-        streamUrl =
-          type === 'movie'
-            ? `https://vidsrc.pm/embed/movie/${imdbId}?autoplay=1`
-            : `https://vidsrc.pm/embed/tv/${imdbId}/${seasonNumber || 1}/${episodeNumber || 1}?autoplay=1`;
+        // Browser cannot play raw P2P infoHash without Debrid or a reachable Self-Debrid server
+        return null;
       }
+    } else {
+      // Drop externalUrl-only or empty notice items
+      return null;
     }
 
-    const isCachedTorrent = (isSelfDebrid || this.cachedTorrentHashes.size > 0) && Boolean(raw.infoHash && this.cachedTorrentHashes.has(raw.infoHash.toLowerCase()));
+    if (!isValidStreamUrl(streamUrl)) {
+      return null;
+    }
+
+    const isCachedTorrent =
+      (isSelfDebrid || this.cachedTorrentHashes.size > 0) &&
+      Boolean(raw.infoHash && this.cachedTorrentHashes.has(raw.infoHash.toLowerCase()));
+
+    const cleanRawName = raw.name ? String(raw.name).replace(/\s*\n+\s*/g, ' · ').trim() : '';
 
     return {
       name: isCachedTorrent
         ? `Self-Debrid [⚡ Cached ${parsed.quality}]`
-        : isSelfDebrid
+        : isSelfDebrid && raw.infoHash
         ? `Self-Debrid [${parsed.quality}]`
-        : (raw.name ? raw.name.replace(/\n/g, ' ') : providerName),
+        : cleanRawName || providerName,
       title: rawTitle,
       description: isCachedTorrent
         ? '100% Downloaded in Local Debrid Cache • Instant Playback'
-        : raw.description || parsed.qualityDesc,
+        : raw.description
+        ? String(raw.description).replace(/\s*\n+\s*/g, ' · ').trim()
+        : parsed.qualityDesc,
       url: streamUrl,
       streamType,
       infoHash: raw.infoHash,
@@ -549,9 +1006,11 @@ class AddonService {
       fileSize: parsed.fileSize,
       sizeBytes: parsed.sizeBytes,
       audio: parsed.audio,
-      providerName: isSelfDebrid ? 'Self-Debrid Local' : providerName,
-      isDebrid: isSelfDebrid || raw.name?.includes('RD') || raw.name?.includes('Debrid') || Boolean(raw.url),
+      providerName: isSelfDebrid && raw.infoHash ? 'Self-Debrid Local' : providerName,
+      isDebrid: isSelfDebrid || raw.name?.includes('RD') || raw.name?.includes('Debrid') || streamType === 'direct',
       isCached: isCachedTorrent || Boolean(raw.isCached),
+      isHls,
+      proxyHeaders,
       behaviorHints: raw.behaviorHints,
     };
   }
@@ -616,33 +1075,46 @@ class AddonService {
 
   /**
    * Evaluates and automatically selects the highest-quality and fastest available stream:
-   * 1. Resolution & Quality hierarchy (4K > 1080p > 720p)
-   * 2. Lowest file size within high-quality bracket for instant buffering & zero stutter
-   * 3. Debrid / Self-Debrid local accelerator priority
+   * 1. Native Kaira Player (`direct`) HTTP/HLS/Debrid streams over 3rd-party `embed` mirrors
+   * 2. Resolution & Quality hierarchy (4K > 1080p > 720p)
+   * 3. Lowest file size within high-quality bracket for instant buffering & zero stutter
    * 4. Modern efficient codecs (HEVC / x265 / AV1 / Web-DL)
    */
-  public selectBestStream(streams: AddonStream[]): AddonStream | null {
+  public selectBestStream(streams: AddonStream[], excludeUrls?: Set<string>): AddonStream | null {
     if (!streams || streams.length === 0) return null;
+
+    const validStreams = deduplicateStreams(streams);
+    if (validStreams.length === 0) return null;
+
+    const healthyStreams = validStreams.filter(
+      (s) => !this.failedStreamTracker.isFailed(s.url) && !(excludeUrls && excludeUrls.has(s.url))
+    );
+
+    const pool =
+      healthyStreams.length > 0
+        ? healthyStreams
+        : validStreams.filter((s) => !(excludeUrls && excludeUrls.has(s.url)));
+
+    if (pool.length === 0) return null;
 
     const calculateScore = (s: AddonStream): number => {
       let score = 0;
 
       // 0. Local Debrid Cache Absolute Priority (+50,000)
-      // Files already downloaded in debrid cache or 100% pre-cached torrents play instantly with zero wait
       if (s.isCached || s.name?.includes('Local Disk Cache') || s.name?.includes('Cached')) {
         score += 50000;
       }
 
-      // 1. Debrid & Self-Debrid Priority Bonus
+      // 1. Debrid & Direct HTTP Stream Priority Bonus
       if (s.isDebrid && s.streamType === 'direct') {
         score += 1200;
       }
 
-      // 2. Stream Type Priority
+      // 2. Stream Type Priority — strongly prefer native Kaira Player ('direct') over 3rd-party web embeds
       if (s.streamType === 'direct') {
-        score += 2000; // Direct video (Native Hardware decode)
+        score += 3500; // Direct HTTP/HLS video (plays in Kaira Native Player)
       } else if (s.streamType === 'embed') {
-        score += 1500; // Cloud Web stream
+        score += 1500; // Third-party Cloud Web Embed fallback
       } else if (s.streamType === 'youtube') {
         score -= 1000; // Promo trailer only
       }
@@ -657,48 +1129,54 @@ class AddonService {
       }
 
       // 4. Lowest File Size Bonus for Fast Playback (Secondary Optimization)
-      // Within the quality bracket, favor lower file size for faster download & zero buffering
       if (s.sizeBytes && s.sizeBytes > 0) {
         const sizeGB = s.sizeBytes / (1024 * 1024 * 1024);
         if (sizeGB <= 3.5) {
-          // Sweet spot for fast streaming with great compression
           score += 350;
         } else if (sizeGB <= 8.0) {
           score += 250;
         } else if (sizeGB <= 18.0) {
           score += 120;
         } else if (sizeGB > 40.0) {
-          // Heavy files that take very long to buffer
           score -= 300;
         }
       }
 
-      // 5. Codec Efficiency (HEVC / x265 / 10bit offer high quality at low size)
-      const upper = (s.title || '').toUpperCase();
-      if (upper.includes('HEVC') || upper.includes('X265') || upper.includes('H.265') || upper.includes('10BIT')) {
-        score += 180;
-      }
-      if (upper.includes('WEB-DL') || upper.includes('WEBRIP')) {
-        score += 90;
-      }
-      if (upper.includes('HDR') || upper.includes('DV') || upper.includes('DOLBY VISION')) {
-        score += 80;
+      // 5. Browser Container & Codec Playability (for remote direct HTTP/HLS streams)
+      const isSelfDebridStream = Boolean(s.url && s.url.includes(':8081'));
+      if (s.streamType === 'direct' && !isSelfDebridStream) {
+        score += getBrowserPlayabilityScore(s);
+      } else {
+        const upper = (s.title || '').toUpperCase();
+        if (upper.includes('HEVC') || upper.includes('X265') || upper.includes('H.265') || upper.includes('10BIT')) {
+          score += 180;
+        }
+        if (upper.includes('WEB-DL') || upper.includes('WEBRIP')) {
+          score += 90;
+        }
+        if (upper.includes('HDR') || upper.includes('DV') || upper.includes('DOLBY VISION')) {
+          score += 80;
+        }
       }
 
-      // 6. Audio Fidelity
-      if (s.audio?.includes('Atmos') || s.audio?.includes('TrueHD')) {
-        score += 50;
-      } else if (s.audio?.includes('5.1')) {
-        score += 30;
+      // 6. Audio Fidelity (only boost lossless surround when locally transcoded via Self-Debrid)
+      if (isSelfDebridStream) {
+        if (s.audio?.includes('Atmos') || s.audio?.includes('TrueHD')) {
+          score += 50;
+        } else if (s.audio?.includes('5.1')) {
+          score += 30;
+        }
       }
 
       return score;
     };
 
-    const sorted = [...streams].sort((a, b) => calculateScore(b) - calculateScore(a));
+    const sorted = [...pool].sort((a, b) => calculateScore(b) - calculateScore(a));
     const chosen = sorted[0] || null;
     if (chosen) {
-      console.log(`[AddonService] Auto-selected best & fastest source: "${chosen.name}" (${chosen.quality || '1080p'}) - Score: ${calculateScore(chosen)}`);
+      console.log(
+        `[AddonService] Auto-selected best source: "${chosen.name}" [${chosen.streamType}] (${chosen.quality || '1080p'}) - Score: ${calculateScore(chosen)}`
+      );
     }
     return chosen;
   }

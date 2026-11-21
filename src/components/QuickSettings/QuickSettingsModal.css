@@ -14,8 +14,8 @@
   width: 480px;
   min-width: 440px;
   height: 100%;
-  background: linear-gradient(180deg, rgba(26, 29, 38, 0.98) 0%, rgba(16, 18, 24, 0.99) 100%);
-  border-left: 1.5px solid rgba(255, 255, 255, 0.12);
+  background: linear-gradient(180deg, rgba(16, 16, 20, 0.98) 0%, rgba(7, 7, 9, 0.99) 100%);
+  border-left: 1px solid rgba(255, 255, 255, 0.12);
   box-shadow: -12px 0 48px rgba(0, 0, 0, 0.85);
   display: flex;
   flex-direction: column;
@@ -56,7 +56,7 @@
   padding: 0 18px;
   border-radius: var(--radius-pill);
   background: var(--md-sys-color-surface-container-high, rgba(255, 255, 255, 0.08));
-  border: 1px solid var(--md-sys-color-outline-variant, rgba(255, 255, 255, 0.12));
+  border: none;
   color: var(--md-sys-color-on-surface, #ffffff);
   font-size: 13px;
   font-weight: 600;
@@ -70,7 +70,6 @@
 .tv-qs-back-btn.focused {
   background: var(--md-sys-color-primary, #a8c7fa);
   color: var(--md-sys-color-on-primary, #062e6f);
-  border-color: var(--md-sys-color-focus-ring, #e8eefc);
   transform: scale(var(--focus-scale));
   box-shadow: 0 0 0 2px var(--md-sys-color-focus-ring, #e8eefc);
 }
@@ -144,7 +143,7 @@
   padding: 0 16px;
   border-radius: var(--radius-pill);
   background: var(--md-sys-color-surface-container-high, rgba(255, 255, 255, 0.08));
-  border: 1px solid var(--md-sys-color-outline-variant, rgba(255, 255, 255, 0.12));
+  border: none;
   color: var(--md-sys-color-on-surface, #fff);
   font-size: 13px;
   font-weight: 600;
@@ -158,21 +157,19 @@
 .tv-qs-btn-inner.focused {
   background: var(--md-sys-color-primary, #a8c7fa);
   color: var(--md-sys-color-on-primary, #062e6f);
-  border-color: var(--md-sys-color-focus-ring, #e8eefc);
   transform: scale(var(--focus-scale));
   box-shadow: 0 0 0 2px var(--md-sys-color-focus-ring, #e8eefc);
 }
 
 .tv-qs-btn-inner.active {
   background: var(--md-sys-color-primary-container, rgba(26, 115, 232, 0.2));
-  border-color: var(--md-sys-color-primary, #a8c7fa);
   color: var(--md-sys-color-primary, #a8c7fa);
 }
 
 .tv-qs-btn-inner.danger.focused {
   background: #ea4335;
   color: #fff;
-  border-color: var(--md-sys-color-focus-ring, #e8eefc);
+  box-shadow: 0 0 0 2px var(--md-sys-color-focus-ring, #e8eefc);
 }
 
 .tv-qs-pills-row {
@@ -189,7 +186,7 @@
   padding: 0 16px;
   border-radius: var(--radius-pill);
   background: var(--md-sys-color-surface-container-high, rgba(255, 255, 255, 0.06));
-  border: 1px solid var(--md-sys-color-outline-variant, rgba(255, 255, 255, 0.1));
+  border: none;
   color: var(--md-sys-color-on-surface-variant, var(--text-secondary));
   font-size: 12px;
   font-weight: 600;
@@ -201,7 +198,6 @@
 .tv-qs-pill-inner.focused {
   background: var(--md-sys-color-primary, #a8c7fa);
   color: var(--md-sys-color-on-primary, #062e6f);
-  border-color: var(--md-sys-color-focus-ring, #e8eefc);
   transform: scale(var(--focus-scale));
   box-shadow: 0 0 0 2px var(--md-sys-color-focus-ring, #e8eefc);
 }
@@ -209,7 +205,6 @@
 .tv-qs-pill-inner.active {
   background: var(--md-sys-color-primary-container, rgba(26, 115, 232, 0.2));
   color: var(--md-sys-color-primary, #a8c7fa);
-  border-color: var(--md-sys-color-primary, #a8c7fa);
 }
 
 @keyframes slideInRight {

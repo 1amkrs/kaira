@@ -6,7 +6,7 @@
   align-items: center;
   justify-content: center;
   padding: 20px;
-  background: rgba(10, 12, 16, 0.88);
+  background: rgba(0, 0, 0, 0.9);
 }
 
 .kaira-onboarding-card {
@@ -101,7 +101,7 @@
   padding: 0 16px;
   border-radius: 9999px;
   background: transparent;
-  border: 1px solid transparent;
+  border: none;
   color: var(--md-sys-color-on-surface-variant, #c4c7c5);
   font-size: 14px;
   font-weight: 600;
@@ -446,7 +446,7 @@
   padding: 0 22px;
   border-radius: 9999px;
   background: var(--md-sys-color-surface-container-high, #202630);
-  border: 1px solid var(--md-sys-color-outline-variant, rgba(255, 255, 255, 0.14));
+  border: none;
   color: var(--md-sys-color-on-surface, #f0f4f9);
   font-size: 14px;
   font-weight: 600;
@@ -455,13 +455,12 @@
   align-items: center;
   justify-content: center;
   gap: 8px;
-  transition: background-color 180ms ease, border-color 180ms ease, box-shadow 180ms ease;
+  transition: background-color 180ms ease, box-shadow 180ms ease;
 }
 
 .kaira-onboarding-btn-secondary:focus-visible {
   outline: none;
   background: var(--md-sys-color-surface-container-highest, #29303d);
-  border-color: var(--md-sys-color-focus-ring, #e8eefc);
   box-shadow: 0 0 0 2px var(--md-sys-color-focus-ring, #e8eefc);
 }
 
@@ -470,7 +469,7 @@
   padding: 0 26px;
   border-radius: 9999px;
   background: var(--md-sys-color-primary, #a8c7fa);
-  border: 1px solid transparent;
+  border: none;
   color: var(--md-sys-color-on-primary, #062e6f);
   font-size: 15px;
   font-weight: 700;

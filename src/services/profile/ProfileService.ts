@@ -454,7 +454,7 @@ class ProfileService {
       type: updates.type || current.type,
       badge: updates.type ? (updates.type === 'kids' ? 'Family Friendly' : updates.type === 'guest' ? 'Incognito' : 'Full Access') : current.badge,
       pin: newPin,
-      isKid: updates.isKid !== undefined ? updates.isKid : (updates.type === 'kids' ? true : current.isKid),
+      isKid: updates.isKid !== undefined ? updates.isKid : (updates.type !== undefined ? updates.type === 'kids' : current.isKid),
     };
 
     this.profiles[idx] = updated;
@@ -496,9 +496,26 @@ class ProfileService {
       }
     } catch (e) {}
 
-    // If active profile was deleted, switch to the first remaining profile
+    // If active profile was deleted, switch to the first unlocked remaining profile (or fallback to profiles[0])
     if (this.activeProfileId === id) {
-      this.setActiveProfile(this.profiles[0].id);
+      const fallback =
+        this.profiles.find((p) => !p.pin || this.isProfileUnlocked(p.id)) ||
+        this.profiles[0];
+      if (fallback) {
+        const res = this.setActiveProfile(fallback.id);
+        if (!res.success) {
+          this.activeProfileId = fallback.id;
+          try {
+            localStorage.setItem(STORAGE_ACTIVE_PROFILE_KEY, fallback.id);
+          } catch (e) {}
+          if (typeof window !== 'undefined') {
+            window.dispatchEvent(new CustomEvent('tv:profile-changed', { detail: { profile: fallback } }));
+          }
+          this.notify();
+        }
+      } else {
+        this.notify();
+      }
     } else {
       this.notify();
     }
@@ -557,9 +574,9 @@ class ProfileService {
     const id = profileId || this.activeProfileId;
     try {
       const stored = localStorage.getItem(`tv_watch_history_${id}`);
-      if (stored) {
+      if (stored !== null) {
         const parsed = JSON.parse(stored);
-        if (Array.isArray(parsed) && parsed.length > 0) {
+        if (Array.isArray(parsed)) {
           return parsed;
         }
       }
@@ -578,6 +595,10 @@ class ProfileService {
     entry: Omit<WatchHistoryEntry, 'id' | 'timestamp'>
   ): void {
     try {
+      const profile = this.profiles.find((p) => p.id === profileId);
+      if (profile?.type === 'guest') {
+        return; // Guest Mode uses incognito history and does not persist watch history
+      }
       const history = this.getWatchHistory(profileId);
       // Remove previous entry for same mediaId if exists so it moves to top
       const filtered = history.filter((h) => h.mediaId !== entry.mediaId);
@@ -726,7 +747,7 @@ class ProfileService {
   public clearWatchHistory(profileId?: string): void {
     const id = profileId || this.activeProfileId;
     try {
-      localStorage.removeItem(`tv_watch_history_${id}`);
+      localStorage.setItem(`tv_watch_history_${id}`, '[]');
     } catch (e) {}
   }
 
@@ -735,7 +756,7 @@ class ProfileService {
       this.lockAllProfiles();
       this.profiles.forEach((p) => {
         localStorage.removeItem(`tv_profile_memory_${p.id}`);
-        localStorage.removeItem(`tv_watch_history_${p.id}`);
+        localStorage.setItem(`tv_watch_history_${p.id}`, '[]');
       });
       localStorage.removeItem(STORAGE_DEVICE_UNLOCKED_KEY);
     } catch (e) {}

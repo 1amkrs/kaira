@@ -23,6 +23,7 @@ import {
   SOUND_PRESETS,
 } from '../../services/music/types';
 import { spatialNav } from '../../services/spatialNav/spatialNavEngine';
+import { gamepadManager } from '../../services/controller/gamepadManager';
 import { Focusable } from '../../components/Focusable/Focusable';
 import { AudioVisualizer } from '../../components/Playback/AudioVisualizer';
 import { MusicQueueDrawer } from '../../components/Playback/MusicQueueDrawer';
@@ -192,29 +193,37 @@ export const MusicPlayerScreen: React.FC<MusicPlayerScreenProps> = ({ onClose })
       }
     };
 
-    const handleBumperLeft = () => musicEngine.previous();
-    const handleBumperRight = () => musicEngine.next();
-    const handleTriggerLeft = () => musicEngine.seekRelative(-15);
-    const handleTriggerRight = () => musicEngine.seekRelative(15);
-    const handleButtonX = () => musicEngine.togglePlayPause();
-    const handleButtonY = () => musicEngine.toggleShuffle();
-
     window.addEventListener('keydown', handleKeyDown);
-    window.addEventListener('tv:controller-bumper-left', handleBumperLeft);
-    window.addEventListener('tv:controller-bumper-right', handleBumperRight);
-    window.addEventListener('tv:controller-trigger-left', handleTriggerLeft);
-    window.addEventListener('tv:controller-trigger-right', handleTriggerRight);
-    window.addEventListener('tv:controller-button-x', handleButtonX);
-    window.addEventListener('tv:controller-button-y', handleButtonY);
+    const unsubGamepad = gamepadManager.subscribeAction((diag) => {
+      // Ignore keyboard-originated actions already handled above
+      if (diag.raw.startsWith('Keyboard:')) return;
+      switch (diag.normalized) {
+        case 'TAB_PREV':
+          musicEngine.previous();
+          break;
+        case 'TAB_NEXT':
+          musicEngine.next();
+          break;
+        case 'SEEK_BACKWARD':
+          musicEngine.seekRelative(-15);
+          break;
+        case 'SEEK_FORWARD':
+          musicEngine.seekRelative(15);
+          break;
+        case 'PLAY_PAUSE':
+          musicEngine.togglePlayPause();
+          break;
+        case 'SUBTITLES':
+          musicEngine.toggleShuffle();
+          break;
+        default:
+          break;
+      }
+    });
 
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
-      window.removeEventListener('tv:controller-bumper-left', handleBumperLeft);
-      window.removeEventListener('tv:controller-bumper-right', handleBumperRight);
-      window.removeEventListener('tv:controller-trigger-left', handleTriggerLeft);
-      window.removeEventListener('tv:controller-trigger-right', handleTriggerRight);
-      window.removeEventListener('tv:controller-button-x', handleButtonX);
-      window.removeEventListener('tv:controller-button-y', handleButtonY);
+      unsubGamepad();
     };
   }, [onClose, isEQOpen, isQueueOpen]);
 

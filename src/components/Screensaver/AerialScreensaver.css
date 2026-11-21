@@ -8,7 +8,7 @@
   width: 100vw;
   height: 100vh;
   z-index: 2000;
-  background-color: var(--md-sys-color-background, #0e1014);
+  background-color: var(--md-sys-color-background, #000000);
   overflow: hidden;
   display: flex;
   flex-direction: column;
@@ -52,14 +52,14 @@
   background:
     linear-gradient(
       180deg,
-      rgba(14, 16, 20, 0.34) 0%,
-      rgba(14, 16, 20, 0.06) 36%,
-      rgba(14, 16, 20, 0.62) 72%,
-      rgba(14, 16, 20, 0.9) 100%
+      rgba(0, 0, 0, 0.36) 0%,
+      rgba(0, 0, 0, 0.06) 36%,
+      rgba(0, 0, 0, 0.64) 72%,
+      rgba(0, 0, 0, 0.92) 100%
     ),
     radial-gradient(
       ellipse at 18% 88%,
-      rgba(14, 16, 20, 0.62) 0%,
+      rgba(0, 0, 0, 0.65) 0%,
       transparent 60%
     );
   pointer-events: none;
@@ -139,7 +139,7 @@
 .tv-ambient-auth-card {
   width: clamp(320px, 29vw, 400px);
   flex-shrink: 0;
-  background-color: rgba(23, 26, 34, 0.9);
+  background-color: rgba(10, 10, 12, 0.92);
   backdrop-filter: blur(22px);
   -webkit-backdrop-filter: blur(22px);
   border: 1px solid var(--md-sys-color-outline-variant, rgba(255, 255, 255, 0.14));
@@ -343,13 +343,12 @@
 .tv-ambient-btn-secondary {
   background-color: var(--md-sys-color-surface-container-high, #262b38);
   color: var(--md-sys-color-on-surface, #e6e8ee);
-  border: 1px solid var(--md-sys-color-outline-variant, rgba(255, 255, 255, 0.14));
+  border: none;
 }
 
 .tv-ambient-btn-secondary:focus-visible,
 .tv-ambient-btn-secondary.dpad-active {
   background-color: var(--md-sys-color-surface-container-highest, #313747);
-  border-color: var(--md-sys-color-focus-ring, #e8eefc);
   box-shadow: 0 0 0 2px var(--md-sys-color-focus-ring, #e8eefc);
 }
 
@@ -384,7 +383,7 @@
   padding: 0 14px;
   border-radius: var(--radius-pill, 9999px);
   background-color: var(--md-sys-color-surface-container-high, #262b38);
-  border: 1px solid var(--md-sys-color-outline-variant, rgba(255, 255, 255, 0.14));
+  border: none;
   color: var(--md-sys-color-on-surface, #e6e8ee);
   display: inline-flex;
   align-items: center;
@@ -392,12 +391,12 @@
   font-size: 0.82rem;
   font-weight: 600;
   cursor: pointer;
-  transition: background-color var(--duration-base) ease, border-color var(--duration-base) ease;
+  transition: background-color var(--duration-base) ease, box-shadow var(--duration-base) ease;
 }
 
 .tv-ambient-picker-back:focus-visible {
   background-color: var(--md-sys-color-surface-container-highest, #313747);
-  border-color: var(--md-sys-color-focus-ring, #e8eefc);
+  box-shadow: 0 0 0 2px var(--md-sys-color-focus-ring, #e8eefc);
 }
 
 .tv-ambient-picker-list {
@@ -530,10 +529,10 @@ body.android-mode .tv-ambient-btn-primary.dpad-active {
     background:
       linear-gradient(
         180deg,
-        rgba(14, 16, 20, 0.72) 0%,
-        rgba(14, 16, 20, 0.44) 26%,
-        rgba(14, 16, 20, 0.06) 52%,
-        rgba(14, 16, 20, 0.9) 100%
+        rgba(0, 0, 0, 0.74) 0%,
+        rgba(0, 0, 0, 0.44) 26%,
+        rgba(0, 0, 0, 0.06) 52%,
+        rgba(0, 0, 0, 0.92) 100%
       );
   }
 

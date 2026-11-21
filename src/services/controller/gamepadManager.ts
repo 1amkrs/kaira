@@ -109,12 +109,32 @@ class GamepadManager {
 
   // ─── KEYBOARD DISPATCHER ───────────────────────────────────────────────────
 
-  private handleKeyDown = (e: KeyboardEvent) => {
-    const activeEl = document.activeElement;
-    const isInput = activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA');
+  private isVideoPlayerActive(): boolean {
+    if (typeof document === 'undefined') return false;
+    return Boolean(
+      document.querySelector('.tv-video-player-container') ||
+        document.querySelector('.tv-player-screen') ||
+        document.querySelector('.tv-player-hud')
+    );
+  }
 
-    // Tab key: map to spatial navigation
+  private handleKeyDown = (e: KeyboardEvent) => {
+    const activeEl = document.activeElement as HTMLElement | null;
+    const targetEl = e.target as HTMLElement | null;
+    const isEditableEl = (el: HTMLElement | null): boolean =>
+      Boolean(
+        el &&
+          (el.tagName === 'INPUT' ||
+            el.tagName === 'TEXTAREA' ||
+            el.tagName === 'SELECT' ||
+            el.isContentEditable)
+      );
+    const isInput = isEditableEl(activeEl) || isEditableEl(targetEl);
+    const isVideoPlayer = this.isVideoPlayerActive();
+
+    // Tab key: preserve native form navigation inside inputs; otherwise map to spatial navigation
     if (e.key === 'Tab') {
+      if (isInput) return;
       e.preventDefault();
       const dir = e.shiftKey ? 'left' : 'right';
       this.dispatchAction(`Keyboard: Tab${e.shiftKey ? '+Shift' : ''}`, dir === 'left' ? 'NAV_LEFT' : 'NAV_RIGHT', `Move focus ${dir}`);
@@ -160,21 +180,27 @@ class GamepadManager {
         break;
       case ' ':
         // Space is reserved for Play/Pause in the video player.
-        // Only trigger select when NOT in the video player screen.
-        if (!(document.querySelector('.tv-player-screen') || document.querySelector('.tv-player-hud'))) {
+        if (!isVideoPlayer) {
           e.preventDefault();
           this.dispatchAction('Keyboard: Space', 'SELECT', 'Trigger focused element');
           spatialNav.triggerSelect();
         }
         break;
       case 'Escape':
+        // VideoPlayerScreen handles Escape directly (closing its menu first, or exiting cleanly)
+        if (isVideoPlayer) return;
         e.preventDefault();
         this.dispatchAction('Keyboard: Escape', 'BACK', 'Navigate back / dismiss modal');
         this.callbacks.onBack?.();
         break;
       case 'Backspace':
-        // If inside an input or typing in PIN modal or Search overlay, let the component handle deletion
-        if (isInput || document.querySelector('.tv-pin-modal-backdrop') || document.querySelector('.tv-search-screen')) {
+        // Let inputs, PIN modal, Search overlay, and VideoPlayerScreen handle Backspace directly
+        if (
+          isInput ||
+          isVideoPlayer ||
+          document.querySelector('.tv-pin-modal-backdrop') ||
+          document.querySelector('.tv-search-screen')
+        ) {
           return;
         }
         e.preventDefault();
@@ -184,7 +210,7 @@ class GamepadManager {
       case '`':
       case '~':
       case 'F2':
-        if (!isInput) {
+        if (!isInput && !isVideoPlayer) {
           e.preventDefault();
           this.dispatchAction(`Keyboard: ${e.key}`, 'MENU', 'Toggle Quick Settings modal');
           if (this.callbacks.onMenu) this.callbacks.onMenu();
@@ -194,7 +220,7 @@ class GamepadManager {
       case 'q':
       case 'Q':
       case '[':
-        if (!isInput) {
+        if (!isInput && !isVideoPlayer) {
           e.preventDefault();
           this.dispatchAction(`Keyboard: ${e.key}`, 'TAB_PREV', 'Switch to previous tab');
           this.callbacks.onTabPrev?.();
@@ -203,7 +229,7 @@ class GamepadManager {
       case 'e':
       case 'E':
       case ']':
-        if (!isInput) {
+        if (!isInput && !isVideoPlayer) {
           e.preventDefault();
           this.dispatchAction(`Keyboard: ${e.key}`, 'TAB_NEXT', 'Switch to next tab');
           this.callbacks.onTabNext?.();
@@ -212,7 +238,7 @@ class GamepadManager {
       case 'y':
       case 'Y':
       case '/':
-        if (!isInput) {
+        if (!isInput && !isVideoPlayer) {
           e.preventDefault();
           this.dispatchAction(`Keyboard: ${e.key}`, 'SEARCH', 'Open global search');
           this.callbacks.onSearch?.();
@@ -260,6 +286,8 @@ class GamepadManager {
       return Boolean(curr[btnIdx] && !prev[btnIdx]);
     };
 
+    const isVideoPlayer = this.isVideoPlayerActive();
+
     // ── 1. Action Buttons (Standard Xbox Layout) ─────────────────────────────
     // Button 0: A / Cross -> Select
     if (isJustPressed(0)) {
@@ -270,31 +298,41 @@ class GamepadManager {
     // Button 1: B / Circle -> Back / Dismiss
     if (isJustPressed(1)) {
       this.dispatchAction('Xbox: Button B', 'BACK', 'Navigate back / dismiss modal');
-      this.callbacks.onBack?.();
+      if (!isVideoPlayer) {
+        this.callbacks.onBack?.();
+      }
     }
 
     // Button 2: X / Square -> Search / Secondary Action
     if (isJustPressed(2)) {
       this.dispatchAction('Xbox: Button X', 'SEARCH', 'Open search overlay');
-      this.callbacks.onSearch?.();
+      if (!isVideoPlayer) {
+        this.callbacks.onSearch?.();
+      }
     }
 
     // Button 3: Y / Triangle -> Settings / Subtitles
     if (isJustPressed(3)) {
       this.dispatchAction('Xbox: Button Y', 'SUBTITLES', 'Toggle subtitles / quick action');
-      this.callbacks.onSubtitles?.();
+      if (!isVideoPlayer) {
+        this.callbacks.onSubtitles?.();
+      }
     }
 
     // Button 4: LB (Left Bumper) -> Previous Tab / Rewind
     if (isJustPressed(4)) {
       this.dispatchAction('Xbox: Left Bumper (LB)', 'TAB_PREV', 'Switch to previous tab');
-      this.callbacks.onTabPrev?.();
+      if (!isVideoPlayer) {
+        this.callbacks.onTabPrev?.();
+      }
     }
 
     // Button 5: RB (Right Bumper) -> Next Tab / FastForward
     if (isJustPressed(5)) {
       this.dispatchAction('Xbox: Right Bumper (RB)', 'TAB_NEXT', 'Switch to next tab');
-      this.callbacks.onTabNext?.();
+      if (!isVideoPlayer) {
+        this.callbacks.onTabNext?.();
+      }
     }
 
     // Button 6: LT (Left Trigger) -> Seek Backward
@@ -310,16 +348,20 @@ class GamepadManager {
     // Button 8: View / Select -> Search
     if (isJustPressed(8)) {
       this.dispatchAction('Xbox: View Button', 'SEARCH', 'Open search overlay');
-      this.callbacks.onSearch?.();
+      if (!isVideoPlayer) {
+        this.callbacks.onSearch?.();
+      }
     }
 
     // Button 9: Menu / Start -> Quick Settings Drawer
     if (isJustPressed(9)) {
       this.dispatchAction('Xbox: Menu Button', 'MENU', 'Open Quick Settings modal');
-      if (this.callbacks.onMenu) {
-        this.callbacks.onMenu();
-      } else {
-        this.callbacks.onSettings?.();
+      if (!isVideoPlayer) {
+        if (this.callbacks.onMenu) {
+          this.callbacks.onMenu();
+        } else {
+          this.callbacks.onSettings?.();
+        }
       }
     }
 

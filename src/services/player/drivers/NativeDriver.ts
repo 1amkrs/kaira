@@ -1,5 +1,11 @@
 import Hls from 'hls.js';
 import { IPlaybackDriver, DriverCallbacks, DriverState, DriverType } from '../types';
+import {
+  isLikelyHlsUrl,
+  isProgressiveVideoUrl,
+  buildStreamProxyUrl,
+  formatPlayerErrorMessage,
+} from '../../addons/stremioProtocol';
 
 /**
  * NativeDriver — owns a real <video> element and controls it directly.
@@ -14,6 +20,10 @@ export class NativeDriver implements IPlaybackDriver {
   private callbacks: DriverCallbacks | null = null;
   private isDestroyed = false;
   private currentUrl: string = '';
+  private originalUrl: string = '';
+  private currentProxyHeaders?: Record<string, string>;
+  private hasTriedHlsFallback: boolean = false;
+  private hasTriedProxyFallback: boolean = false;
   private streamStartTime: number = 0;
   private isTranscodeSeeking: boolean = false;
   private transcodeSeekTimer: any = null;
@@ -42,13 +52,15 @@ export class NativeDriver implements IPlaybackDriver {
       video.className = 'tv-native-video-el';
       video.style.cssText = 'width:100%;height:100%;object-fit:contain;background:#000;display:block;';
       video.playsInline = true;
-      video.crossOrigin = 'anonymous';
+      // Do NOT set crossOrigin='anonymous' unconditionally: many direct Stremio MP4 streams
+      // omit Access-Control-Allow-Origin headers and would fail playback if CORS mode is forced.
+      video.removeAttribute('crossorigin');
       video.autoplay = false; // we call play() ourselves after load
       video.preload = 'auto';
       video.controls = false;
       container.appendChild(video);
     } else {
-      video.crossOrigin = 'anonymous';
+      video.removeAttribute('crossorigin');
     }
 
     // Always unmute and set full volume on init
@@ -217,6 +229,15 @@ export class NativeDriver implements IPlaybackDriver {
     this.callbacks?.onEnded();
   };
 
+  private destroyHls(): void {
+    if (this.hlsInstance) {
+      try {
+        this.hlsInstance.destroy();
+      } catch (_) {}
+      this.hlsInstance = null;
+    }
+  }
+
   private onError = (): void => {
     if (this.isDestroyed) return;
 
@@ -235,7 +256,51 @@ export class NativeDriver implements IPlaybackDriver {
       return;
     }
 
-    if (this.retryCount < 3) {
+    const isLocalSelfDebrid = Boolean(this.currentUrl && this.currentUrl.includes(':8081'));
+    const isProgressive = isProgressiveVideoUrl(this.originalUrl || this.currentUrl);
+    const isExplicitHls = isLikelyHlsUrl(this.originalUrl || this.currentUrl);
+
+    // 1. Extensionless HLS stream fallback: ONLY probe hls.js when the URL is not clearly a progressive MP4/MKV/Debrid file.
+    if (
+      !isLocalSelfDebrid &&
+      !isProgressive &&
+      !this.hlsInstance &&
+      !this.hasTriedHlsFallback &&
+      Hls.isSupported() &&
+      this.currentUrl
+    ) {
+      this.hasTriedHlsFallback = true;
+      console.log('[NativeDriver] Direct video element could not decode extensionless source, trying hls.js fallback...');
+      this.attachHlsSource(this.currentUrl, this.state.currentTime);
+      return;
+    }
+
+    // 2. CORS / header-protected / Cloudflare-blocked direct stream fallback: retry once via local /api/stream-proxy
+    if (
+      !isLocalSelfDebrid &&
+      !this.hasTriedProxyFallback &&
+      this.originalUrl &&
+      /^https?:\/\//i.test(this.originalUrl) &&
+      !this.currentUrl.startsWith('/api/stream-proxy')
+    ) {
+      this.hasTriedProxyFallback = true;
+      this.destroyHls();
+      const proxied = buildStreamProxyUrl(this.originalUrl, this.currentProxyHeaders);
+      if (proxied !== this.currentUrl) {
+        console.log('[NativeDriver] Retrying direct Stremio stream via /api/stream-proxy...');
+        this.currentUrl = proxied;
+        if (isExplicitHls && Hls.isSupported()) {
+          this.attachHlsSource(proxied, this.state.currentTime);
+        } else if (this.videoElement) {
+          this.videoElement.src = proxied;
+          this.videoElement.load();
+          this.doPlay().catch(() => {});
+        }
+        return;
+      }
+    }
+
+    if (isLocalSelfDebrid && this.retryCount < 3) {
       this.retryCount++;
       console.log(`[NativeDriver] Waiting for stream buffer from Self-Debrid (attempt ${this.retryCount}/3)...`);
       this.state.status = 'buffering';
@@ -251,7 +316,9 @@ export class NativeDriver implements IPlaybackDriver {
       return;
     }
 
-    const msg = this.videoElement?.error?.message || 'Video playback error';
+    this.destroyHls();
+    const rawMsg = this.videoElement?.error?.message || 'Video playback error';
+    const msg = formatPlayerErrorMessage(rawMsg, this.originalUrl || this.currentUrl);
     this.state.status = 'error';
     this.state.error = msg;
     this.callbacks?.onError(msg);
@@ -274,7 +341,71 @@ export class NativeDriver implements IPlaybackDriver {
 
   // ─── Source Loading ───────────────────────────────────────────────────────
 
-  public async loadSource(url: string, initialPosition = 0, expectedDuration?: number): Promise<void> {
+  private attachHlsSource(targetUrl: string, initialPosition = 0): void {
+    if (!this.videoElement || this.isDestroyed) return;
+
+    if (this.hlsInstance) {
+      try {
+        this.hlsInstance.destroy();
+      } catch (_) {}
+      this.hlsInstance = null;
+    }
+
+    const hls = new Hls({ enableWorker: true, lowLatencyMode: false, backBufferLength: 90 });
+    this.hlsInstance = hls;
+
+    hls.on(Hls.Events.MANIFEST_PARSED, () => {
+      if (!this.videoElement || this.isDestroyed) return;
+      if (initialPosition > 0) {
+        try { this.videoElement.currentTime = initialPosition; } catch (_) {}
+      }
+      this.doPlay();
+    });
+
+    let networkRecoveryAttempts = 0;
+    hls.on(Hls.Events.ERROR, (_e, data) => {
+      if (!data.fatal || this.isDestroyed) return;
+      if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
+        if (
+          !this.hasTriedProxyFallback &&
+          this.originalUrl &&
+          /^https?:\/\//i.test(this.originalUrl) &&
+          !targetUrl.startsWith('/api/stream-proxy')
+        ) {
+          this.hasTriedProxyFallback = true;
+          const proxied = buildStreamProxyUrl(this.originalUrl, this.currentProxyHeaders);
+          if (proxied !== targetUrl) {
+            console.log('[NativeDriver] HLS CORS/network failure, retrying via /api/stream-proxy...');
+            this.currentUrl = proxied;
+            this.attachHlsSource(proxied, initialPosition);
+            return;
+          }
+        }
+        if (networkRecoveryAttempts < 1) {
+          networkRecoveryAttempts++;
+          hls.startLoad();
+          return;
+        }
+        this.destroyHls();
+        this.onError();
+      } else if (data.type === Hls.ErrorTypes.MEDIA_ERROR) {
+        hls.recoverMediaError();
+      } else {
+        this.destroyHls();
+        this.onError();
+      }
+    });
+
+    hls.loadSource(targetUrl);
+    hls.attachMedia(this.videoElement);
+  }
+
+  public async loadSource(
+    url: string,
+    initialPosition = 0,
+    expectedDuration?: number,
+    proxyHeaders?: Record<string, string>
+  ): Promise<void> {
     if (this.isDestroyed || !this.videoElement) return;
 
     if (!url || !url.trim()) {
@@ -282,7 +413,23 @@ export class NativeDriver implements IPlaybackDriver {
       return;
     }
 
-    this.currentUrl = url;
+    this.originalUrl = url;
+    this.currentProxyHeaders = proxyHeaders;
+    this.hasTriedHlsFallback = false;
+    this.hasTriedProxyFallback = false;
+    this.retryCount = 0;
+
+    // If a Stremio direct-URL addon specifies custom request headers (e.g. Referer / Origin / UA),
+    // route through Kaira's stream proxy so the browser can attach them cleanly.
+    const effectiveUrl =
+      proxyHeaders && Object.keys(proxyHeaders).length > 0
+        ? buildStreamProxyUrl(url, proxyHeaders)
+        : url;
+    if (effectiveUrl !== url) {
+      this.hasTriedProxyFallback = true;
+    }
+
+    this.currentUrl = effectiveUrl;
     try {
       const parsedUrl = new URL(url, window.location.href);
       const startParam = parsedUrl.searchParams.get('start') || parsedUrl.searchParams.get('time') || parsedUrl.searchParams.get('t');
@@ -339,33 +486,15 @@ export class NativeDriver implements IPlaybackDriver {
       this.hlsInstance = null;
     }
 
-    const isHls = url.includes('.m3u8') || url.includes('mpegURL');
+    const isHls = isLikelyHlsUrl(url) || isLikelyHlsUrl(effectiveUrl);
 
     if (isHls && Hls.isSupported()) {
-      const hls = new Hls({ enableWorker: true, lowLatencyMode: false, backBufferLength: 90 });
-      this.hlsInstance = hls;
-
-      hls.on(Hls.Events.MANIFEST_PARSED, () => {
-        if (!this.videoElement || this.isDestroyed) return;
-        if (initialPosition > 0) {
-          try { this.videoElement.currentTime = initialPosition; } catch (_) {}
-        }
-        this.doPlay();
-      });
-
-      hls.on(Hls.Events.ERROR, (_e, data) => {
-        if (!data.fatal || this.isDestroyed) return;
-        if (data.type === Hls.ErrorTypes.NETWORK_ERROR) hls.startLoad();
-        else if (data.type === Hls.ErrorTypes.MEDIA_ERROR) hls.recoverMediaError();
-        else this.onError();
-      });
-
-      hls.loadSource(url);
-      hls.attachMedia(this.videoElement);
+      this.hasTriedHlsFallback = true;
+      this.attachHlsSource(effectiveUrl, initialPosition);
     } else {
-      // Direct MP4 / native HLS (Safari)
+      // Direct MP4 / WebM / native HLS (Safari)
       try {
-        this.videoElement.src = url;
+        this.videoElement.src = effectiveUrl;
         this.videoElement.load();
 
         if (initialPosition > 0) {

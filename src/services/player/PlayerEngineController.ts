@@ -84,6 +84,7 @@ export class PlayerEngineController {
     initialPosition = 0,
     subtitleUrl?: string,
     expectedDuration?: number,
+    proxyHeaders?: Record<string, string>,
   ): Promise<void> {
     if (!this.container || this.isDestroyed) return;
 
@@ -155,7 +156,7 @@ export class PlayerEngineController {
     }
 
     // Load source (triggers doPlay internally)
-    await this.currentDriver.loadSource(url, initialPosition, expectedDuration);
+    await this.currentDriver.loadSource(url, initialPosition, expectedDuration, proxyHeaders);
 
     this.notify();
   }

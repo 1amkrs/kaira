@@ -28,6 +28,7 @@ import { spatialNav } from '../../services/spatialNav/spatialNavEngine';
 import { ambientService } from '../../services/ambient/ambientService';
 import { displayService } from '../../services/display/displayService';
 import { addonService } from '../../services/addons/AddonService';
+import { getManifestResourceLabels, isTorrentioAddon } from '../../services/addons/stremioProtocol';
 import { ublockService, UBlockState } from '../../services/adblock/adblockService';
 import { profileService } from '../../services/profile/ProfileService';
 import { screensaverService, ScreensaverState } from '../../services/screensaver/screensaverService';
@@ -217,13 +218,13 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onClose }) => {
   };
 
   const handleInstallAddon = async (url: string) => {
-    if (!url) return;
+    if (!url || !url.trim()) return;
     try {
       setInstallStatus('Installing manifest...');
-      await addonService.installAddon(url);
+      const installed = await addonService.installAddon(url);
       setAddons(addonService.getInstalledAddons());
-      setInstallStatus('Installed successfully!');
-      setTimeout(() => setInstallStatus(null), 3000);
+      setInstallStatus(`Installed ${installed.manifest.name} (v${installed.manifest.version})!`);
+      setTimeout(() => setInstallStatus(null), 4000);
     } catch (e: any) {
       setInstallStatus(`Installation failed: ${e.message}`);
     }
@@ -240,6 +241,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onClose }) => {
     };
     addonService.setDebridConfig(updated);
     setDebridConfig(updated);
+    setDebridTestResult(null);
   };
 
   const handleSaveDebridSettings = (prov?: DebridConfig['provider'], audioMode?: DebridConfig['audioMode']) => {
@@ -258,6 +260,22 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onClose }) => {
     setIsTestingDebrid(true);
     setDebridTestResult(null);
     const res = await addonService.testSelfDebrid(debridEndpoint);
+    setDebridTestResult(res);
+    setIsTestingDebrid(false);
+  };
+
+  const handleTestCloudDebrid = async () => {
+    if (
+      debridConfig.provider !== 'realdebrid' &&
+      debridConfig.provider !== 'alldebrid' &&
+      debridConfig.provider !== 'torbox'
+    ) {
+      return;
+    }
+    handleSaveDebridSettings();
+    setIsTestingDebrid(true);
+    setDebridTestResult(null);
+    const res = await addonService.testCloudDebrid(debridConfig.provider, debridApiKey);
     setDebridTestResult(res);
     setIsTestingDebrid(false);
   };
@@ -777,17 +795,22 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onClose }) => {
                         groupId="settings-cloud-debrid"
                         indexInGroup={0}
                         scaleEffect={false}
-                        ariaLabel="Save API Key"
-                        onSelect={() => handleSaveDebridSettings()}
+                        ariaLabel="Save and test API Key"
+                        onSelect={handleTestCloudDebrid}
                       >
                         {(isFocused) => (
                           <div className={`tv-tonal-btn primary ${isFocused ? 'focused' : ''}`}>
                             <Check size={15} />
-                            <span>Save Key</span>
+                            <span>{isTestingDebrid ? 'Testing...' : 'Save & Test'}</span>
                           </div>
                         )}
                       </Focusable>
                     </div>
+                    {debridTestResult && (
+                      <div className={`tv-inline-status ${debridTestResult.success ? 'active' : ''}`}>
+                        {debridTestResult.message}
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
@@ -797,57 +820,110 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onClose }) => {
               </div>
 
               <div className="tv-pref-group">
-                {addons.map((addon, idx) => (
-                  <div key={addon.manifest.id} className="tv-pref-row">
-                    <div className="tv-row-text">
-                      <span className="tv-addon-item-name">
-                        {addon.manifest.name}
-                        <small>v{addon.manifest.version}</small>
-                      </span>
-                      <span className="tv-row-desc">{addon.manifest.description}</span>
-                    </div>
+                {addons.map((addon, idx) => {
+                  const isTorrentioUnconfigured =
+                    isTorrentioAddon(addon) && !addonService.isTorrentioConfigured(addon);
+                  const caps = isTorrentioUnconfigured
+                    ? ['Needs Debrid']
+                    : getManifestResourceLabels(addon.manifest);
+                  return (
+                    <div key={addon.id || addon.manifest.id} className="tv-pref-row">
+                      <div className="tv-row-text">
+                        <div className="tv-addon-meta-row">
+                          <span className="tv-addon-item-name">
+                            {addon.manifest.name}
+                            <small>v{addon.manifest.version}</small>
+                          </span>
+                          {caps.map((cap) => (
+                            <span
+                              key={cap}
+                              className={`tv-addon-cap-tag ${
+                                cap === 'Direct Streams'
+                                  ? 'is-stream'
+                                  : cap === 'Needs Debrid'
+                                  ? 'is-warning'
+                                  : ''
+                              }`}
+                            >
+                              {cap}
+                            </span>
+                          ))}
+                        </div>
+                        <span className="tv-row-desc">
+                          {isTorrentioUnconfigured
+                            ? 'Browsers cannot play raw P2P torrents. Add Real-Debrid, AllDebrid, TorBox, or Self-Debrid above — or paste a configured torrentio.strem.fun manifest URL.'
+                            : addon.manifest.description || addon.manifestUrl}
+                        </span>
+                      </div>
 
-                    <div className="tv-addon-item-actions">
-                      <M3Switch
-                        id={`addon-toggle-${addon.manifest.id}`}
-                        groupId="settings-addons-list"
-                        indexInGroup={idx * 2}
-                        checked={addon.enabled}
-                        label={`Toggle ${addon.manifest.name}`}
-                        onToggle={() => handleToggleAddon(addon.manifest.id, addon.enabled)}
-                      />
-
-                      {addon.manifest.id !== 'org.stremio.cinemeta' && (
-                        <Focusable
-                          id={`addon-del-${addon.manifest.id}`}
+                      <div className="tv-addon-item-actions">
+                        <M3Switch
+                          id={`addon-toggle-${addon.id}`}
                           groupId="settings-addons-list"
-                          indexInGroup={idx * 2 + 1}
-                          scaleEffect={false}
-                          ariaLabel={`Uninstall ${addon.manifest.name}`}
-                          onSelect={() => handleUninstallAddon(addon.manifest.id)}
-                        >
-                          {(isFocused) => (
-                            <div className={`tv-tonal-btn danger icon-only ${isFocused ? 'focused' : ''}`}>
-                              <Trash2 size={15} />
-                            </div>
-                          )}
-                        </Focusable>
-                      )}
+                          indexInGroup={idx * 2}
+                          checked={addon.enabled}
+                          label={`Toggle ${addon.manifest.name}`}
+                          onToggle={() => handleToggleAddon(addon.id, addon.enabled)}
+                        />
+
+                        {addon.manifest.id !== 'org.stremio.cinemeta' && (
+                          <Focusable
+                            id={`addon-del-${addon.id}`}
+                            groupId="settings-addons-list"
+                            indexInGroup={idx * 2 + 1}
+                            scaleEffect={false}
+                            ariaLabel={`Uninstall ${addon.manifest.name}`}
+                            onSelect={() => handleUninstallAddon(addon.id)}
+                          >
+                            {(isFocused) => (
+                              <div className={`tv-tonal-btn danger icon-only ${isFocused ? 'focused' : ''}`}>
+                                <Trash2 size={15} />
+                              </div>
+                            )}
+                          </Focusable>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
 
               <div className="tv-subgroup-header">
-                <h4 className="tv-subgroup-title">Official &amp; Community Presets</h4>
+                <h4 className="tv-subgroup-title">Direct-URL &amp; Community Presets</h4>
               </div>
 
               <div className="tv-community-presets-row">
                 {[
-                  { id: 'preset-torrentio', label: 'Torrentio (4K / HDR)', url: 'https://torrentio.strem.fun/manifest.json' },
-                  { id: 'preset-cinemeta', label: 'Cinemeta Catalogs', url: 'https://v3-cinemeta.strem.io/manifest.json' },
-                  { id: 'preset-opensubtitles', label: 'OpenSubtitles v3', url: 'https://opensubtitles-v3.strem.io/manifest.json' },
-                  { id: 'preset-aiostreams', label: 'AIOStreams Aggregator', url: 'https://aiostreams.am/manifest.json' },
+                  {
+                    id: 'preset-webstreamrmbg',
+                    label: 'WebStreamrMBG (Direct HTTP)',
+                    url: 'https://87d6a6ef6b58-webstreamrmbg.baby-beamup.club/manifest.json',
+                  },
+                  {
+                    id: 'preset-mediafusion',
+                    label: 'MediaFusion (ElfHosted)',
+                    url: 'https://mediafusion.elfhosted.com/manifest.json',
+                  },
+                  {
+                    id: 'preset-comet',
+                    label: 'Comet (ElfHosted)',
+                    url: 'https://comet.elfhosted.com/manifest.json',
+                  },
+                  {
+                    id: 'preset-torrentio',
+                    label: 'Torrentio (4K / Debrid)',
+                    url: 'https://torrentio.strem.fun/manifest.json',
+                  },
+                  {
+                    id: 'preset-opensubtitles',
+                    label: 'OpenSubtitles v3',
+                    url: 'https://opensubtitles-v3.strem.io/manifest.json',
+                  },
+                  {
+                    id: 'preset-cinemeta',
+                    label: 'Cinemeta Catalogs',
+                    url: 'https://v3-cinemeta.strem.io/manifest.json',
+                  },
                 ].map((preset, idx) => (
                   <Focusable
                     key={preset.id}
@@ -871,16 +947,16 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onClose }) => {
               <div className="tv-pref-group">
                 <div className="tv-pref-row tv-pref-row-stacked">
                   <div className="tv-row-text">
-                    <span className="tv-row-title">Install Custom Addon Manifest</span>
+                    <span className="tv-row-title">Install Custom Stremio / Direct-URL Addon</span>
                     <span className="tv-row-desc">
-                      Paste any valid Stremio or Nuvio manifest URL
+                      Paste any configured Stremio manifest URL (https://.../manifest.json or stremio://...). Direct HTTP &amp; HLS streams from installed addons play natively inside Kaira Player with full HUD, subtitles, and Dialogue Clarity.
                     </span>
                   </div>
                   <div className="tv-settings-input-row">
                     <Focusable
                       id="addon-custom-input-box"
                       groupId="settings-addon-presets"
-                      indexInGroup={4}
+                      indexInGroup={6}
                       scaleEffect={false}
                       onSelect={() => {
                         const input = document.getElementById('addon-custom-manifest-input');
@@ -900,10 +976,10 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onClose }) => {
                             } else if (e.key === 'ArrowRight') {
                               spatialNav.setFocus('addon-custom-install-btn');
                             } else if (e.key === 'ArrowUp') {
-                              spatialNav.setFocus('preset-torrentio');
+                              spatialNav.setFocus('preset-webstreamrmbg');
                             }
                           }}
-                          placeholder="https://.../manifest.json"
+                          placeholder="https://.../manifest.json or stremio://..."
                           className={`tv-settings-text-input ${isFocused ? 'focused' : ''}`}
                         />
                       )}
@@ -912,7 +988,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onClose }) => {
                     <Focusable
                       id="addon-custom-install-btn"
                       groupId="settings-addon-presets"
-                      indexInGroup={5}
+                      indexInGroup={7}
                       scaleEffect={false}
                       ariaLabel="Install custom manifest"
                       onSelect={() => {

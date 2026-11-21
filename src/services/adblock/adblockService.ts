@@ -36,7 +36,6 @@ class UBlockService {
 
   constructor() {
     this.loadState();
-    this.initBrowserPopupSuppression();
   }
 
   private loadState() {
@@ -68,21 +67,6 @@ class UBlockService {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(this.state));
     } catch (e) {}
     this.notify();
-  }
-
-  private initBrowserPopupSuppression() {
-    if (typeof window === 'undefined') return;
-
-    // Intercept window.open in browser to prevent streaming embed popup redirects
-    const originalWindowOpen = window.open;
-    window.open = (url?: string | URL, target?: string, features?: string) => {
-      if (this.state.enabled && this.state.antiPopup) {
-        this.recordBlocked();
-        console.log(`[uBlock Origin] Neutralized in-browser popup redirect: ${url}`);
-        return null;
-      }
-      return originalWindowOpen.call(window, url, target, features);
-    };
   }
 
   public getState(): UBlockState {

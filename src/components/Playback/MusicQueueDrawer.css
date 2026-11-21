@@ -13,7 +13,7 @@
 .tv-queue-drawer-panel {
   width: clamp(380px, 34vw, 540px);
   height: 100vh;
-  background: rgba(18, 18, 22, 0.96);
+  background: rgba(8, 8, 10, 0.98);
   border-left: 1px solid var(--border-medium);
   box-shadow: -16px 0 40px rgba(0, 0, 0, 0.85);
   display: flex;
@@ -63,7 +63,7 @@
   padding: 6px 14px;
   border-radius: var(--radius-pill);
   background: rgba(255, 255, 255, 0.08);
-  border: 1px solid var(--border-subtle);
+  border: none;
   font-size: var(--font-caption);
   font-weight: 600;
   color: var(--text-secondary);
@@ -74,7 +74,7 @@
 .tv-queue-close-pill.focused {
   background: var(--google-blue);
   color: #0f0f0f;
-  border-color: #ffffff;
+  box-shadow: 0 0 0 2px var(--md-sys-color-focus-ring, #e8eefc);
   transform: scale(var(--focus-scale));
 }
 

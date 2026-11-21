@@ -24,6 +24,8 @@ export const FloatingVideoPiP: React.FC<FloatingVideoPiPProps> = ({
     source.streamType === 'youtube' ||
     (Boolean(source.streamUrl) && (source.streamUrl.includes('youtube.com') || source.streamUrl.includes('youtu.be')));
 
+  const isEmbed = !isYouTube && source.streamType === 'embed';
+
   const extractYtId = (url: string): string | null => {
     if (!url) return null;
     const match = url.match(/(?:embed\/|v=|vi\/|youtu\.be\/|\/v\/)([a-zA-Z0-9_-]{11})/);
@@ -34,20 +36,60 @@ export const FloatingVideoPiP: React.FC<FloatingVideoPiPProps> = ({
 
   const iframeRef = React.useRef<HTMLIFrameElement | null>(null);
   const videoRef = React.useRef<HTMLVideoElement | null>(null);
+  const hasAppliedInitialSeekRef = React.useRef<string | null>(null);
+  const [internalPlaying, setInternalPlaying] = React.useState<boolean>(isPlaying);
 
-  // Synchronize native video element state with isPlaying prop
+  React.useEffect(() => {
+    setInternalPlaying(isPlaying);
+  }, [isPlaying]);
+
+  React.useEffect(() => {
+    const unsub = playbackService.subscribe((state) => {
+      setInternalPlaying(state.status === 'playing');
+    });
+    return () => unsub();
+  }, []);
+
+  // Apply initialPosition exactly once per source after metadata loads (avoiding infinite seek loops on re-render)
+  React.useEffect(() => {
+    if (isYouTube || isEmbed) return;
+    const video = videoRef.current;
+    if (!video || !source.initialPosition || source.initialPosition <= 0) return;
+
+    const sourceKey = `${source.id}:${source.streamUrl}`;
+    if (hasAppliedInitialSeekRef.current === sourceKey) return;
+
+    const applySeek = () => {
+      if (!videoRef.current || hasAppliedInitialSeekRef.current === sourceKey) return;
+      hasAppliedInitialSeekRef.current = sourceKey;
+      try {
+        videoRef.current.currentTime = source.initialPosition || 0;
+      } catch (e) {}
+    };
+
+    if (video.readyState >= 1) {
+      applySeek();
+    } else {
+      video.addEventListener('loadedmetadata', applySeek, { once: true });
+      return () => {
+        video.removeEventListener('loadedmetadata', applySeek);
+      };
+    }
+  }, [source.id, source.streamUrl, source.initialPosition, isYouTube, isEmbed]);
+
+  // Synchronize native video element state with live playing state
   React.useEffect(() => {
     if (!videoRef.current) return;
-    if (isPlaying && videoRef.current.paused) {
+    if (internalPlaying && videoRef.current.paused) {
       videoRef.current.play().catch(() => {});
-    } else if (!isPlaying && !videoRef.current.paused) {
+    } else if (!internalPlaying && !videoRef.current.paused) {
       videoRef.current.pause();
     }
-  }, [isPlaying]);
+  }, [internalPlaying]);
 
   const handleTogglePlay = () => {
     if (isYouTube && iframeRef.current?.contentWindow) {
-      const func = isPlaying ? 'pauseVideo' : 'playVideo';
+      const func = internalPlaying ? 'pauseVideo' : 'playVideo';
       try {
         iframeRef.current.contentWindow.postMessage(JSON.stringify({ event: 'command', func }), '*');
       } catch (e) {}
@@ -73,14 +115,17 @@ export const FloatingVideoPiP: React.FC<FloatingVideoPiPProps> = ({
             allow="autoplay; encrypted-media"
             title={source.title}
           />
+        ) : isEmbed ? (
+          <iframe
+            ref={iframeRef}
+            src={source.streamUrl}
+            className="tv-pip-media"
+            allow="autoplay; encrypted-media; fullscreen"
+            title={source.title}
+          />
         ) : (
           <video
-            ref={(el) => {
-              videoRef.current = el;
-              if (el && source.initialPosition && Math.abs(el.currentTime - source.initialPosition) > 2) {
-                el.currentTime = source.initialPosition;
-              }
-            }}
+            ref={videoRef}
             src={source.streamUrl}
             className="tv-pip-media"
             autoPlay
@@ -123,7 +168,7 @@ export const FloatingVideoPiP: React.FC<FloatingVideoPiPProps> = ({
             >
               {(isFocused) => (
                 <div className={`tv-pip-btn ${isFocused ? 'focused' : ''}`}>
-                  {isPlaying ? <Pause size={16} fill="currentColor" /> : <Play size={16} fill="currentColor" />}
+                  {internalPlaying ? <Pause size={16} fill="currentColor" /> : <Play size={16} fill="currentColor" />}
                 </div>
               )}
             </Focusable>

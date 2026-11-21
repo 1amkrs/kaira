@@ -33,6 +33,8 @@ import { appLauncher, LaunchFeedback } from './services/appLauncher/appLauncher'
 import { mediaProvider, ContinueWatchingItem } from './services/media/LiveMediaProvider';
 import { playbackService } from './services/playback/PlaybackService';
 import { addonService } from './services/addons/AddonService';
+import { isValidStreamUrl, extractImdbId } from './services/addons/streamFallback';
+import { AddonStream } from './types/addons';
 import { MediaItem } from './types';
 import { Loader2, Gamepad, Volume2, VolumeX, Smartphone } from 'lucide-react';
 import { OfflineIndicator } from './components/PWA/PWAInstallBanner';
@@ -94,12 +96,18 @@ export const App: React.FC = () => {
   const [isStandbyActive, setIsStandbyActive] = useState<boolean>(() => sleepTimerService.getState().isStandby);
 
   // HUD Toasts & Overlays
+  const [searchInitialQuery, setSearchInitialQuery] = useState<string>('');
   const [launchToast, setLaunchToast] = useState<LaunchFeedback | null>(null);
   const [gamepadToast, setGamepadToast] = useState<{ message: string; connected: boolean } | null>(null);
   const [remoteToast, setRemoteToast] = useState<{ message: string; count: number } | null>(null);
   const [volumeToast, setVolumeToast] = useState<{ level: number; muted: boolean } | null>(null);
   const volumeToastTimerRef = useRef<NodeJS.Timeout | null>(null);
   const cursorTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const activeVideoSourceRef = useRef<PlaybackSource | null>(null);
+  const isDetailOpenRef = useRef<boolean>(false);
+  const selectedShowRef = useRef<Show | null>(null);
+  activeVideoSourceRef.current = activeVideoSource;
+  selectedShowRef.current = selectedShow;
 
   // --- TAB NAVIGATION ---
   const handleSelectTab = useCallback((tab: NavigationTab) => {
@@ -194,8 +202,19 @@ export const App: React.FC = () => {
     activeProfile.id,
   ]);
 
-  const handleOpenSearch = useCallback(() => {
-    setActiveModal((prev) => (prev === 'search' ? null : 'search'));
+  const handleOpenSearch = useCallback((initialQuery?: string) => {
+    if (typeof initialQuery === 'string' && initialQuery.trim().length > 0) {
+      setSearchInitialQuery(initialQuery);
+      setActiveModal('search');
+      return;
+    }
+    setActiveModal((prev) => {
+      if (prev === 'search') {
+        setSearchInitialQuery('');
+        return null;
+      }
+      return 'search';
+    });
   }, []);
 
   const handleOpenSettings = useCallback(() => {
@@ -203,43 +222,96 @@ export const App: React.FC = () => {
   }, []);
 
   // --- PLAYBACK DISPATCHERS ---
-  const handlePlayMovie = useCallback(async (movie: Movie, customStreamUrl?: string, streamType?: 'direct' | 'embed' | 'youtube' | 'torrent') => {
-    const source = await mediaProvider.getPlaybackSource(movie);
-    if (customStreamUrl) {
-      source.streamUrl = customStreamUrl;
-    } else {
-      try {
-        const streams = await addonService.fetchStreams('movie', movie.id, undefined, undefined, movie.title, movie.ytTrailerId);
-        const best = addonService.selectBestStream(streams);
-        if (best) {
-          source.streamUrl = best.url;
-          source.streamType = best.streamType;
-          if (best.durationSeconds) {
-            source.durationSeconds = best.durationSeconds;
-          }
-        }
-      } catch (e) {}
-    }
-    if (streamType) {
-      source.streamType = streamType;
+  const handlePlayMovie = useCallback(async (
+    movie: Movie,
+    customStreamUrl?: string,
+    streamType?: 'direct' | 'embed' | 'youtube' | 'torrent',
+    proxyHeaders?: Record<string, string>,
+    preloadedStreams?: AddonStream[]
+  ) => {
+    const cleanImdbId = extractImdbId(movie.imdbId, movie.id);
+    let source: PlaybackSource;
+
+    try {
+      source = await mediaProvider.getPlaybackSource(movie);
+    } catch (err) {
+      console.warn('[App] getPlaybackSource failed for movie, synthesizing fallback source:', err);
+      source = {
+        id: `source-${movie.id}`,
+        type: 'video',
+        streamType: 'embed',
+        title: movie.title,
+        subtitle: `${movie.year} • ${movie.runtime}`,
+        artwork: movie.poster,
+        backdrop: movie.backdrop,
+        streamUrl: movie.streamUrl || '',
+        durationSeconds: (movie.runtimeMinutes || 120) * 60,
+        initialPosition: 0,
+        mediaType: 'movie',
+        mediaId: movie.id,
+        imdbId: cleanImdbId || undefined,
+        ytTrailerId: movie.ytTrailerId,
+      };
     }
 
-    // Save to active profile's watch history memory
+    const plan = await addonService.resolveStreamPlan({
+      type: 'movie',
+      id: movie.id,
+      imdbId: cleanImdbId || source.imdbId,
+      titleHint: movie.title,
+      ytTrailerId: movie.ytTrailerId || source.ytTrailerId,
+      preferredStreamUrl: customStreamUrl,
+      preferredStreamType: streamType,
+      preferredProxyHeaders: proxyHeaders,
+      preloadedStreams,
+    });
+
+    if (plan.warnings.length > 0) {
+      console.warn(`[App] Movie stream fallback notice (${movie.title}):`, plan.warnings.join(' | '));
+    }
+
+    if (plan.primary && isValidStreamUrl(plan.primary.url)) {
+      source.streamUrl = plan.primary.url;
+      source.streamType = plan.primary.streamType;
+      source.proxyHeaders = plan.primary.proxyHeaders;
+      if (plan.primary.durationSeconds && plan.primary.durationSeconds > 0) {
+        source.durationSeconds = plan.primary.durationSeconds;
+      }
+    } else if (!isValidStreamUrl(source.streamUrl) && plan.candidates.length > 0) {
+      const backup = plan.candidates[0];
+      source.streamUrl = backup.url;
+      source.streamType = backup.streamType;
+      source.proxyHeaders = backup.proxyHeaders;
+    }
+
+    if (plan.imdbId) {
+      source.imdbId = plan.imdbId;
+    }
+    source.fallbackStreams = plan.candidates;
+
+    // Save to active profile's watch history memory (preserving existing progress if resuming)
+    const existingMovieHist = profileService
+      .getWatchHistory(activeProfile.id)
+      .find((h) => h.mediaId === movie.id);
     profileService.addWatchHistory(activeProfile.id, {
       mediaId: movie.id,
       title: movie.title,
       type: 'movie',
       poster: movie.poster,
       backdrop: movie.backdrop,
-      progress: 0,
-      positionSeconds: 0,
-      durationSeconds: (movie.runtimeMinutes || 120) * 60,
+      progress: existingMovieHist?.progress ?? 0,
+      positionSeconds: existingMovieHist?.positionSeconds ?? source.initialPosition ?? 0,
+      durationSeconds: source.durationSeconds || (movie.runtimeMinutes || 120) * 60,
       genres: movie.genres,
       rating: movie.rating,
       year: movie.year,
     });
 
-    await playbackService.play(source);
+    try {
+      await playbackService.play(source);
+    } catch (err) {
+      console.warn('[App] playbackService.play notice for movie:', err);
+    }
     setActiveVideoSource(source);
   }, [activeProfile.id]);
 
@@ -247,11 +319,14 @@ export const App: React.FC = () => {
     episode: Episode,
     customStreamUrl?: string,
     streamType?: 'direct' | 'embed' | 'youtube' | 'torrent',
-    streamDurationSeconds?: number
+    streamDurationSeconds?: number,
+    proxyHeaders?: Record<string, string>,
+    preloadedStreams?: AddonStream[]
   ) => {
+    const currentSelectedShow = selectedShowRef.current;
     // Eagerly ensure selectedShow is set to this TV show so it sits directly underneath the player
     setSelectedShowSeason(episode.seasonNumber || 1);
-    if (!selectedShow || (selectedShow.id !== episode.showId && selectedShow.imdbId !== episode.showId)) {
+    if (!currentSelectedShow || (currentSelectedShow.id !== episode.showId && currentSelectedShow.imdbId !== episode.showId)) {
       mediaProvider.getShow(episode.showId).then((s) => {
         if (s) {
           setSelectedMovie(null);
@@ -261,39 +336,98 @@ export const App: React.FC = () => {
       }).catch(() => {});
     }
 
-    const source = await mediaProvider.getPlaybackSource(episode);
-    if (customStreamUrl) {
-      source.streamUrl = customStreamUrl;
-      if (streamDurationSeconds && streamDurationSeconds > 0) {
-        source.durationSeconds = streamDurationSeconds;
-      }
-    } else {
-      try {
-        const titleHint = episode.showTitle || (selectedShow && selectedShow.id === episode.showId ? selectedShow.title : undefined) || episode.title;
-        const streams = await addonService.fetchStreams('series', episode.showId, episode.seasonNumber, episode.number, titleHint, undefined);
-        const best = addonService.selectBestStream(streams);
-        if (best) {
-          source.streamUrl = best.url;
-          source.streamType = best.streamType;
-          if (best.durationSeconds) {
-            source.durationSeconds = best.durationSeconds;
-          }
-        }
-      } catch (e) {}
-    }
-    if (streamType) {
-      source.streamType = streamType;
+    const matchingShow =
+      currentSelectedShow &&
+      (currentSelectedShow.id === episode.showId || currentSelectedShow.imdbId === episode.showId)
+        ? currentSelectedShow
+        : null;
+    const cleanImdbId = extractImdbId(episode.imdbId, matchingShow?.imdbId, episode.showId);
+    const titleHint = episode.showTitle || matchingShow?.title || episode.title;
+
+    let source: PlaybackSource;
+    try {
+      source = await mediaProvider.getPlaybackSource(episode);
+    } catch (err) {
+      console.warn('[App] getPlaybackSource failed for episode, synthesizing fallback source:', err);
+      source = {
+        id: `source-${episode.id}`,
+        type: 'video',
+        streamType: 'embed',
+        title: episode.title,
+        subtitle: `Season ${episode.seasonNumber || 1} · Episode ${episode.number || 1}`,
+        artwork: episode.thumbnail,
+        backdrop: matchingShow?.backdrop || episode.thumbnail,
+        streamUrl: episode.streamUrl || '',
+        durationSeconds: episode.durationSeconds || (episode.runtimeMinutes || 45) * 60,
+        initialPosition: 0,
+        mediaType: 'episode',
+        mediaId: episode.id,
+        showId: episode.showId,
+        showTitle: titleHint,
+        seasonId: episode.seasonId,
+        seasonNumber: episode.seasonNumber || 1,
+        episodeNumber: episode.number || 1,
+        imdbId: cleanImdbId || undefined,
+      };
     }
 
-    // Save to active profile's watch history memory
+    const plan = await addonService.resolveStreamPlan({
+      type: 'series',
+      id: episode.showId,
+      imdbId: cleanImdbId || source.imdbId,
+      seasonNumber: episode.seasonNumber || source.seasonNumber || 1,
+      episodeNumber: episode.number || source.episodeNumber || 1,
+      titleHint,
+      ytTrailerId: matchingShow?.ytTrailerId || source.ytTrailerId,
+      preferredStreamUrl: customStreamUrl,
+      preferredStreamType: streamType,
+      preferredProxyHeaders: proxyHeaders,
+      preferredDurationSeconds: streamDurationSeconds,
+      preloadedStreams,
+    });
+
+    if (plan.warnings.length > 0) {
+      console.warn(
+        `[App] Episode stream fallback notice (${titleHint} S${episode.seasonNumber}E${episode.number}):`,
+        plan.warnings.join(' | ')
+      );
+    }
+
+    if (plan.primary && isValidStreamUrl(plan.primary.url)) {
+      source.streamUrl = plan.primary.url;
+      source.streamType = plan.primary.streamType;
+      source.proxyHeaders = plan.primary.proxyHeaders;
+      if (plan.primary.durationSeconds && plan.primary.durationSeconds > 0) {
+        source.durationSeconds = plan.primary.durationSeconds;
+      }
+    } else if (!isValidStreamUrl(source.streamUrl) && plan.candidates.length > 0) {
+      const backup = plan.candidates[0];
+      source.streamUrl = backup.url;
+      source.streamType = backup.streamType;
+      source.proxyHeaders = backup.proxyHeaders;
+    }
+
+    if (streamDurationSeconds && streamDurationSeconds > 0 && !source.durationSeconds) {
+      source.durationSeconds = streamDurationSeconds;
+    }
+
+    if (plan.imdbId) {
+      source.imdbId = plan.imdbId;
+    }
+    source.fallbackStreams = plan.candidates;
+
+    // Save to active profile's watch history memory (preserving existing progress if resuming)
+    const existingEpHist = profileService
+      .getWatchHistory(activeProfile.id)
+      .find((h) => h.mediaId === episode.id);
     profileService.addWatchHistory(activeProfile.id, {
       mediaId: episode.id,
       title: episode.title,
       type: 'show',
       poster: episode.thumbnail,
       backdrop: episode.thumbnail,
-      progress: 0,
-      positionSeconds: 0,
+      progress: existingEpHist?.progress ?? 0,
+      positionSeconds: existingEpHist?.positionSeconds ?? source.initialPosition ?? 0,
       durationSeconds: source.durationSeconds || episode.durationSeconds || (episode.runtimeMinutes || 45) * 60,
       episodeInfo: {
         seasonNumber: episode.seasonNumber,
@@ -302,7 +436,11 @@ export const App: React.FC = () => {
       },
     });
 
-    await playbackService.play(source);
+    try {
+      await playbackService.play(source);
+    } catch (err) {
+      console.warn('[App] playbackService.play notice for episode:', err);
+    }
     setActiveVideoSource(source);
   }, [activeProfile.id]);
 
@@ -512,6 +650,8 @@ export const App: React.FC = () => {
       screensaverService.wake();
     } else if (isRemoteModalOpen) {
       setIsRemoteModalOpen(false);
+    } else if (isSleepModalOpen) {
+      setIsSleepModalOpen(false);
     } else if (isQuickSettingsOpen) {
       setIsQuickSettingsOpen(false);
     } else if (isProfileModalOpen) {
@@ -543,6 +683,9 @@ export const App: React.FC = () => {
     } else if (isMusicPlayerOpen) {
       setIsMusicPlayerOpen(false);
     } else if (activeModal) {
+      if (activeModal === 'search') {
+        setSearchInitialQuery('');
+      }
       setActiveModal(null);
     } else if (selectedMovie) {
       setSelectedMovie(null);
@@ -554,8 +697,10 @@ export const App: React.FC = () => {
       setCurrentTab('for-you');
     }
   }, [
+    isStandbyActive,
     isScreensaverActive,
     isRemoteModalOpen,
+    isSleepModalOpen,
     isQuickSettingsOpen,
     isProfileModalOpen,
     activeVideoSource,
@@ -569,11 +714,42 @@ export const App: React.FC = () => {
   ]);
 
   const isDetailOpen = Boolean(selectedMovie || selectedShow || selectedAlbum);
+  isDetailOpenRef.current = isDetailOpen;
 
-  // Controller & System Subscriptions
+  const hasOverlayRef = useRef<boolean>(false);
+  hasOverlayRef.current =
+    isStandbyActive ||
+    isScreensaverActive ||
+    isRemoteModalOpen ||
+    isQuickSettingsOpen ||
+    isProfileModalOpen ||
+    isSleepModalOpen ||
+    Boolean(activeVideoSource) ||
+    Boolean(pipVideoSource) ||
+    isMusicPlayerOpen ||
+    Boolean(activeModal) ||
+    Boolean(selectedMovie) ||
+    Boolean(selectedShow) ||
+    Boolean(selectedAlbum) ||
+    currentTab !== 'for-you';
+
+  const handleBackRef = useRef(handleBack);
+  handleBackRef.current = handleBack;
+  const handleOpenSearchRef = useRef(handleOpenSearch);
+  handleOpenSearchRef.current = handleOpenSearch;
+  const handleOpenSettingsRef = useRef(handleOpenSettings);
+  handleOpenSettingsRef.current = handleOpenSettings;
+  const handleSelectTabRef = useRef(handleSelectTab);
+  handleSelectTabRef.current = handleSelectTab;
+  const handleTabPrevRef = useRef(handleTabPrev);
+  handleTabPrevRef.current = handleTabPrev;
+  const handleTabNextRef = useRef(handleTabNext);
+  handleTabNextRef.current = handleTabNext;
+
+  // Controller & System Subscriptions (mount once per platform mode; fresh callbacks stay synced via setCallbacks & refs)
   useEffect(() => {
     sleepTimerService.setOnSleepCallback(() => {
-      if (activeVideoSource) {
+      if (activeVideoSourceRef.current) {
         setActiveVideoSource(null);
       }
       displayService.triggerPowerAction('sleep');
@@ -584,12 +760,12 @@ export const App: React.FC = () => {
     });
 
     const cleanup = gamepadManager.init({
-      onBack: handleBack,
-      onSearch: handleOpenSearch,
-      onSettings: handleOpenSettings,
+      onBack: () => handleBackRef.current(),
+      onSearch: () => handleOpenSearchRef.current(),
+      onSettings: () => handleOpenSettingsRef.current(),
       onMenu: () => setIsQuickSettingsOpen((prev) => !prev),
-      onTabPrev: handleTabPrev,
-      onTabNext: handleTabNext,
+      onTabPrev: () => handleTabPrevRef.current(),
+      onTabNext: () => handleTabNextRef.current(),
       onGamepadStatusChange: (connected, id) => {
         setGamepadToast({
           message: connected ? `Controller Connected: ${id.split('(')[0].trim() || 'Gamepad'}` : 'Controller Disconnected',
@@ -599,7 +775,17 @@ export const App: React.FC = () => {
       },
     });
 
+    const isEditableElement = (el: EventTarget | null): boolean => {
+      if (!el || !(el instanceof HTMLElement)) return false;
+      const tag = el.tagName;
+      return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || el.isContentEditable;
+    };
+
     const handleVolumeKeys = (e: KeyboardEvent) => {
+      if (e.defaultPrevented) return;
+      if (activeVideoSourceRef.current) return;
+      if (isEditableElement(e.target) || isEditableElement(document.activeElement)) return;
+
       if (e.key === '+' || e.key === '=' || e.key === 'VolumeUp') {
         const curVol = playbackService.getState().volume;
         const next = Math.min(1, curVol + 0.05);
@@ -647,13 +833,18 @@ export const App: React.FC = () => {
 
     if (isRemoteEnabled) {
       remoteService.init({
-        onSetTab: handleSelectTab,
-        onOpenSearch: () => setActiveModal('search'),
-        onOpenSettings: handleOpenSettings,
+        onSetTab: (tab) => handleSelectTabRef.current(tab),
+        onOpenSearch: (query?: string) => {
+          if (typeof query === 'string') {
+            setSearchInitialQuery(query);
+          }
+          setActiveModal('search');
+        },
+        onOpenSettings: () => handleOpenSettingsRef.current(),
         onOpenQuickSettings: () => setIsQuickSettingsOpen((prev) => !prev),
         onOpenSleepTimer: () => setIsSleepModalOpen(true),
         onOpenRemoteModal: () => setIsRemoteModalOpen(true),
-        onBack: handleBack,
+        onBack: () => handleBackRef.current(),
         onTriggerScreensaver: () => screensaverService.trigger(),
       });
     }
@@ -667,7 +858,7 @@ export const App: React.FC = () => {
       document.body.classList.remove('hide-cursor');
       if (cursorTimerRef.current) clearTimeout(cursorTimerRef.current);
       cursorTimerRef.current = setTimeout(() => {
-        if (!isDetailOpen) {
+        if (!isDetailOpenRef.current) {
           document.body.classList.add('hide-cursor');
         }
       }, 3500);
@@ -682,11 +873,12 @@ export const App: React.FC = () => {
       window.removeEventListener('kaira:open-onboarding', handleOpenOnboarding);
       window.removeEventListener('keydown', handleVolumeKeys);
       window.removeEventListener('mousemove', handleMouseMove);
+      if (cursorTimerRef.current) clearTimeout(cursorTimerRef.current);
+      if (volumeToastTimerRef.current) clearTimeout(volumeToastTimerRef.current);
       unsubLaunch();
       unsubProfile();
     };
-
-  }, [handleBack, handleOpenSearch, handleOpenSettings, handleSelectTab, handleTabPrev, handleTabNext, isRemoteEnabled]);
+  }, [isRemoteEnabled]);
 
   // Sync TV UI state with companion remote (non-Android only)
   useEffect(() => {
@@ -707,15 +899,21 @@ export const App: React.FC = () => {
   useEffect(() => {
     gamepadManager.setCallbacks({
       onBack: handleBack,
-      onSearch: handleOpenSearch,
+      onSearch: () => handleOpenSearch(),
       onSettings: handleOpenSettings,
+      onMenu: () => setIsQuickSettingsOpen((prev) => !prev),
       onTabPrev: handleTabPrev,
       onTabNext: handleTabNext,
     });
     if (isRemoteEnabled) {
       remoteService.setCallbacks({
         onSetTab: handleSelectTab,
-        onOpenSearch: () => setActiveModal('search'),
+        onOpenSearch: (query?: string) => {
+          if (typeof query === 'string') {
+            setSearchInitialQuery(query);
+          }
+          setActiveModal('search');
+        },
         onOpenSettings: handleOpenSettings,
         onOpenQuickSettings: () => setIsQuickSettingsOpen((prev) => !prev),
         onOpenSleepTimer: () => setIsSleepModalOpen(true),
@@ -726,29 +924,13 @@ export const App: React.FC = () => {
     }
   }, [handleBack, handleOpenSearch, handleOpenSettings, handleSelectTab, handleTabPrev, handleTabNext, isRemoteEnabled]);
 
-  // Android hardware back / system gesture navigation bridge
+  // Android hardware back / system gesture navigation bridge (single guard entry, never pollutes history)
   useEffect(() => {
     if (!platform.isAndroid && !window.matchMedia('(max-width: 768px)').matches) return;
 
     const onPopState = () => {
-      const hasOverlay =
-        isStandbyActive ||
-        isScreensaverActive ||
-        isRemoteModalOpen ||
-        isQuickSettingsOpen ||
-        isProfileModalOpen ||
-        isSleepModalOpen ||
-        Boolean(activeVideoSource) ||
-        Boolean(pipVideoSource) ||
-        isMusicPlayerOpen ||
-        Boolean(activeModal) ||
-        Boolean(selectedMovie) ||
-        Boolean(selectedShow) ||
-        Boolean(selectedAlbum) ||
-        currentTab !== 'for-you';
-
-      if (hasOverlay) {
-        handleBack();
+      if (hasOverlayRef.current) {
+        handleBackRef.current();
         window.history.pushState({ kairaNav: true }, '');
       }
     };
@@ -756,23 +938,7 @@ export const App: React.FC = () => {
     window.history.pushState({ kairaNav: true }, '');
     window.addEventListener('popstate', onPopState);
     return () => window.removeEventListener('popstate', onPopState);
-  }, [
-    handleBack,
-    isStandbyActive,
-    isScreensaverActive,
-    isRemoteModalOpen,
-    isQuickSettingsOpen,
-    isProfileModalOpen,
-    isSleepModalOpen,
-    activeVideoSource,
-    pipVideoSource,
-    isMusicPlayerOpen,
-    activeModal,
-    selectedMovie,
-    selectedShow,
-    selectedAlbum,
-    currentTab,
-  ]);
+  }, []);
 
   return (
     <div className={`tv-app-shell ${platform.isAndroid ? 'is-android' : ''} ${platform.isAndroidTV ? 'is-android-tv' : ''}`}>
@@ -933,21 +1099,29 @@ export const App: React.FC = () => {
       {/* Search Overlay */}
       {activeModal === 'search' && (
         <SearchScreen
-          onClose={() => setActiveModal(null)}
+          initialQuery={searchInitialQuery}
+          onClose={() => {
+            setActiveModal(null);
+            setSearchInitialQuery('');
+          }}
           onSelectMovie={(m) => {
             setActiveModal(null);
+            setSearchInitialQuery('');
             setSelectedMovie(m);
           }}
           onSelectShow={(s) => {
             setActiveModal(null);
+            setSearchInitialQuery('');
             setSelectedShow(s);
           }}
           onSelectAlbum={(a) => {
             setActiveModal(null);
+            setSearchInitialQuery('');
             setSelectedAlbum(a);
           }}
           onPlayTrack={(t, queue) => {
             setActiveModal(null);
+            setSearchInitialQuery('');
             handlePlayTrack(t, queue);
           }}
         />

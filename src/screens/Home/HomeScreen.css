@@ -37,16 +37,16 @@
   inset: 0;
   background: linear-gradient(
     90deg,
-    rgba(14, 16, 20, 0.95) 0%,
-    rgba(14, 16, 20, 0.75) 38%,
-    rgba(14, 16, 20, 0.24) 68%,
-    rgba(14, 16, 20, 0) 88%
+    rgba(0, 0, 0, 0.96) 0%,
+    rgba(0, 0, 0, 0.76) 38%,
+    rgba(0, 0, 0, 0.24) 68%,
+    rgba(0, 0, 0, 0) 88%
   ),
   linear-gradient(
     180deg,
-    rgba(14, 16, 20, 0.22) 0%,
-    rgba(14, 16, 20, 0) 30%,
-    rgba(14, 16, 20, 0.88) 85%,
+    rgba(0, 0, 0, 0.24) 0%,
+    rgba(0, 0, 0, 0) 30%,
+    rgba(0, 0, 0, 0.88) 84%,
     var(--bg-app) 100%
   );
 }
@@ -162,12 +162,11 @@
 .tv-hero-btn.secondary-btn .tv-btn-inner {
   background-color: var(--md-sys-color-surface-container-high);
   color: var(--text-primary);
-  border: 1px solid var(--border-medium);
+  border: none;
 }
 
 .tv-hero-btn.secondary-btn .tv-btn-inner.focused {
   background-color: var(--md-sys-color-surface-container-highest);
-  border-color: var(--md-sys-color-focus-ring);
   box-shadow: 0 0 0 2px var(--md-sys-color-focus-ring);
 }
 
