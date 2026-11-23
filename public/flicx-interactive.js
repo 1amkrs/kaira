@@ -110,7 +110,7 @@
           logoAspect: logoAspect,
           backdropTone: f.backdropTone || '#1f2933',
           tone: f.tone || '#5d341e',
-          overview: OVERVIEWS[f.slug] || `${f.title} (${f.year || 2026}) - An acclaimed ${f.genres ? f.genres.join(' and ') : 'cinematic'} release streaming now on Flicx.`,
+          overview: OVERVIEWS[f.slug] || `${f.title} (${f.year || 2026}) - An acclaimed ${f.genres ? f.genres.join(' and ') : 'cinematic'} release streaming now on Kaira.`,
           watchUrl: `/watch/${f.slug}`,
           detailUrl: isTv ? `/tv/${f.slug}` : `/movie/${f.slug}`
         };
@@ -509,7 +509,7 @@
             // Fallback to authentic Flicx Star Servers if sources are empty or unreleased
             if (serverList.length === 0) {
               serverList = [
-                { name: "Flicx", kind: "hls", src: `https://s.fli.cx/s/${imdbId}.m3u8`, group: "dedicated", has: true, quality: "4K" },
+                { name: "Kaira", kind: "hls", src: `https://s.fli.cx/s/${imdbId}.m3u8`, group: "dedicated", has: true, quality: "4K" },
                 { name: "Vega", kind: "hls", src: `https://s.fli.cx/s/vega-${imdbId}.m3u8`, group: "external", has: true, quality: "4K" },
                 { name: "Sirius", kind: "hls", src: `https://s.fli.cx/s/sirius-${imdbId}.m3u8`, group: "external", has: true, quality: "4K" },
                 { name: "Rigel", kind: "hls", src: `https://s.fli.cx/s/rigel-${imdbId}.m3u8`, group: "external", has: true, quality: "1080p" },
@@ -528,8 +528,8 @@
       const yearStr = titleInfo.year || '';
       const backUrl = isShow ? `/tv/${titleSlug}` : `/movie/${titleSlug}`;
 
-      let savedServerName = 'Flicx';
-      try { savedServerName = localStorage.getItem('flicx:player:server') || 'Flicx'; } catch(e){}
+      let savedServerName = 'Kaira';
+      try { savedServerName = localStorage.getItem('flicx:player:server') || 'Kaira'; } catch(e){}
       let currentServerIndex = servers.findIndex(s => s.name === savedServerName);
       if (currentServerIndex === -1) currentServerIndex = 0;
       let currentServer = servers[currentServerIndex];
@@ -1248,7 +1248,7 @@
   let activeSettingsView = 'main';
   let settingsState = {
     accentColor: '#f59e0b',
-    accentName: 'Flicx',
+    accentName: 'Kaira',
     accentHue: 62,
     ambientLight: '60%',
     ambientEnabled: true,
@@ -1468,7 +1468,7 @@
             localStorage.removeItem('flicx_settings');
             settingsState = {
               accentColor: '#f59e0b',
-              accentName: 'Flicx',
+              accentName: 'Kaira',
               accentHue: 62,
               ambientLight: '60%',
               ambientEnabled: true,
@@ -1826,7 +1826,7 @@
 
   // --- 9. Animated Logo Hover Re-trigger ---
   function initAnimatedLogoHover() {
-    document.querySelectorAll('.flicx-logo-link, a[aria-label="Flicx home"]').forEach(link => {
+    document.querySelectorAll('.flicx-logo-link, a[aria-label="Kaira home"]').forEach(link => {
       if (link.dataset.logoHoverActive) return;
       link.dataset.logoHoverActive = 'true';
 

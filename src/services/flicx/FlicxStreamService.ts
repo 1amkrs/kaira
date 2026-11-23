@@ -85,12 +85,12 @@ export class FlicxStreamService {
   }
 
   /**
-   * Resilient fallback sources matching Flicx's server clusters
+   * Resilient fallback sources matching Kaira's server clusters
    */
   public static getEmergencyFallbackSources(imdbId: string): FlicxStreamSource[] {
     return [
       {
-        name: 'Flicx Dedicated',
+        name: 'Kaira Dedicated',
         kind: 'hls',
         src: 'https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8',
         group: 'dedicated',

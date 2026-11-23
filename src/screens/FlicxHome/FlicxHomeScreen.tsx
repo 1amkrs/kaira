@@ -51,7 +51,7 @@ export const FlicxHomeScreen: React.FC<FlicxHomeScreenProps> = ({
 
   return (
     <div className="flicx-home-wrap">
-      {/* ─── Hero Feature (Exact Flicx Signature Hero) ─── */}
+      {/* ─── Hero Feature (Exact Kaira Signature Hero) ─── */}
       {heroMovie && (
         <section className="flicx-home-hero" aria-label="Featured Title">
           <img

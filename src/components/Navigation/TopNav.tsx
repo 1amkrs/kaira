@@ -30,20 +30,20 @@ export const TopNav: React.FC<TopNavProps> = ({
   onOpenSettings,
 }) => {
   return (
-    <header className="flicx-navbar" role="navigation" aria-label="Main Navigation">
-      <div className="flicx-nav-left">
-        <div className="flicx-brand-logo" onClick={() => onSelectTab('home')}>
+    <header className="kaira-navbar" role="navigation" aria-label="Main Navigation">
+      <div className="kaira-nav-left">
+        <div className="kaira-brand-logo" onClick={() => onSelectTab('home')}>
           <Film size={22} color="var(--brand)" />
-          <span className="flicx-brand-text">Flicx</span>
+          <span className="kaira-brand-text">Kaira</span>
         </div>
 
-        <nav className="flicx-nav-links" aria-label="Categories">
+        <nav className="kaira-nav-links" aria-label="Categories">
           {NAV_TABS.map((tab) => {
             const isActive = activeScreen === tab.id;
             return (
               <button
                 key={tab.id}
-                className={`flicx-nav-link ${isActive ? 'active' : ''}`}
+                className={`kaira-nav-link ${isActive ? 'active' : ''}`}
                 onClick={() => onSelectTab(tab.id)}
               >
                 {tab.label}
@@ -53,9 +53,9 @@ export const TopNav: React.FC<TopNavProps> = ({
         </nav>
       </div>
 
-      <div className="flicx-nav-right">
+      <div className="kaira-nav-right">
         <button
-          className="flicx-nav-btn"
+          className="kaira-nav-btn"
           onClick={onOpenSearch}
           title="Search movies and series"
           aria-label="Search"
@@ -64,7 +64,7 @@ export const TopNav: React.FC<TopNavProps> = ({
         </button>
 
         <button
-          className="flicx-nav-btn"
+          className="kaira-nav-btn"
           onClick={onOpenSettings}
           title="Settings and preferences"
           aria-label="Settings"

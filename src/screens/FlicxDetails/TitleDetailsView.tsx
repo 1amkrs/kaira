@@ -163,7 +163,7 @@ export const TitleDetailsView: React.FC<TitleDetailsViewProps> = ({
           </p>
         </div>
 
-        {/* ─── Signature Flicx Download Section ─── */}
+        {/* ─── Signature Kaira Download Section ─── */}
         <div className="downloads-part">
           <div className="eyebrow" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
             <Download size={14} />

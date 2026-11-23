@@ -1,4 +1,4 @@
-.flicx-navbar {
+.kaira-navbar {
   position: sticky;
   top: 0;
   left: 0;
@@ -16,13 +16,13 @@
   user-select: none;
 }
 
-.flicx-nav-left {
+.kaira-nav-left {
   display: flex;
   align-items: center;
   gap: 32px;
 }
 
-.flicx-brand-logo {
+.kaira-brand-logo {
   display: flex;
   align-items: center;
   gap: 10px;
@@ -30,13 +30,13 @@
   color: #ffffff;
 }
 
-.flicx-brand-logo svg {
+.kaira-brand-logo svg {
   width: 24px;
   height: 24px;
   color: #ffffff;
 }
 
-.flicx-brand-text {
+.kaira-brand-text {
   font-family: var(--font-heading);
   font-size: 1.25rem;
   font-weight: 800;
@@ -44,7 +44,7 @@
   color: #ffffff;
 }
 
-.flicx-nav-links {
+.kaira-nav-links {
   display: flex;
   align-items: center;
   gap: 6px;
@@ -52,11 +52,11 @@
   scrollbar-width: none;
 }
 
-.flicx-nav-links::-webkit-scrollbar {
+.kaira-nav-links::-webkit-scrollbar {
   display: none;
 }
 
-.flicx-nav-link {
+.kaira-nav-link {
   padding: 6px 14px;
   border-radius: var(--pill-radius);
   font-size: 0.9rem;
@@ -66,24 +66,24 @@
   white-space: nowrap;
 }
 
-.flicx-nav-link:hover {
+.kaira-nav-link:hover {
   color: #ffffff;
   background: rgba(255, 255, 255, 0.08);
 }
 
-.flicx-nav-link.active {
+.kaira-nav-link.active {
   color: #000000;
   background: #ffffff;
   font-weight: 600;
 }
 
-.flicx-nav-right {
+.kaira-nav-right {
   display: flex;
   align-items: center;
   gap: 12px;
 }
 
-.flicx-nav-btn {
+.kaira-nav-btn {
   width: 38px;
   height: 38px;
   border-radius: 50%;
@@ -96,17 +96,17 @@
   transition: var(--transition-smooth);
 }
 
-.flicx-nav-btn:hover {
+.kaira-nav-btn:hover {
   color: #ffffff;
   background: rgba(255, 255, 255, 0.12);
   border-color: var(--color-line-strong);
 }
 
 @media (max-width: 1024px) {
-  .flicx-navbar {
+  .kaira-navbar {
     padding: 0 16px;
   }
-  .flicx-nav-left {
+  .kaira-nav-left {
     gap: 16px;
   }
 }

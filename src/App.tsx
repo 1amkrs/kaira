@@ -27,7 +27,7 @@ export const App: React.FC = () => {
   } | null>(null);
 
   useEffect(() => {
-    // Apply Flicx theme & tokens to document on initial mount
+    // Apply Kaira theme & tokens to document on initial mount
     FlicxSettingsService.applyToDOM();
   }, []);
 

@@ -59,7 +59,7 @@ export const FlicxLibraryScreen: React.FC<FlicxLibraryScreenProps> = ({
           </p>
         </div>
 
-        {/* Action Buttons matching Flicx Data Tools */}
+        {/* Action Buttons matching Kaira Data Tools */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           <button className="capsule-btn capsule-btn-text" onClick={handleExport} title="Export library to JSON">
             <Download size={16} />
@@ -97,7 +97,7 @@ export const FlicxLibraryScreen: React.FC<FlicxLibraryScreenProps> = ({
           <Bookmark size={48} color="var(--color-fg-subtle)" style={{ marginBottom: 16 }} />
           <h3 style={{ fontSize: '1.2rem', fontWeight: 700, color: '#ffffff' }}>Your library is empty</h3>
           <p style={{ color: 'var(--color-fg-muted)', marginTop: 8, maxWidth: 420 }}>
-            Browse films and series across Flicx, and click &ldquo;Add to Library&rdquo; to keep track of what you want to watch.
+            Browse films and series across Kaira, and click &ldquo;Add to Library&rdquo; to keep track of what you want to watch.
           </p>
         </div>
       ) : (
