@@ -1,5 +1,87 @@
-// Flicx Interactive Experience Engine for Kaira
+// Kaira Interactive Experience Engine
 (function() {
+  // --- 0. Safe Escaping, URL & Toast Utilities ---
+  function escapeHtml(val) {
+    return String(val == null ? '' : val)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
+  function escapeAttr(val) {
+    return escapeHtml(val);
+  }
+
+  function safeImageUrl(url) {
+    if (!url || typeof url !== 'string') return '';
+    const trimmed = url.trim();
+    if (/^https:\/\//i.test(trimmed) || trimmed.startsWith('/')) {
+      return trimmed;
+    }
+    return '';
+  }
+
+  function safeColor(color, fallback) {
+    if (typeof color === 'string' && /^(#[0-9a-fA-F]{3,8}|oklch\([^)]+\)|hsl\([^)]+\)|rgb\([^)]+\))$/.test(color.trim())) {
+      return color.trim();
+    }
+    return fallback || '#5d341e';
+  }
+
+  function normalizeWatchSlug(raw) {
+    if (!raw || typeof raw !== 'string') return '';
+    return raw
+      .split('?')[0]
+      .replace(/^\/(movie|tv|watch)\//, '')
+      .replace(/\/s\d+e\d+.*$/i, '')
+      .replace(/\/$/, '')
+      .trim();
+  }
+
+  let toastTimer = null;
+  function showKairaToast(message) {
+    let toast = document.getElementById('kaira-toast');
+    if (!toast) {
+      toast = document.createElement('div');
+      toast.id = 'kaira-toast';
+      toast.className = 'kaira-toast';
+      toast.setAttribute('role', 'status');
+      toast.setAttribute('aria-live', 'polite');
+      document.body.appendChild(toast);
+    }
+    toast.textContent = message;
+    toast.classList.add('kaira-toast-visible');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => {
+      toast.classList.remove('kaira-toast-visible');
+    }, 2600);
+  }
+
+  // Global safe image fallback handler (replaces inline onerror attributes)
+  document.addEventListener('error', (e) => {
+    const img = e.target;
+    if (!img || img.tagName !== 'IMG') return;
+    const fallbackSrc = img.getAttribute('data-fallback-src');
+    if (fallbackSrc && img.getAttribute('data-fallback-tried') !== '1') {
+      img.setAttribute('data-fallback-tried', '1');
+      img.removeAttribute('data-failed');
+      img.src = fallbackSrc;
+      return;
+    }
+    img.setAttribute('data-failed', 'true');
+    img.removeAttribute('srcset');
+    if (img.closest('.person-pic')) {
+      img.style.display = 'none';
+    }
+    if (img.hasAttribute('data-hero-logo')) {
+      img.style.display = 'none';
+      const siblingTitle = img.parentElement?.querySelector('.hero-title-fallback');
+      if (siblingTitle) siblingTitle.style.display = 'block';
+    }
+  }, true);
+
   // --- 1. Dynamic Featured Hero Carousel Engine (Movies & TV Shows) ---
   const dynamicHeroCache = { movie: null, tv: null };
   let currentHeroSlides = [];
@@ -26,6 +108,34 @@
     'campus-drivers-2026': "A spirited ensemble drama following four university students navigating love, speed, rivalries, and life on and off the campus track."
   };
 
+  function isItemTvShow(item, defaultIsTv) {
+    if (!item) return !!defaultIsTv;
+    if (item.kind === 'show' || item.kind === 'tv') return true;
+    if (item.kind === 'movie' || item.kind === 'film') return false;
+    const rt = Number(item.runtime);
+    if (defaultIsTv) return true;
+    if (Number.isFinite(rt) && rt > 0 && rt < 65) return true;
+    return false;
+  }
+
+  function formatRuntimeLabel(runtime, itemIsTv) {
+    const mins = Number(runtime);
+    if (itemIsTv) {
+      if (Number.isFinite(mins) && mins > 0 && mins <= 20) {
+        return mins === 1 ? '1 Season' : `${mins} Seasons`;
+      }
+      if (Number.isFinite(mins) && mins > 20 && mins <= 90) {
+        return `${mins}m / ep`;
+      }
+      return 'Series';
+    }
+    const validMins = Number.isFinite(mins) && mins > 0 ? mins : 120;
+    const h = Math.floor(validMins / 60);
+    const m = validMins % 60;
+    if (h === 0) return `${m}m`;
+    return m === 0 ? `${h}h` : `${h}h ${m}m`;
+  }
+
   async function fetchDynamicHeroReleases(isTv) {
     const cacheKey = isTv ? 'tv' : 'movie';
     if (dynamicHeroCache[cacheKey]) {
@@ -37,42 +147,41 @@
       const browseEndpoint = isTv ? '/api/browse?kind=show&sort=release_date' : '/api/browse?kind=movie&sort=release_date';
 
       const [trendingRes, browseRes] = await Promise.all([
-        fetch(endpoint).then(r => r.json()).catch(() => null),
-        fetch(browseEndpoint).then(r => r.json()).catch(() => null)
+        fetch(endpoint).then(r => (r.ok ? r.json() : null)).catch(() => null),
+        fetch(browseEndpoint).then(r => (r.ok ? r.json() : null)).catch(() => null)
       ]);
 
       const candidates = [];
       const seen = new Set();
 
+      const addCandidate = (item) => {
+        if (!item || !item.slug || seen.has(item.slug)) return;
+        const itemIsShow = isItemTvShow(item, isTv);
+        // Keep Movies hero strictly movies and TV hero strictly shows
+        if (isTv && !itemIsShow) return;
+        if (!isTv && itemIsShow) return;
+        candidates.push(item);
+        seen.add(item.slug);
+      };
+
       if (trendingRes?.lists?.week) {
-        for (const item of trendingRes.lists.week) {
-          if (!seen.has(item.slug)) {
-            candidates.push(item);
-            seen.add(item.slug);
-          }
-        }
+        for (const item of trendingRes.lists.week) addCandidate(item);
       }
-
       if (browseRes?.films) {
-        for (const item of browseRes.films) {
-          if (!seen.has(item.slug)) {
-            candidates.push(item);
-            seen.add(item.slug);
-          }
-        }
+        for (const item of browseRes.films) addCandidate(item);
       }
-
       if (trendingRes?.lists?.day) {
-        for (const item of trendingRes.lists.day) {
-          if (!seen.has(item.slug)) {
-            candidates.push(item);
-            seen.add(item.slug);
-          }
-        }
+        for (const item of trendingRes.lists.day) addCandidate(item);
       }
 
-      // Sort by newest release year first, then rating
+      // Prioritize titles that have both a real logo graphic and backdrop still, then newest year & rating
       candidates.sort((a, b) => {
+        const hasLogoA = a.logo ? 1 : 0;
+        const hasLogoB = b.logo ? 1 : 0;
+        if (hasLogoA !== hasLogoB) return hasLogoB - hasLogoA;
+        const hasStillA = a.still ? 1 : 0;
+        const hasStillB = b.still ? 1 : 0;
+        if (hasStillA !== hasStillB) return hasStillB - hasStillA;
         const yA = Number(a.year) || 0;
         const yB = Number(b.year) || 0;
         if (yA !== yB) return yB - yA;
@@ -81,38 +190,45 @@
 
       const topReleases = candidates.slice(0, 6);
       const formatted = topReleases.map(f => {
+        const logoMeta = (f.logo && typeof f.logo === 'object') ? {
+          w: Number(f.logo.w) || 800,
+          h: Number(f.logo.h) || 310,
+          box: Array.isArray(f.logo.box) && f.logo.box.length === 4 ? f.logo.box.map(Number) : null,
+          mono: !!f.logo.mono
+        } : null;
+
         let logoAspect = 2.5;
-        if (f.logo && f.logo.box && f.logo.w && f.logo.h) {
-          const [left, top, right, bottom] = f.logo.box;
-          const w = right - left;
-          const h = bottom - top;
-          if (w > 0 && h > 0) {
-            logoAspect = Number(((w * f.logo.w) / (h * f.logo.h)).toFixed(4));
+        if (logoMeta && logoMeta.box) {
+          const [left, top, right, bottom] = logoMeta.box;
+          const bw = right - left;
+          const bh = bottom - top;
+          if (bw > 0.01 && bh > 0.01) {
+            logoAspect = Number(((bw * logoMeta.w) / (bh * logoMeta.h)).toFixed(4));
           }
         }
 
-        const mins = f.runtime ? Number(f.runtime) : 120;
-        const runtimeStr = isTv
-          ? (mins <= 20 ? `${mins} Seasons` : '1 Season')
-          : `${Math.floor(mins / 60)}h ${mins % 60}m`;
+        const itemIsTv = isItemTvShow(f, isTv);
+        const runtimeStr = formatRuntimeLabel(f.runtime, itemIsTv);
 
         return {
           id: f.id,
           slug: f.slug,
+          kind: itemIsTv ? 'show' : 'movie',
           title: f.title,
           year: f.year || 2026,
           rating: f.rating ? Number(f.rating).toFixed(1) : '8.4',
           runtime: runtimeStr,
           genres: f.genres && f.genres.length > 0 ? f.genres : ['Action', 'Drama'],
-          tag: f.year >= 2026 ? 'New release 2026' : (isTv ? 'Trending series' : 'Trending this week'),
-          still: f.still || `https://s.fli.cx/a/background/medium/${f.id}/img`,
-          logo: f.logo ? `https://s.fli.cx/a/logo/medium/${f.id}/img` : null,
+          tag: f.year >= 2026 ? 'New release 2026' : (itemIsTv ? 'Trending series' : 'Trending this week'),
+          still: safeImageUrl(f.still) || `https://s.fli.cx/a/background/medium/${encodeURIComponent(f.id)}/img`,
+          logo: f.id ? `https://s.fli.cx/a/logo/medium/${encodeURIComponent(f.id)}/img` : null,
           logoAspect: logoAspect,
-          backdropTone: f.backdropTone || '#1f2933',
-          tone: f.tone || '#5d341e',
+          logoMeta: logoMeta,
+          backdropTone: safeColor(f.backdropTone, '#1f2933'),
+          tone: safeColor(f.tone, '#5d341e'),
           overview: OVERVIEWS[f.slug] || `${f.title} (${f.year || 2026}) - An acclaimed ${f.genres ? f.genres.join(' and ') : 'cinematic'} release streaming now on Kaira.`,
-          watchUrl: `/watch/${f.slug}`,
-          detailUrl: isTv ? `/tv/${f.slug}` : `/movie/${f.slug}`
+          watchUrl: itemIsTv ? `/watch/${f.slug}/s1e1` : `/watch/${f.slug}`,
+          detailUrl: itemIsTv ? `/tv/${f.slug}` : `/movie/${f.slug}`
         };
       });
 
@@ -134,7 +250,7 @@
     const isHome = cleanPath === '/' || cleanPath === '/index.html';
     if (!isHome && !isTvBrowse) {
       if (heroTimer) {
-        clearInterval(heroTimer);
+        clearTimeout(heroTimer);
         heroTimer = null;
       }
       return;
@@ -145,22 +261,26 @@
     const stage = document.querySelector('.hero-stage');
     if (!heroEl || !stage) return;
 
-    // Clear any previous timer
     if (heroTimer) {
-      clearInterval(heroTimer);
+      clearTimeout(heroTimer);
       heroTimer = null;
     }
 
-    // 1. Fetch live dynamic releases (e.g. 2026 latest releases)
     const dynamicReleases = await fetchDynamicHeroReleases(isTv);
+    // Abort if user navigated away while fetching
+    const currentClean = window.location.pathname.split('?')[0].replace(/\/$/, '') || '/';
+    if (currentClean !== cleanPath || !heroEl.isConnected) return;
+
     const slides = dynamicReleases && dynamicReleases.length > 0 ? dynamicReleases : [
       {
         slug: "the-odyssey-2026",
+        kind: "movie",
         title: "The Odyssey",
         id: "tt33764258",
         still: "https://s.fli.cx/t/original/dZI4Ek4qc2Fib2G1zFkGhKKuc6j.jpg",
         logo: "https://s.fli.cx/a/logo/medium/tt33764258/img",
-        logoAspect: 2.58,
+        logoAspect: 8.8988,
+        logoMeta: { w: 800, h: 310, mono: true, box: [0, 0.355, 1, 0.645] },
         tag: "New release 2026",
         rating: "8.4",
         year: 2026,
@@ -177,26 +297,25 @@
     currentHeroSlides = slides;
     currentSlideIndex = 0;
 
-    // 2. Populate .hero-media with multi-slide structure for authentic hero-cross animations
+    // 2. Populate .hero-media with multi-slide structure for hero-cross animations
     const heroMedia = stage.querySelector('.hero-media');
     if (heroMedia) {
       heroMedia.innerHTML = slides.map((s, idx) => `
-        <div class="hero-slide" data-slide-idx="${idx}" data-state="${idx === 0 ? 'active' : 'idle'}" ${idx === 0 ? 'data-animate=""' : ''} style="background: ${s.backdropTone};">
-          <img src="${s.still}" alt="" loading="${idx === 0 ? 'eager' : 'lazy'}" decoding="async" fetchpriority="${idx === 0 ? 'high' : 'low'}" draggable="false" style="object-fit:cover;object-position:50% 20%;width:100%;height:100%;" />
+        <div class="hero-slide" data-slide-idx="${idx}" data-state="${idx === 0 ? 'active' : 'idle'}" ${idx === 0 ? 'data-animate=""' : ''} style="background: ${safeColor(s.backdropTone, '#1f2933')};">
+          <img src="${escapeAttr(s.still)}" alt="" loading="${idx === 0 ? 'eager' : 'lazy'}" decoding="async" fetchpriority="${idx === 0 ? 'high' : 'low'}" draggable="false" style="object-fit:cover;object-position:50% 20%;width:100%;height:100%;" />
         </div>
       `).join('');
     }
 
-    // 3. Populate .hero-switch-bars with dynamic buttons (both desktop and mobile!)
+    // 3. Populate .hero-switch-bars with dynamic buttons (both desktop and mobile)
     const switchBarsContainers = stage.querySelectorAll('.hero-switch-bars');
     switchBarsContainers.forEach(container => {
       container.innerHTML = slides.map((s, idx) => `
-        <button type="button" aria-label="${idx + 1} of ${slides.length}: ${s.title}" class="hero-switch-bar" ${idx === 0 ? 'aria-current="true"' : ''} data-index="${idx}">
+        <button type="button" aria-label="${idx + 1} of ${slides.length}: ${escapeAttr(s.title)}" class="hero-switch-bar" ${idx === 0 ? 'aria-current="true"' : ''} data-index="${idx}">
           <span>${idx === 0 ? '<span class="hero-switch-fill hero-clock"></span>' : ''}</span>
         </button>
       `).join('');
 
-      // Wire click handlers on switcher bars
       container.querySelectorAll('.hero-switch-bar').forEach(btn => {
         btn.onclick = (e) => {
           e.preventDefault();
@@ -209,14 +328,30 @@
       });
     });
 
-    // 4. Render Slide Function with authentic Flicx transitions
+    function scheduleNextSlide() {
+      if (heroTimer) {
+        clearTimeout(heroTimer);
+        heroTimer = null;
+      }
+      if (isPaused || heroEl.hasAttribute('data-paused') || document.documentElement.getAttribute('data-motion') === 'reduce') {
+        return;
+      }
+      heroTimer = setTimeout(() => {
+        if (!heroEl.isConnected) return;
+        if (!isPaused && !heroEl.hasAttribute('data-paused')) {
+          renderSlide((currentSlideIndex + 1) % slides.length, true);
+        }
+      }, slideDuration);
+    }
+
+    // 4. Render Slide Function with single authoritative timer (no double-advance)
     function renderSlide(index, animate = true) {
       const prevIndex = currentSlideIndex;
       currentSlideIndex = index;
       const data = slides[index];
       if (!data) return;
 
-      // A. Slide Crossfade (hero-cross)
+      // A. Slide Crossfade
       if (heroMedia) {
         const allSlides = heroMedia.querySelectorAll('.hero-slide');
         allSlides.forEach((slide, sIdx) => {
@@ -244,30 +379,64 @@
         copyGroup.style.opacity = '1';
       }
 
-      // Title & Logo
+      // Title & Logo: crop transparent padding using logoMeta.box & normalize area so all hero logos are an even, balanced size
       const logoSpan = stage.querySelector('.title-logo');
-      const h2Heading = stage.querySelector('.hero-copy h2:not(.sr-only)');
+      let standaloneFallback = stage.querySelector('.hero-copy .hero-title-standalone');
       if (logoSpan) {
         if (data.logo) {
+          if (standaloneFallback) standaloneFallback.style.display = 'none';
+          const meta = data.logoMeta;
+          const hasBox = meta && Array.isArray(meta.box) && meta.box.length === 4;
+          const aspect = Number(data.logoAspect) > 0.2 ? Number(data.logoAspect) : 2.5;
+
+          // Normalize visual footprint across extreme aspect ratios (tall stacked vs wide wordmark)
+          const targetAreaRem2 = 175;
+          const maxHeightRem = 8.25;
+          const maxWidthRem = 34;
+          const minWidthRem = 13;
+          let targetWRem = Math.sqrt(targetAreaRem2 * aspect);
+          if (targetWRem / aspect > maxHeightRem) {
+            targetWRem = maxHeightRem * aspect;
+          }
+          targetWRem = Math.max(minWidthRem, Math.min(maxWidthRem, targetWRem));
+
           logoSpan.style.display = 'block';
-          logoSpan.style.setProperty('--logo-aspect', String(data.logoAspect));
-          logoSpan.style.aspectRatio = String(data.logoAspect);
+          logoSpan.style.position = 'relative';
+          logoSpan.style.overflow = 'hidden';
+          logoSpan.style.setProperty('--logo-aspect', String(aspect));
+          logoSpan.style.setProperty('--logo-w', `min(82vw, ${targetWRem.toFixed(2)}rem)`);
+          logoSpan.style.setProperty('--logo-h', `${maxHeightRem}rem`);
+          logoSpan.style.width = `min(82vw, ${targetWRem.toFixed(2)}rem)`;
+          logoSpan.style.aspectRatio = String(aspect);
+
+          const filterCss = meta && meta.mono
+            ? 'brightness(0) invert(1) drop-shadow(0 2px 16px rgba(0,0,0,0.72))'
+            : 'drop-shadow(0 2px 16px rgba(0,0,0,0.65))';
+
+          let imgStyle = `position:absolute;inset:0;width:100%;height:100%;object-fit:contain;object-position:left bottom;filter:${filterCss};`;
+          if (hasBox) {
+            const [x0, y0, x1, y1] = meta.box;
+            const bw = Math.max(0.05, x1 - x0);
+            const bh = Math.max(0.05, y1 - y0);
+            const imgW = (100 / bw).toFixed(3);
+            const imgLeft = ((-x0 / bw) * 100).toFixed(3);
+            const imgTop = ((-y0 / bh) * 100).toFixed(3);
+            imgStyle = `position:absolute;max-width:none;height:auto;width:${imgW}%;left:${imgLeft}%;top:${imgTop}%;filter:${filterCss};`;
+          }
+
           logoSpan.innerHTML = `
-            <img alt="${data.title}" src="${data.logo}" class="fade-in" style="width:100%;height:100%;object-fit:contain;filter:drop-shadow(0 2px 14px rgba(0,0,0,0.6));" onerror="this.style.display='none';if(this.nextElementSibling)this.nextElementSibling.style.display='block';" />
-            <h2 class="text-3xl md:text-5xl font-black text-fg tracking-tight" style="display:none;margin:0;line-height:1.1;">${data.title}</h2>
+            <img data-hero-logo="1" alt="${escapeAttr(data.title)}" src="${escapeAttr(data.logo)}" class="fade-in${meta && meta.mono ? ' brightness-0 invert' : ''}" style="${imgStyle}" />
+            <span class="hero-title-fallback" style="display:none;">${escapeHtml(data.title)}</span>
           `;
         } else {
           logoSpan.style.display = 'none';
-          if (h2Heading) {
-            h2Heading.style.display = 'block';
-            h2Heading.textContent = data.title;
-          } else {
-            const h2 = document.createElement('h2');
-            h2.className = 'text-3xl md:text-5xl font-black text-fg tracking-tight';
-            h2.style.cssText = 'margin:0;line-height:1.1;filter:drop-shadow(0 2px 14px rgba(0,0,0,0.6));';
-            h2.textContent = data.title;
-            logoSpan.parentNode.insertBefore(h2, logoSpan);
+          if (!standaloneFallback) {
+            standaloneFallback = document.createElement('div');
+            standaloneFallback.className = 'hero-title-fallback hero-title-standalone';
+            logoSpan.parentNode.insertBefore(standaloneFallback, logoSpan);
           }
+          standaloneFallback.style.display = 'block';
+          standaloneFallback.textContent = data.title;
         }
       }
 
@@ -275,17 +444,17 @@
       if (titleSr) titleSr.textContent = data.title;
 
       const counterSr = stage.querySelector('.hero-copy p.sr-only');
-      if (counterSr) counterSr.textContent = `${isTv ? 'Show' : 'Film'} ${index + 1} of ${slides.length}: ${data.title}`;
+      if (counterSr) counterSr.textContent = `${data.kind === 'show' ? 'Show' : 'Film'} ${index + 1} of ${slides.length}: ${data.title}`;
 
-      // Facts badges
+      // Facts badges (properly URL-encoded genre routes)
       const factsUl = stage.querySelector('.hero-copy ul.facts');
       if (factsUl) {
         factsUl.innerHTML = `
-          <li class="badge badge-accent">${data.tag}</li>
-          ${data.rating ? `<li class="badge">★ ${data.rating}</li>` : ''}
-          <li class="badge">${data.year}</li>
-          <li class="badge">${data.runtime}</li>
-          ${data.genres.map(g => `<li class="badge"><a href="/genres/${g.toLowerCase()}" class="hover:underline">${g}</a></li>`).join('')}
+          <li class="badge badge-accent">${escapeHtml(data.tag)}</li>
+          ${data.rating ? `<li class="badge">★ ${escapeHtml(data.rating)}</li>` : ''}
+          <li class="badge">${escapeHtml(data.year)}</li>
+          <li class="badge">${escapeHtml(data.runtime)}</li>
+          ${data.genres.map(g => `<li class="badge"><a href="/genres/${encodeURIComponent(String(g).toLowerCase())}" class="hover:underline">${escapeHtml(g)}</a></li>`).join('')}
         `;
       }
 
@@ -293,50 +462,61 @@
       const overview = stage.querySelector('.hero-overview');
       if (overview) overview.textContent = data.overview;
 
-      // Action buttons
-      const playBtn = stage.querySelector('.hero-actions a.btn-primary, .capsule-btn-play');
-      if (playBtn) playBtn.href = data.watchUrl;
+      // Action buttons & ARIA group labels
+      const actionGroups = stage.querySelectorAll('.hero-actions [role="group"]');
+      if (actionGroups[0]) {
+        actionGroups[0].setAttribute('aria-label', `${data.title}: play, and the trailer`);
+      }
+      if (actionGroups[1]) {
+        actionGroups[1].setAttribute('aria-label', `${data.title}: details, and the library`);
+      }
 
-      const detailsBtn = stage.querySelector('.hero-actions a[href*="/movie/"], .hero-actions a[href*="/tv/"], a.capsule-btn[title="Details"]');
+      const playBtn = stage.querySelector('.hero-actions a.btn-primary, .capsule-btn-play');
+      if (playBtn) {
+        playBtn.href = data.watchUrl;
+        playBtn.setAttribute('aria-label', `Play ${data.title}`);
+      }
+
+      const trailerBtn = Array.from(stage.querySelectorAll('.hero-actions button.capsule-btn')).find(
+        b => !b.hasAttribute('data-watchlist-button') && /trailer/i.test(b.textContent || '')
+      );
+      if (trailerBtn) {
+        trailerBtn.setAttribute('data-trailer-slug', data.slug);
+        trailerBtn.setAttribute('data-trailer-title', data.title);
+        trailerBtn.setAttribute('data-trailer-kind', data.kind);
+        trailerBtn.setAttribute('aria-label', `Watch trailer for ${data.title}`);
+      }
+
+      const detailsBtn = stage.querySelector('.hero-actions a[href*="/movie/"], .hero-actions a[href*="/tv/"], a.capsule-btn[title^="Details"]');
       if (detailsBtn) {
         detailsBtn.href = data.detailUrl;
-        detailsBtn.setAttribute('title', `Details for ${data.title}`);
+        detailsBtn.setAttribute('title', `Details: ${data.title}`);
+        detailsBtn.setAttribute('aria-label', `Details: ${data.title}`);
       }
 
       const addBtn = stage.querySelector('.hero-actions button[data-watchlist-button]');
       if (addBtn) {
         addBtn.setAttribute('data-title-slug', data.slug);
-        addBtn.setAttribute('data-title-id', data.id);
+        addBtn.setAttribute('data-title-id', data.id || '');
         addBtn.setAttribute('data-title', data.title);
+        addBtn.setAttribute('data-title-kind', data.kind);
+        addBtn.setAttribute('data-title-year', String(data.year || ''));
+        addBtn.setAttribute('data-title-rating', String(data.rating || ''));
+        addBtn.setAttribute('data-title-genre', data.genres?.[0] || '');
+        addBtn.setAttribute('data-title-tone', data.tone || '');
         const inLibrary = typeof isInWatchlist === 'function' ? isInWatchlist(data.slug) : false;
         if (typeof updateWatchlistButton === 'function') {
           updateWatchlistButton(addBtn, inLibrary, data.title);
-        } else {
-          addBtn.setAttribute('aria-pressed', inLibrary ? 'true' : 'false');
-          addBtn.setAttribute('title', inLibrary ? 'In your library' : 'Add to library');
-          addBtn.setAttribute('aria-label', `${inLibrary ? 'In your library' : 'Add to library'}: ${data.title}`);
         }
       }
 
-      // C. Switcher Bars & Hero Clock across ALL containers (both desktop and mobile)
+      // C. Switcher Bars & Hero Clock across ALL containers (visual clock only; JS timer drives slide change once)
       switchBarsContainers.forEach(container => {
         const bars = container.querySelectorAll('.hero-switch-bar');
         bars.forEach((bar, bIdx) => {
           if (bIdx === index) {
             bar.setAttribute('aria-current', 'true');
             bar.innerHTML = '<span><span class="hero-switch-fill hero-clock"></span></span>';
-            const fill = bar.querySelector('.hero-switch-fill');
-            if (fill) {
-              fill.addEventListener('animationend', () => {
-                if (!isPaused && document.documentElement.getAttribute('data-motion') !== 'reduce') {
-                  if (heroTimer) {
-                    clearTimeout(heroTimer);
-                    heroTimer = null;
-                  }
-                  renderSlide((currentSlideIndex + 1) % slides.length, true);
-                }
-              }, { once: true });
-            }
           } else {
             bar.removeAttribute('aria-current');
             bar.innerHTML = '<span></span>';
@@ -344,18 +524,7 @@
         });
       });
 
-      // JavaScript fallback timer ensures the slideshow ALWAYS advances every 9 seconds
-      if (heroTimer) {
-        clearTimeout(heroTimer);
-        heroTimer = null;
-      }
-      if (!isPaused) {
-        heroTimer = setTimeout(() => {
-          if (!isPaused && !heroEl.hasAttribute('data-paused')) {
-            renderSlide((currentSlideIndex + 1) % slides.length, true);
-          }
-        }, slideDuration);
-      }
+      scheduleNextSlide();
 
       // Ambient lighting update
       const ambient = document.querySelector('.ambient');
@@ -413,12 +582,7 @@
       capsule.addEventListener('mouseleave', () => {
         if (!isPaused) {
           heroEl.removeAttribute('data-paused');
-          if (heroTimer) clearTimeout(heroTimer);
-          heroTimer = setTimeout(() => {
-            if (!isPaused && !heroEl.hasAttribute('data-paused')) {
-              renderSlide((currentSlideIndex + 1) % slides.length, true);
-            }
-          }, slideDuration);
+          scheduleNextSlide();
         }
       });
     });
@@ -427,12 +591,53 @@
     renderSlide(0, false);
   }
 
-  // --- 2. Authentic OG Flicx Video Player & Star Servers ---
+  // --- 2. Authentic Kaira Video Player & Star Servers (with full lifecycle cleanup) ---
+  let activePlayerCleanup = null;
+  let activeWatchSessionId = 0;
+
+  function cleanupWatchPlayer() {
+    activeWatchSessionId += 1;
+    if (document.body) {
+      document.body.classList.remove('kaira-watching');
+    }
+    if (typeof activePlayerCleanup === 'function') {
+      try { activePlayerCleanup(); } catch {}
+      activePlayerCleanup = null;
+    }
+  }
+
+  function ensureHlsLoaded(callback) {
+    if (window.Hls) {
+      callback();
+      return;
+    }
+    let hlsScript = document.querySelector('script[src*="hls.min.js"]');
+    if (!hlsScript) {
+      const basePrefix = (typeof window.__KAIRA_BASE_PATH__ === 'string' && window.__KAIRA_BASE_PATH__ !== '/')
+        ? window.__KAIRA_BASE_PATH__.replace(/\/$/, '')
+        : '';
+      hlsScript = document.createElement('script');
+      hlsScript.src = `${basePrefix}/hls.min.js`;
+      document.head.appendChild(hlsScript);
+    }
+    hlsScript.addEventListener('load', () => callback(), { once: true });
+    hlsScript.addEventListener('error', () => callback(), { once: true });
+  }
+
   function initWatchPlayer() {
     const path = window.location.pathname;
-    if (!path.startsWith('/watch/')) return;
+    if (!path.startsWith('/watch/')) {
+      cleanupWatchPlayer();
+      return;
+    }
 
-    // 1. Ensure authentic Flicx stylesheets are loaded
+    cleanupWatchPlayer();
+    if (document.body) {
+      document.body.classList.add('kaira-watching');
+    }
+    const sessionId = activeWatchSessionId;
+
+    // 1. Ensure player stylesheets are loaded
     if (!document.querySelector('link[href*="0svyhf-62ag72.css"]')) {
       const link = document.createElement('link');
       link.rel = 'stylesheet';
@@ -446,233 +651,525 @@
       document.head.appendChild(link2);
     }
 
-    // 2. Load HLS.js script if not present
-    if (!window.Hls && !document.querySelector('script[src*="hls.min.js"]')) {
-      const hlsScript = document.createElement('script');
-      hlsScript.src = '/hls.min.js';
-      document.head.appendChild(hlsScript);
-    }
+    // 2. Parse route: /watch/anime/<id>/<ep> OR /watch/<slug>[/sXeY]
+    const parts = path.replace(/^\/watch\//, '').replace(/\/$/, '').split('/').filter(Boolean);
+    const urlParams = new URLSearchParams(window.location.search);
+    const isAnimeRoute = parts[0] === 'anime' && parts.length >= 2;
 
-    // 3. Extract slug and optional season/episode
-    const parts = path.replace(/^\/watch\//, '').replace(/\/$/, '').split('/');
-    const titleSlug = parts[0];
+    let titleSlug = isAnimeRoute ? `anime-${parts[1]}` : (parts[0] || '');
+    let animeId = isAnimeRoute ? parts[1] : null;
     let season = 1;
     let episode = 1;
+    let hasEpisodeSegment = false;
 
-    if (parts.length > 1) {
+    if (isAnimeRoute) {
+      episode = parseInt(parts[2], 10) || 1;
+      hasEpisodeSegment = true;
+    } else if (parts.length > 1) {
       const match = parts[1].match(/s(\d+)e(\d+)/i);
       if (match) {
         season = parseInt(match[1], 10);
         episode = parseInt(match[2], 10);
+        hasEpisodeSegment = true;
       }
     } else {
-      const urlParams = new URLSearchParams(window.location.search);
-      if (urlParams.has('s')) season = parseInt(urlParams.get('s'), 10) || 1;
-      if (urlParams.has('e')) episode = parseInt(urlParams.get('e'), 10) || 1;
+      if (urlParams.has('s')) {
+        season = parseInt(urlParams.get('s'), 10) || 1;
+        hasEpisodeSegment = true;
+      }
+      if (urlParams.has('e')) {
+        episode = parseInt(urlParams.get('e'), 10) || 1;
+        hasEpisodeSegment = true;
+      }
     }
 
-    // 4. Locate or create .watch-root
+    // 3. Locate or create .watch-root
     let watchRoot = document.querySelector('.watch-root');
     if (!watchRoot) {
       watchRoot = document.createElement('div');
       watchRoot.className = 'watch-root';
       document.body.prepend(watchRoot);
     }
+    watchRoot.style.display = 'block';
 
     watchRoot.innerHTML = '<div class="watch-wait" style="background:#000;width:100%;height:100dvh;display:flex;align-items:center;justify-content:center;color:#fff;"><div class="fx-spinner" style="width:2.5rem;height:2.5rem;border:3px solid rgba(255,255,255,0.2);border-top-color:var(--color-flare, #f59e0b);border-radius:50%;animation:spin 0.8s linear infinite;"></div></div>';
 
-    // 5. Fetch title details and OG Flicx sources
-    fetch(`/api/title?slug=${encodeURIComponent(titleSlug)}`)
-      .then(r => r.json())
-      .catch(() => ({
-        slug: titleSlug,
-        title: titleSlug.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' '),
-        year: '2026',
-        id: 'tt7526136'
-      }))
-      .then(titleInfo => {
-        const isShow = titleInfo.runtime && (titleInfo.runtime.includes('Season') || titleInfo.runtime.includes('Series') || titleInfo.kind === 'show' || parts.length > 1);
-        const imdbId = titleInfo.imdbId || titleInfo.id || 'tt7526136';
+    function renderPlayerError(titleText, message, backUrl) {
+      if (sessionId !== activeWatchSessionId) return;
+      watchRoot.innerHTML = `
+        <div class="watch-stage" style="background:#000;width:100%;height:100dvh;position:fixed;top:0;left:0;z-index:9999;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1rem;padding:2rem;text-align:center;color:#fff;">
+          <h2 style="font-size:1.5rem;font-weight:700;margin:0;">${escapeHtml(titleText)}</h2>
+          <p style="max-width:28rem;color:rgba(255,255,255,0.68);margin:0;font-size:0.95rem;">${escapeHtml(message)}</p>
+          <a href="${escapeAttr(backUrl)}" class="btn btn-primary" style="margin-top:0.5rem;">Go back</a>
+        </div>
+      `;
+    }
 
-        // Query original Flicx sources API
-        const sourcesUrl = `/api/sources/${imdbId}${isShow ? `?s=${season}&e=${episode}` : ''}`;
-        fetch(sourcesUrl)
-          .then(r => r.json())
-          .catch(() => null)
-          .then(sourcesData => {
-            let serverList = [];
-            if (sourcesData && Array.isArray(sourcesData.sources) && sourcesData.sources.length > 0) {
-              // Deduplicate and filter authentic sources from fli.cx
-              serverList = sourcesData.sources.filter(s => s && s.name && s.src);
-            }
+    // 4. Resolve real title metadata & stream sources
+    async function loadAndRender() {
+      try {
+        if (isAnimeRoute) {
+          const isDub = urlParams.get('dub') === '1';
+          const sourcesRes = await fetch(`/api/sources/anime/${encodeURIComponent(animeId)}/${episode}${isDub ? '?dub=1' : ''}`).catch(() => null);
+          const sourcesData = sourcesRes && sourcesRes.ok ? await sourcesRes.json().catch(() => null) : null;
+          if (sessionId !== activeWatchSessionId) return;
 
-            // Fallback to authentic Flicx Star Servers if sources are empty or unreleased
-            if (serverList.length === 0) {
-              serverList = [
-                { name: "Kaira", kind: "hls", src: `https://s.fli.cx/s/${imdbId}.m3u8`, group: "dedicated", has: true, quality: "4K" },
-                { name: "Vega", kind: "hls", src: `https://s.fli.cx/s/vega-${imdbId}.m3u8`, group: "external", has: true, quality: "4K" },
-                { name: "Sirius", kind: "hls", src: `https://s.fli.cx/s/sirius-${imdbId}.m3u8`, group: "external", has: true, quality: "4K" },
-                { name: "Rigel", kind: "hls", src: `https://s.fli.cx/s/rigel-${imdbId}.m3u8`, group: "external", has: true, quality: "1080p" },
-                { name: "Altair", kind: "hls", src: `https://s.fli.cx/s/altair-${imdbId}.m3u8`, group: "external", has: true, quality: "1080p" },
-                { name: "Aldebaran", kind: "hls", src: `https://s.fli.cx/s/aldebaran-${imdbId}.m3u8`, group: "external", has: true, quality: "4K" }
-              ];
-            }
+          const serverList = (sourcesData && Array.isArray(sourcesData.sources) ? sourcesData.sources : [])
+            .filter(s => s && s.name && s.src)
+            .map(s => ({ ...s, name: s.name === 'Flicx' ? 'Kaira' : s.name }));
 
-            renderPlayer(titleInfo, serverList, isShow, season, episode, imdbId);
-          });
-      });
+          if (serverList.length === 0) {
+            renderPlayerError(
+              `Anime Episode ${episode}`,
+              'No playback sources are currently available for this anime episode.',
+              '/anime'
+            );
+            return;
+          }
 
-    // 6. Render Authentic OG Flicx Video Player
-    function renderPlayer(titleInfo, servers, isShow, season, episode, imdbId) {
-      const cleanTitle = titleInfo.title || titleSlug.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
-      const yearStr = titleInfo.year || '';
-      const backUrl = isShow ? `/tv/${titleSlug}` : `/movie/${titleSlug}`;
+          renderPlayer(
+            { title: sourcesData?.title || `Anime #${animeId}`, year: '', kind: 'anime' },
+            serverList,
+            true,
+            1,
+            episode,
+            animeId,
+            '/anime'
+          );
+          return;
+        }
+
+        // Standard movie or TV episode: resolve exact IMDb ID via /api/title
+        const titleRes = await fetch(`/api/title?slug=${encodeURIComponent(titleSlug)}${hasEpisodeSegment ? '&kind=show' : ''}`);
+        if (sessionId !== activeWatchSessionId) return;
+
+        if (!titleRes.ok) {
+          const cleanFallback = titleSlug.replace(/-\d{4}$/, '').split('-').filter(Boolean).map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ') || 'Title';
+          renderPlayerError(
+            cleanFallback,
+            'Could not find metadata or playback sources for this title.',
+            hasEpisodeSegment ? `/tv/${titleSlug}` : `/movie/${titleSlug}`
+          );
+          return;
+        }
+
+        const titleInfo = await titleRes.json();
+        if (sessionId !== activeWatchSessionId) return;
+
+        const imdbId = titleInfo.imdbId || titleInfo.id;
+        const isShow = hasEpisodeSegment || titleInfo.kind === 'show';
+        const backUrl = isShow ? `/tv/${titleSlug}` : `/movie/${titleSlug}`;
+
+        if (!imdbId) {
+          renderPlayerError(titleInfo.title || titleSlug, 'No stream identifier found for this title.', backUrl);
+          return;
+        }
+
+        const sourcesUrl = `/api/sources/${encodeURIComponent(imdbId)}${isShow ? `?s=${season}&e=${episode}` : ''}`;
+        const sourcesRes = await fetch(sourcesUrl).catch(() => null);
+        const sourcesData = sourcesRes && sourcesRes.ok ? await sourcesRes.json().catch(() => null) : null;
+        if (sessionId !== activeWatchSessionId) return;
+
+        let serverList = [];
+        if (sourcesData && Array.isArray(sourcesData.sources) && sourcesData.sources.length > 0) {
+          serverList = sourcesData.sources
+            .filter(s => s && s.name && s.src)
+            .map(s => ({ ...s, name: s.name === 'Flicx' ? 'Kaira' : s.name }));
+        }
+
+        if (serverList.length === 0) {
+          renderPlayerError(
+            titleInfo.title || titleSlug,
+            'No streaming sources are available for this title right now. It may be an upcoming release.',
+            backUrl
+          );
+          return;
+        }
+
+        renderPlayer(titleInfo, serverList, isShow, season, episode, imdbId, backUrl);
+      } catch (err) {
+        if (sessionId !== activeWatchSessionId) return;
+        renderPlayerError('Playback error', 'Something went wrong while loading this stream.', '/');
+      }
+    }
+
+    loadAndRender();
+
+    // 5. Render Apple TV / tvOS Style Video Player with Cast, Real Subtitles, Info & Chapters
+    function renderPlayer(titleInfo, servers, isShow, seasonNum, episodeNum, imdbId, backUrl) {
+      if (sessionId !== activeWatchSessionId) return;
+
+      const rawTitle = String(titleInfo.title || titleSlug.replace(/-\d{4}$/, '').split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')).trim();
+      const yearStr = titleInfo.year ? String(titleInfo.year).trim() : '';
+      const cleanTitle = yearStr && rawTitle.endsWith(yearStr) ? rawTitle.slice(0, -yearStr.length).trim() : rawTitle;
+      const synopsisText = String(titleInfo.description || '').trim();
+      const ratingText = titleInfo.rating ? String(titleInfo.rating).trim() : '';
+      const genresList = Array.isArray(titleInfo.genres) ? titleInfo.genres.filter(Boolean) : [];
+      const posterUrl = titleInfo.poster || (imdbId ? `https://s.fli.cx/a/poster/medium/${encodeURIComponent(imdbId)}/img` : '');
 
       let savedServerName = 'Kaira';
-      try { savedServerName = localStorage.getItem('flicx:player:server') || 'Kaira'; } catch(e){}
+      try { savedServerName = localStorage.getItem('flicx:player:server') || 'Kaira'; } catch {}
       let currentServerIndex = servers.findIndex(s => s.name === savedServerName);
       if (currentServerIndex === -1) currentServerIndex = 0;
       let currentServer = servers[currentServerIndex];
 
+      const SUBTITLE_LANG_NAMES = {
+        en: 'English (US)', 'en-US': 'English (US)', 'en-GB': 'English (UK)',
+        ar: 'Arabic', bg: 'Bulgarian', bn: 'Bengali', cs: 'Czech', da: 'Danish',
+        de: 'German', el: 'Greek', es: 'Spanish', 'es-419': 'Spanish (Latin America)',
+        'es-ES': 'Spanish (Spain)', et: 'Estonian', fa: 'Persian', fi: 'Finnish',
+        fr: 'French', he: 'Hebrew', hi: 'Hindi', hr: 'Croatian', hu: 'Hungarian',
+        id: 'Indonesian', is: 'Icelandic', it: 'Italian', ja: 'Japanese', ko: 'Korean',
+        lv: 'Latvian', mk: 'Macedonian', ml: 'Malayalam', mn: 'Mongolian', ms: 'Malay',
+        nl: 'Dutch', no: 'Norwegian', pl: 'Polish', pt: 'Portuguese',
+        'pt-BR': 'Portuguese (Brazil)', ro: 'Romanian', ru: 'Russian', sk: 'Slovak',
+        sq: 'Albanian', sr: 'Serbian', sv: 'Swedish', th: 'Thai', tr: 'Turkish',
+        uk: 'Ukrainian', vi: 'Vietnamese', zh: 'Chinese, Simplified',
+        'zh-Hans': 'Chinese, Simplified', 'zh-Hant': 'Chinese, Traditional',
+        yue: 'Cantonese, Traditional'
+      };
+
+      function formatTime(seconds) {
+        if (!Number.isFinite(seconds) || seconds < 0) return '0:00';
+        const total = Math.floor(seconds);
+        const h = Math.floor(total / 3600);
+        const m = Math.floor((total % 3600) / 60);
+        const s = total % 60;
+        if (h > 0) return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+        return `${m}:${String(s).padStart(2, '0')}`;
+      }
+
+      function formatRemaining(cur, dur) {
+        if (!Number.isFinite(dur) || dur <= 0) return '-0:00';
+        const rem = Math.max(0, dur - (Number.isFinite(cur) && cur > 0 ? cur : 0));
+        return `-${formatTime(rem)}`;
+      }
+
+      function formatSubLabel(code, sdh) {
+        const clean = String(code || '').trim();
+        const base = SUBTITLE_LANG_NAMES[clean] || SUBTITLE_LANG_NAMES[clean.toLowerCase()] || clean.toUpperCase() || 'Unknown';
+        return sdh ? `${base} CC` : base;
+      }
+
+      function deduplicateSubtitles(rawTracks) {
+        const valid = (Array.isArray(rawTracks) ? rawTracks : []).filter(t => t && t.src && t.language);
+        const byKey = new Map();
+        for (const t of valid) {
+          const lang = String(t.language).trim();
+          const isSdh = Boolean(t.sdh);
+          const key = lang.toLowerCase() === 'en' ? `en:${isSdh ? 'cc' : 'std'}` : lang.toLowerCase();
+          if (!byKey.has(key)) {
+            byKey.set(key, {
+              id: `${key}:${byKey.size}`,
+              language: lang,
+              label: formatSubLabel(lang, lang.toLowerCase() === 'en' ? isSdh : false),
+              src: String(t.src).trim(),
+              sdh: isSdh
+            });
+          }
+        }
+        const sorted = Array.from(byKey.values()).sort((a, b) => {
+          const aEn = a.language.toLowerCase().startsWith('en') ? 0 : 1;
+          const bEn = b.language.toLowerCase().startsWith('en') ? 0 : 1;
+          if (aEn !== bEn) return aEn - bEn;
+          if (aEn === 0 && bEn === 0 && a.sdh !== b.sdh) return a.sdh ? -1 : 1;
+          return a.label.localeCompare(b.label);
+        });
+        const autoTrack = sorted.find(t => t.language.toLowerCase().startsWith('en')) || sorted[0] || null;
+        return [
+          { id: 'off', language: 'off', label: 'Off', src: null },
+          { id: 'auto', language: autoTrack ? autoTrack.language : 'en', label: 'Auto', src: autoTrack ? autoTrack.src : null },
+          ...sorted
+        ];
+      }
+
+      function buildChapters(dur) {
+        if (!Number.isFinite(dur) || dur < 60) return [];
+        const labels = isShow
+          ? ['Cold Open', 'Opening Credits', 'Act I', 'Act II', 'Climax', 'Ending']
+          : ['Opening', 'Act I', 'Rising Action', 'Midpoint', 'Act II', 'Climax', 'Finale'];
+        const count = dur < 1800 ? 4 : labels.length;
+        return labels.slice(0, count).map((title, idx) => {
+          const startSeconds = idx === 0 ? 0 : Math.floor((dur * idx) / count);
+          return { index: idx + 1, title, startSeconds, timeLabel: formatTime(startSeconds) };
+        });
+      }
+
       watchRoot.innerHTML = `
         <div class="watch-stage" style="background:#000;width:100%;height:100dvh;position:fixed;top:0;left:0;z-index:9999;user-select:none;">
-          <div class="fx-player fx-theme" style="--fx-aspect:1.7777777777777777;width:100%;height:100%;background:#000;position:relative;overflow:hidden;" data-fx-page="">
-            
+          <div class="fx-player fx-theme atv-player" style="--fx-aspect:1.7777777777777777;width:100%;height:100%;background:#000;position:relative;overflow:hidden;" data-fx-page="" data-imdb="${escapeAttr(imdbId)}">
+
             <!-- Video Stage -->
             <div class="fx-video-wrap" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:#000;">
-              <video id="flicx-video" class="fx-video" playsinline crossorigin="anonymous" style="width:100%;height:100%;object-fit:contain;background:#000;display:block;"></video>
+              <video id="flicx-video" class="fx-video" playsinline crossorigin="anonymous" x-webkit-airplay="allow" style="width:100%;height:100%;object-fit:contain;background:#000;display:block;"></video>
               <div id="flicx-buffering" class="fx-buffering" style="position:absolute;display:none;pointer-events:none;">
-                <div class="fx-spinner" style="width:3rem;height:3rem;border:3px solid rgba(255,255,255,0.25);border-top-color:var(--color-flare, #f59e0b);border-radius:50%;animation:spin 0.8s linear infinite;"></div>
+                <div class="fx-spinner" style="width:2.85rem;height:2.85rem;border:3px solid rgba(255,255,255,0.22);border-top-color:#ffffff;border-radius:50%;animation:spin 0.8s linear infinite;"></div>
               </div>
+              <div id="atv-status-pill" class="atv-status-pill" role="status" aria-live="polite" aria-hidden="true"></div>
             </div>
 
-            <!-- Flicx Floating Glass UI -->
-            <div class="fx-ui" style="position:absolute;inset:0;pointer-events:none;z-index:10;display:flex;flex-direction:column;justify-content:space-between;transition:opacity 0.24s ease;">
-              
-              <!-- TOP BAR -->
-              <div class="fx-top" style="display:flex;align-items:center;justify-content:space-between;padding:calc(1.2rem + env(safe-area-inset-top,0px)) calc(1.5rem + env(safe-area-inset-right,0px)) 1rem calc(1.5rem + env(safe-area-inset-left,0px));background:linear-gradient(to bottom, rgba(0,0,0,0.85) 0%, rgba(0,0,0,0.4) 60%, transparent 100%);">
-                
-                <!-- Left: Back Button & Title Badge -->
+            <!-- Apple TV Floating UI -->
+            <div class="fx-ui atv-ui" data-chrome="" style="position:absolute;inset:0;pointer-events:none;z-index:10;display:flex;flex-direction:column;justify-content:space-between;">
+
+              <!-- SUBTLE TOP BAR (Back + Quick Server/Fullscreen) -->
+              <div class="fx-top atv-top">
                 <div class="fx-top-start" style="display:flex;align-items:center;gap:0.75rem;pointer-events:auto;">
-                  <a class="fx-btn" href="${backUrl}" aria-label="Back" title="Back" style="background:rgba(14,16,22,0.68);-webkit-backdrop-filter:blur(24px) saturate(1.8);backdrop-filter:blur(24px) saturate(1.8);box-shadow:0 0 0 1px rgba(255,255,255,0.1), 0 8px 24px -6px rgba(0,0,0,0.6);border-radius:50%;width:2.5rem;height:2.5rem;display:grid;place-items:center;color:#fff;text-decoration:none;transition:transform 0.16s ease, background 0.15s ease;">
-                    <svg viewBox="0 0 256 256" fill="currentColor" width="20" height="20"><path d="M165.66,202.34a8,8,0,0,1-11.32,11.32l-80-80a8,8,0,0,1,0-11.32l80-80a8,8,0,0,1,11.32,11.32L91.31,128Z"/></svg>
+                  <a class="atv-top-circle" href="${escapeAttr(backUrl)}" aria-label="Back" title="Back">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" width="20" height="20"><polyline points="15 18 9 12 15 6"/></svg>
                   </a>
-                  
-                  <div class="fx-pill" style="display:flex;align-items:center;gap:0.5rem;padding:0.45rem 1rem;background:rgba(14,16,22,0.68);-webkit-backdrop-filter:blur(24px) saturate(1.8);backdrop-filter:blur(24px) saturate(1.8);box-shadow:0 0 0 1px rgba(255,255,255,0.08);border-radius:9999px;color:#fff;font-size:0.9rem;font-weight:600;">
-                    <span style="font-weight:700;">${cleanTitle}</span>
-                    <span style="opacity:0.35;">&bull;</span>
-                    <span style="opacity:0.7;font-size:0.85rem;">${yearStr}</span>
-                    ${isShow ? `<span style="background:var(--color-flare, #f59e0b);color:#000;font-weight:800;font-size:0.75rem;padding:0.1rem 0.45rem;border-radius:4px;margin-left:0.25rem;">S${season} E${episode}</span>` : ''}
-                  </div>
                 </div>
 
-                <!-- Right: Star Server Selector & Fullscreen Button -->
-                <div class="fx-top-end" style="display:flex;align-items:center;gap:0.6rem;pointer-events:auto;">
-                  <!-- Original Flicx Server Dropdown -->
+                <div class="fx-top-end" style="display:flex;align-items:center;gap:0.65rem;pointer-events:auto;">
                   <div class="fx-server" style="position:relative;">
-                    <button type="button" class="fx-pill fx-btn-server" aria-haspopup="menu" aria-expanded="false" style="display:inline-flex;align-items:center;gap:0.45rem;padding:0.45rem 0.9rem;background:rgba(14,16,22,0.68);-webkit-backdrop-filter:blur(24px) saturate(1.8);backdrop-filter:blur(24px) saturate(1.8);box-shadow:0 0 0 1px rgba(255,255,255,0.1), 0 8px 24px -6px rgba(0,0,0,0.6);border-radius:9999px;border:none;color:#fff;font-size:0.85rem;font-weight:600;cursor:pointer;">
-                      <svg width="15" height="15" viewBox="0 0 256 256" fill="currentColor"><path d="M224,56H32A16,16,0,0,0,16,72V184a16,16,0,0,0,16,16H224a16,16,0,0,0,16-16V72A16,16,0,0,0,224,56Zm0,128H32V72H224V184ZM192,128a12,12,0,1,1-12-12A12,12,0,0,1,192,128Z"/></svg>
-                      <span class="fx-server-name">${currentServer.name}</span>
-                      ${currentServer.quality ? `<i class="fx-tag" style="font-size:0.68rem;padding:0.05rem 0.35rem;border-radius:4px;background:rgba(255,255,255,0.12);color:#fff;font-style:normal;">${currentServer.quality}</i>` : ''}
-                      <svg class="fx-server-chevron" viewBox="0 0 256 256" fill="currentColor" width="14" height="14" style="transition:transform 0.22s cubic-bezier(0.22, 1, 0.36, 1);"><path d="M213.66,101.66l-80,80a8,8,0,0,1-11.32,0l-80-80A8,8,0,0,1,53.66,90.34L128,164.69l74.34-74.35a8,8,0,0,1,11.32,11.32Z"/></svg>
+                    <button type="button" class="fx-pill fx-btn-server atv-server-btn" aria-haspopup="menu" aria-expanded="false" aria-label="Select stream server">
+                      <span class="fx-server-name">${escapeHtml(currentServer.name)}</span>
+                      ${currentServer.quality ? `<span class="atv-server-sep" aria-hidden="true">&middot;</span><span id="fx-active-quality" class="atv-server-qual">${escapeHtml(currentServer.quality)}</span>` : '<span id="fx-active-quality" class="atv-server-qual">HD</span>'}
+                      <svg class="fx-server-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14" style="transition:transform 0.24s cubic-bezier(0.22, 1, 0.36, 1);"><polyline points="6 9 12 15 18 9"/></svg>
                     </button>
-                    
-                    <!-- Flicx Star Server Menu -->
-                    <div class="fx-menu fx-server-menu" role="menu" aria-label="Server" style="display:none;position:absolute;top:calc(100% + 0.45rem);right:0;width:max-content;min-width:16rem;max-height:60vh;overflow-y:auto;padding:0.4rem;border-radius:1rem;background:rgba(14,16,22,0.92);-webkit-backdrop-filter:blur(30px) saturate(1.8) brightness(0.9);backdrop-filter:blur(30px) saturate(1.8) brightness(0.9);box-shadow:0 0 0 1px rgba(255,255,255,0.08), 0 22px 56px -16px rgba(0,0,0,0.85);z-index:30;flex-direction:column;gap:2px;">
-                      ${servers.map((srv, idx) => `
-                        <button type="button" class="fx-row fx-menu-item" data-idx="${idx}" role="menuitemradio" aria-checked="${idx === currentServerIndex}" style="display:flex;align-items:center;justify-content:space-between;width:100%;padding:0.65rem 0.85rem;border:none;border-radius:0.6rem;background:${idx === currentServerIndex ? 'rgba(255,255,255,0.12)' : 'transparent'};color:${idx === currentServerIndex ? '#fff' : 'rgba(255,255,255,0.7)'};cursor:pointer;font-size:0.85rem;font-weight:500;text-align:left;transition:background 0.15s ease;">
-                          <span class="fx-row-text" style="display:flex;flex-direction:column;gap:0.15rem;">
-                            <span class="fx-row-title" style="display:flex;align-items:center;gap:0.5rem;font-weight:600;">
-                              ${srv.name}
-                              ${srv.quality ? `<i class="fx-tag" style="font-size:0.68rem;padding:0.05rem 0.35rem;border-radius:4px;background:rgba(255,255,255,0.1);color:#fff;font-style:normal;">${srv.quality}</i>` : ''}
-                              ${srv.group === 'dedicated' ? '<b class="fx-server-dedicated" style="font-size:0.65rem;color:var(--color-flare, #f59e0b);font-weight:700;text-transform:uppercase;">Dedicated</b>' : ''}
+
+                    <div class="fx-menu fx-server-menu atv-glass-popover atv-server-popover" role="menu" aria-label="Servers" aria-hidden="true">
+                      <div class="atv-pop-heading">SERVERS</div>
+                      <div class="atv-pop-list">
+                        ${servers.map((srv, idx) => `
+                          <button type="button" class="fx-menu-item atv-pop-item" data-idx="${idx}" role="menuitemradio" aria-checked="${idx === currentServerIndex}">
+                            <span class="atv-pop-item-label">
+                              <span>${escapeHtml(srv.name)}</span>
+                              ${srv.quality ? `<span class="atv-pop-meta">${escapeHtml(srv.quality)}</span>` : ''}
+                              ${srv.group === 'dedicated' ? '<span class="atv-pop-meta">Dedicated</span>' : ''}
                             </span>
-                          </span>
-                          ${idx === currentServerIndex ? '<svg width="16" height="16" viewBox="0 0 256 256" fill="currentColor"><path d="M229.66,77.66l-128,128a8,8,0,0,1-11.32,0l-56-56a8,8,0,0,1,11.32-11.32L96,188.69,218.34,66.34a8,8,0,0,1,11.32,11.32Z"/></svg>' : ''}
-                        </button>
-                      `).join('')}
+                            <span class="atv-pop-check" aria-hidden="true">${idx === currentServerIndex ? '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><polyline points="20 6 9 17 4 12"/></svg>' : ''}</span>
+                          </button>
+                        `).join('')}
+                      </div>
                     </div>
                   </div>
 
-                  <!-- Fullscreen Button -->
-                  <button type="button" class="fx-btn fx-btn-fullscreen" aria-label="Fullscreen" title="Fullscreen (F)" style="background:rgba(14,16,22,0.68);-webkit-backdrop-filter:blur(24px) saturate(1.8);backdrop-filter:blur(24px) saturate(1.8);box-shadow:0 0 0 1px rgba(255,255,255,0.1), 0 8px 24px -6px rgba(0,0,0,0.6);border-radius:50%;width:2.5rem;height:2.5rem;display:grid;place-items:center;color:#fff;border:none;cursor:pointer;">
-                    <svg viewBox="0 0 256 256" fill="currentColor" width="18" height="18"><path d="M216,48V88a8,8,0,0,1-16,0V56H168a8,8,0,0,1,0-16h40A8,8,0,0,1,216,48ZM88,200H56V168a8,8,0,0,0-16,0v40a8,8,0,0,0,8,8H88a8,8,0,0,0,0-16Zm120-40a8,8,0,0,0-8,8v32H168a8,8,0,0,0,0,16h40a8,8,0,0,0,8-8V168A8,8,0,0,0,208,160ZM48,96a8,8,0,0,0,8-8V56H88a8,8,0,0,0,0-16H48a8,8,0,0,0-8,8V88A8,8,0,0,0,48,96Z"/></svg>
+                  <button type="button" class="atv-top-circle fx-btn-fullscreen" aria-label="Fullscreen" title="Fullscreen (F)">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>
                   </button>
                 </div>
               </div>
 
-              <!-- BOTTOM CONTROLS BAR -->
-              <div class="fx-bottom" style="padding:1rem calc(1.5rem + env(safe-area-inset-right,0px)) calc(1.5rem + env(safe-area-inset-bottom,0px)) calc(1.5rem + env(safe-area-inset-left,0px));background:linear-gradient(to top, rgba(0,0,0,0.92) 0%, rgba(0,0,0,0.5) 60%, transparent 100%);pointer-events:auto;display:flex;flex-direction:column;gap:0.75rem;">
-                
-                <!-- Timeline Scrubber -->
-                <div class="fx-scrub-wrap" style="position:relative;width:100%;height:1.25rem;display:flex;align-items:center;cursor:pointer;">
-                  <div class="fx-scrub-track" style="position:relative;width:100%;height:4px;border-radius:999px;background:rgba(255,255,255,0.2);overflow:visible;transition:height 0.15s ease;">
-                    <div id="fx-scrub-buffered" class="fx-scrub-buffered" style="position:absolute;top:0;left:0;bottom:0;width:0%;background:rgba(255,255,255,0.3);border-radius:999px;"></div>
-                    <div id="fx-scrub-played" class="fx-scrub-played" style="position:absolute;top:0;left:0;bottom:0;width:0%;background:var(--color-flare, #f59e0b);border-radius:999px;"></div>
-                    <div id="fx-scrub-thumb" class="fx-scrub-thumb" style="position:absolute;top:50%;left:0%;width:12px;height:12px;background:#fff;border-radius:50%;transform:translate(-50%, -50%);box-shadow:0 0 6px rgba(0,0,0,0.5);"></div>
+              <!-- CENTER PLAY BUTTON (shown while paused) -->
+              <button type="button" id="fx-center-play" class="kaira-center-play atv-center-play" aria-label="Play video" title="Play (Space)" aria-hidden="true">
+                <svg viewBox="0 0 256 256" fill="currentColor" width="32" height="32" style="display:block;transform:translateX(1px);"><path d="M240,128a15.74,15.74,0,0,1-7.6,13.51L88.32,229.65a16,16,0,0,1-16.2.3A15.86,15.86,0,0,1,64,216.13V39.87a15.86,15.86,0,0,1,8.12-13.82,16,16,0,0,1,16.2.3L232.4,114.49A15.74,15.74,0,0,1,240,128Z"/></svg>
+              </button>
+
+              <!-- APPLE TV BOTTOM OVERLAY -->
+              <div class="fx-bottom atv-bottom">
+
+                <!-- Expandable Apple TV Info / Chapters Drawer (slides neatly above title/scrubber) -->
+                <div id="atv-drawer-info" class="atv-drawer atv-glass-panel" role="region" aria-label="Title information" aria-hidden="true">
+                  <div class="atv-info-grid">
+                    ${posterUrl ? `<img class="atv-info-poster" src="${escapeAttr(posterUrl)}" alt="${escapeAttr(cleanTitle)}" referrerpolicy="no-referrer" />` : ''}
+                    <div class="atv-info-body">
+                      <div class="atv-info-title-row">
+                        <h2 class="atv-info-heading">${escapeHtml(cleanTitle)}</h2>
+                        <span class="atv-info-meta">
+                          ${yearStr ? `<span>${escapeHtml(yearStr)}</span>` : ''}
+                          ${ratingText ? `<span aria-hidden="true">&middot;</span><span>&starf; ${escapeHtml(ratingText)}</span>` : ''}
+                          ${genresList.length ? `<span aria-hidden="true">&middot;</span><span>${escapeHtml(genresList.slice(0, 3).join(', '))}</span>` : ''}
+                          ${currentServer.quality ? `<span aria-hidden="true">&middot;</span><span>${escapeHtml(currentServer.quality)}</span>` : ''}
+                        </span>
+                      </div>
+                      <p class="atv-info-synopsis">${escapeHtml(synopsisText || (isShow ? `Streaming ${isAnimeRoute ? `Episode ${episodeNum}` : `Season ${seasonNum}, Episode ${episodeNum}`} via ${currentServer.name}.` : `Streaming on Kaira via ${currentServer.name} in ${currentServer.quality || 'HD'}.`))}</p>
+                    </div>
                   </div>
                 </div>
 
-                <!-- Control Buttons Row -->
-                <div class="fx-bar" style="display:flex;align-items:center;justify-content:space-between;width:100%;">
-                  
-                  <!-- Left Controls: Play/Pause, Volume, Time -->
-                  <div class="fx-bar-start" style="display:flex;align-items:center;gap:1rem;">
-                    <!-- Play / Pause Button -->
-                    <button type="button" id="fx-btn-play" class="fx-btn" aria-label="Play/Pause" style="color:#fff;background:transparent;border:none;cursor:pointer;display:grid;place-items:center;">
-                      <svg id="fx-icon-play" viewBox="0 0 256 256" fill="currentColor" width="24" height="24"><path d="M240,128a15.74,15.74,0,0,1-7.6,13.51L88.32,229.65a16,16,0,0,1-16.2.3A15.86,15.86,0,0,1,64,216.13V39.87a15.86,15.86,0,0,1,8.12-13.82,16,16,0,0,1,16.2.3L232.4,114.49A15.74,15.74,0,0,1,240,128Z"/></svg>
-                      <svg id="fx-icon-pause" viewBox="0 0 256 256" fill="currentColor" width="24" height="24" style="display:none;"><path d="M216,48V208a16,16,0,0,1-16,16H160a16,16,0,0,1-16-16V48a16,16,0,0,1,16-16h40A16,16,0,0,1,216,48ZM96,32H56A16,16,0,0,0,40,48V208a16,16,0,0,0,16,16H96a16,16,0,0,0,16-16V48A16,16,0,0,0,96,32Z"/></svg>
-                    </button>
+                <div id="atv-drawer-chapters" class="atv-drawer atv-glass-panel" role="region" aria-label="Chapters" aria-hidden="true">
+                  <div class="atv-pop-heading" style="padding:0 0 0.65rem 0;color:rgba(255,255,255,0.68);">CHAPTERS</div>
+                  <div id="atv-chapters-list" class="atv-chapters-strip"></div>
+                </div>
 
-                    <!-- Volume & Mute -->
-                    <div class="fx-volume" style="display:flex;align-items:center;gap:0.4rem;">
-                      <button type="button" id="fx-btn-mute" class="fx-btn" aria-label="Mute" style="color:#fff;background:transparent;border:none;cursor:pointer;display:grid;place-items:center;">
-                        <svg id="fx-icon-volume" viewBox="0 0 256 256" fill="currentColor" width="22" height="22"><path d="M155.51,24.81a8,8,0,0,0-8.42.88L77.25,80H32A16,16,0,0,0,16,96v64a16,16,0,0,0,16,16H77.25l69.84,54.31A8,8,0,0,0,160,224V32A8,8,0,0,0,155.51,24.81ZM208,128a55.9,55.9,0,0,0-16.4-39.6,8,8,0,0,0-11.31,11.31,39.9,39.9,0,0,1,0,56.58,8,8,0,0,0,11.31,11.31A55.9,55.9,0,0,0,208,128Zm32,0a87.77,87.77,0,0,0-25.79-62.22,8,8,0,1,0-11.31,11.31,71.86,71.86,0,0,1,0,101.82,8,8,0,0,0,11.31,11.31A87.77,87.77,0,0,0,240,128Z"/></svg>
-                        <svg id="fx-icon-muted" viewBox="0 0 256 256" fill="currentColor" width="22" height="22" style="display:none;"><path d="M213.66,197.66l-44.59-44.6A87.94,87.94,0,0,0,240,128a8,8,0,0,0-16,0,71.86,71.86,0,0,1-19.64,48.65L160,132.37V32a8,8,0,0,0-12.91-6.31L77.25,80H32A16,16,0,0,0,16,96v64a16,16,0,0,0,16,16H77.25l69.84,54.31A8,8,0,0,0,160,224V188.69l42.34,42.35a8,8,0,0,0,11.32-11.32ZM205.66,42.34a8,8,0,0,0-11.32,0L37.09,199.59A8,8,0,0,0,48.4,210.9l157.26-157.25A8,8,0,0,0,205.66,42.34Z"/></svg>
+                <!-- ROW 1: Bold Apple TV Title (left) + Floating Popover & Circular Icon Cluster (right) -->
+                <div class="atv-header-row">
+                  <div class="atv-title-block">
+                    ${isShow ? `<div class="atv-kicker">${isAnimeRoute ? `Episode ${episodeNum}` : `Season ${seasonNum} &middot; Episode ${episodeNum}`}</div>` : ''}
+                    <h1 class="atv-title">${escapeHtml(cleanTitle)}</h1>
+                  </div>
+
+                  <div class="atv-actions-wrap">
+                    <!-- Floating Apple TV Frosted Popover (Subtitles / Audio / Cast) -->
+                    <div id="atv-popover-subs" class="atv-popover atv-glass-popover" role="menu" aria-label="Subtitles" aria-hidden="true">
+                      <div class="atv-pop-heading">SUBTITLES</div>
+                      <div id="atv-subs-list" class="atv-pop-list">
+                        <div class="atv-pop-empty">Loading subtitles&hellip;</div>
+                      </div>
+                    </div>
+
+                    <div id="atv-popover-audio" class="atv-popover atv-glass-popover" role="dialog" aria-label="Audio settings" aria-hidden="true">
+                      <div class="atv-pop-heading">AUDIO</div>
+                      <div class="atv-audio-section">
+                        <div class="atv-audio-vol-row">
+                          <button type="button" id="fx-btn-mute" class="atv-pop-mini-btn" aria-label="Mute" title="Mute (M)">
+                            <svg id="fx-icon-volume" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>
+                            <svg id="fx-icon-muted" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18" style="display:none;"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><line x1="23" y1="9" x2="17" y2="15"/><line x1="17" y1="9" x2="23" y2="15"/></svg>
+                          </button>
+                          <input type="range" id="fx-volume-slider" class="atv-vol-slider" min="0" max="1" step="0.05" value="1" aria-label="Volume" />
+                          <span id="atv-vol-pct" class="atv-vol-pct">100%</span>
+                        </div>
+                      </div>
+                      <div class="atv-pop-divider"></div>
+                      <div class="atv-pop-heading">PLAYBACK SPEED</div>
+                      <div id="atv-speed-list" class="atv-pop-list">
+                        ${[0.75, 1, 1.25, 1.5, 2].map(rate => `
+                          <button type="button" class="atv-pop-item atv-speed-item" data-rate="${rate}" role="menuitemradio" aria-checked="${rate === 1}">
+                            <span class="atv-pop-item-label">${rate === 1 ? 'Normal (1&times;)' : `${rate}&times;`}</span>
+                            <span class="atv-pop-check" aria-hidden="true">${rate === 1 ? '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><polyline points="20 6 9 17 4 12"/></svg>' : ''}</span>
+                          </button>
+                        `).join('')}
+                      </div>
+                      <div class="atv-pop-divider"></div>
+                      <div class="atv-pop-heading">SOUND MODE</div>
+                      <div class="atv-pop-list">
+                        <button type="button" class="atv-pop-item atv-sound-mode-item" data-mode="full" role="menuitemradio" aria-checked="true">
+                          <span class="atv-pop-item-label">Full Dynamic Range</span>
+                          <span class="atv-pop-check" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><polyline points="20 6 9 17 4 12"/></svg></span>
+                        </button>
+                        <button type="button" class="atv-pop-item atv-sound-mode-item" data-mode="reduce" role="menuitemradio" aria-checked="false">
+                          <span class="atv-pop-item-label">Reduce Loud Sounds</span>
+                          <span class="atv-pop-check" aria-hidden="true"></span>
+                        </button>
+                      </div>
+                    </div>
+
+                    <div id="atv-popover-cast" class="atv-popover atv-glass-popover" role="dialog" aria-label="Cast and AirPlay" aria-hidden="true">
+                      <div class="atv-pop-heading">CAST &amp; AIRPLAY</div>
+                      <div id="atv-cast-status" class="atv-cast-status">Ready to connect to a TV or external player</div>
+                      <div class="atv-pop-list">
+                        <button type="button" id="atv-cast-remote" class="atv-pop-item" role="menuitem">
+                          <span class="atv-pop-item-label">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><path d="M2 16.1A5 5 0 0 1 5.9 20M2 12.05A9 9 0 0 1 9.95 20M2 8V6a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-6"/><line x1="2" y1="20" x2="2.01" y2="20"/></svg>
+                            <span>Cast to TV / Chromecast</span>
+                          </span>
+                        </button>
+                        <button type="button" id="atv-cast-airplay" class="atv-pop-item" role="menuitem">
+                          <span class="atv-pop-item-label">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><path d="M5 17H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2h-1"/><polygon points="12 15 17 21 7 21 12 15"/></svg>
+                            <span>AirPlay Display</span>
+                          </span>
+                        </button>
+                        <button type="button" id="atv-cast-copy-stream" class="atv-pop-item" role="menuitem">
+                          <span class="atv-pop-item-label">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                            <span>Copy Stream URL (VLC / Infuse)</span>
+                          </span>
+                        </button>
+                        <button type="button" id="atv-cast-share-link" class="atv-pop-item" role="menuitem">
+                          <span class="atv-pop-item-label">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+                            <span>Copy Watch Link</span>
+                          </span>
+                        </button>
+                      </div>
+                    </div>
+
+                    <!-- Apple TV Circular Icon Buttons (Subtitles, Audio Waveform, Cast, PiP) -->
+                    <div class="atv-actions">
+                      <button type="button" id="atv-btn-subs" class="atv-icon-btn" aria-haspopup="menu" aria-expanded="false" aria-label="Subtitles" title="Subtitles (C)">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" width="21" height="21">
+                          <path d="M21 15a2 2 0 0 1-2 2H8l-4 3V5a2 2 0 0 1 2-2h13a2 2 0 0 1 2 2z"/>
+                          <line x1="8" y1="9" x2="16" y2="9"/>
+                          <line x1="8" y1="13" x2="13.5" y2="13"/>
+                        </svg>
                       </button>
-                      <input type="range" id="fx-volume-slider" min="0" max="1" step="0.05" value="1" style="width:5rem;height:4px;accent-color:var(--color-flare, #f59e0b);cursor:pointer;" />
-                    </div>
 
-                    <!-- Time Display -->
-                    <div class="fx-time" style="font-size:0.85rem;color:rgba(255,255,255,0.8);font-variant-numeric:tabular-nums;">
-                      <span id="fx-time-now">0:00</span>
-                      <span class="fx-time-sep" style="opacity:0.4;margin:0 0.35rem;">/</span>
-                      <span id="fx-time-total" style="opacity:0.6;">0:00</span>
+                      <button type="button" id="atv-btn-audio" class="atv-icon-btn" aria-haspopup="dialog" aria-expanded="false" aria-label="Audio and speed" title="Audio">
+                        <svg viewBox="0 0 24 24" fill="currentColor" width="21" height="21">
+                          <rect x="3.5" y="13" width="2.1" height="6" rx="1.05"/>
+                          <rect x="7.5" y="9" width="2.1" height="10" rx="1.05"/>
+                          <rect x="11.5" y="5" width="2.1" height="14" rx="1.05"/>
+                          <rect x="15.5" y="9.5" width="2.1" height="9.5" rx="1.05"/>
+                          <rect x="19.5" y="13.5" width="2.1" height="5.5" rx="1.05"/>
+                        </svg>
+                      </button>
+
+                      <button type="button" id="atv-btn-cast" class="atv-icon-btn" aria-haspopup="dialog" aria-expanded="false" aria-label="Cast to TV" title="Cast / AirPlay">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" width="21" height="21">
+                          <path d="M2 16.1A5 5 0 0 1 5.9 20M2 12.05A9 9 0 0 1 9.95 20M2 8V6a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-6"/>
+                          <line x1="2" y1="20" x2="2.01" y2="20"/>
+                        </svg>
+                      </button>
+
+                      <button type="button" id="atv-btn-pip" class="atv-icon-btn" aria-pressed="false" aria-label="Picture in Picture" title="Picture in Picture (P)">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" width="21" height="21">
+                          <rect x="2.5" y="4.5" width="19" height="15" rx="2.5"/>
+                          <rect x="11.5" y="11" width="7.5" height="5.5" rx="1.2" fill="currentColor"/>
+                        </svg>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- ROW 2: Apple TV Timeline Scrubber + Floating Playhead Elapsed & Remaining Time -->
+                <div class="atv-scrubber-section">
+                  <div class="fx-scrub-wrap atv-scrub-wrap" role="slider" aria-label="Seek timeline" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" tabindex="0">
+                    <div class="fx-scrub-track atv-scrub-track">
+                      <div id="fx-scrub-buffered" class="atv-scrub-buffered" style="width:0%;"></div>
+                      <div id="fx-scrub-played" class="atv-scrub-played" style="width:0%;"></div>
+                      <div id="fx-scrub-thumb" class="atv-scrub-thumb" style="left:0%;"></div>
                     </div>
                   </div>
 
-                  <!-- Right Controls: Audio/Subtitles & Fullscreen -->
-                  <div class="fx-bar-end" style="display:flex;align-items:center;gap:0.75rem;">
-                    <!-- Quality indicator -->
-                    <span id="fx-active-quality" class="fx-pill" style="font-size:0.75rem;font-weight:700;padding:0.25rem 0.6rem;background:rgba(255,255,255,0.12);border-radius:4px;color:#fff;">${currentServer.quality || 'HD'}</span>
+                  <div class="atv-time-row">
+                    <span id="fx-time-now" class="atv-time-elapsed" style="left:0%;">0:00</span>
+                    <button type="button" id="fx-time-remaining" class="atv-time-remaining" title="Toggle remaining / total time">-0:00</button>
+                  </div>
+                </div>
 
-                    <!-- Fullscreen Toggle -->
-                    <button type="button" id="fx-btn-bottom-fs" class="fx-btn" aria-label="Fullscreen" style="color:#fff;background:transparent;border:none;cursor:pointer;display:grid;place-items:center;">
-                      <svg viewBox="0 0 256 256" fill="currentColor" width="22" height="22"><path d="M216,48V88a8,8,0,0,1-16,0V56H168a8,8,0,0,1,0-16h40A8,8,0,0,1,216,48ZM88,200H56V168a8,8,0,0,0-16,0v40a8,8,0,0,0,8,8H88a8,8,0,0,0,0-16Zm120-40a8,8,0,0,0-8,8v32H168a8,8,0,0,0,0,16h40a8,8,0,0,0,8-8V168A8,8,0,0,0,208,160ZM48,96a8,8,0,0,0,8-8V56H88a8,8,0,0,0,0-16H48a8,8,0,0,0-8,8V88A8,8,0,0,0,48,96Z"/></svg>
+                <!-- ROW 3: Apple TV Bottom Tabs (Info, Chapters) + Subtle Transport Controls -->
+                <div class="atv-footer-row">
+                  <div class="atv-tabs" role="tablist" aria-label="Playback details">
+                    <button type="button" id="atv-tab-info" class="atv-tab-btn" role="tab" aria-selected="false" aria-controls="atv-drawer-info">Info</button>
+                    <button type="button" id="atv-tab-chapters" class="atv-tab-btn" role="tab" aria-selected="false" aria-controls="atv-drawer-chapters">Chapters</button>
+                  </div>
+
+                  <div class="atv-transport">
+                    <button type="button" id="fx-btn-back10" class="atv-transport-btn" aria-label="Rewind 10 seconds" title="Back 10s (Left Arrow)">
+                      <svg viewBox="0 0 256 256" fill="currentColor" width="19" height="19"><path d="M128,48a80,80,0,1,1-56.57,23.43,8,8,0,0,1,11.32,11.32A64,64,0,1,0,128,64H83.31l18.35,18.34a8,8,0,0,1-11.32,11.32l-32-32a8,8,0,0,1,0-11.32l32-32a8,8,0,0,1,11.32,11.32L83.31,48ZM112,108v48a8,8,0,0,1-16,0V122.4l-4.21,2.52a8,8,0,1,1-8.23-13.72l16-9.6A8,8,0,0,1,112,108Zm56,24c0,16.57-9.87,28-24,28s-24-11.43-24-28,9.87-28,24-28S168,115.43,168,132Zm-16,0c0-8.65-3.6-12-8-12s-8,3.35-8,12,3.6,12,8,12S152,140.65,152,132Z"/></svg>
+                    </button>
+                    <button type="button" id="fx-btn-play" class="atv-transport-btn" aria-label="Play or pause" title="Play/Pause (Space)">
+                      <svg id="fx-icon-play" viewBox="0 0 256 256" fill="currentColor" width="20" height="20"><path d="M240,128a15.74,15.74,0,0,1-7.6,13.51L88.32,229.65a16,16,0,0,1-16.2.3A15.86,15.86,0,0,1,64,216.13V39.87a15.86,15.86,0,0,1,8.12-13.82,16,16,0,0,1,16.2.3L232.4,114.49A15.74,15.74,0,0,1,240,128Z"/></svg>
+                      <svg id="fx-icon-pause" viewBox="0 0 256 256" fill="currentColor" width="20" height="20" style="display:none;"><path d="M216,48V208a16,16,0,0,1-16,16H160a16,16,0,0,1-16-16V48a16,16,0,0,1,16-16h40A16,16,0,0,1,216,48ZM96,32H56A16,16,0,0,0,40,48V208a16,16,0,0,0,16,16H96a16,16,0,0,0,16-16V48A16,16,0,0,0,96,32Z"/></svg>
+                    </button>
+                    <button type="button" id="fx-btn-fwd10" class="atv-transport-btn" aria-label="Forward 10 seconds" title="Forward 10s (Right Arrow)">
+                      <svg viewBox="0 0 256 256" fill="currentColor" width="19" height="19"><path d="M128,48a80,80,0,1,0,56.57,23.43,8,8,0,0,0-11.32,11.32A64,64,0,1,1,128,64h44.69L154.34,82.34a8,8,0,0,0,11.32,11.32l32-32a8,8,0,0,0,0-11.32l-32-32a8,8,0,0,0-11.32,11.32L172.69,48ZM112,108v48a8,8,0,0,1-16,0V122.4l-4.21,2.52a8,8,0,1,1-8.23-13.72l16-9.6A8,8,0,0,1,112,108Zm56,24c0,16.57-9.87,28-24,28s-24-11.43-24-28,9.87-28,24-28S168,115.43,168,132Zm-16,0c0-8.65-3.6-12-8-12s-8,3.35-8,12,3.6,12,8,12S152,140.65,152,132Z"/></svg>
+                    </button>
+                    <button type="button" id="fx-btn-bottom-fs" class="atv-transport-btn" aria-label="Toggle fullscreen" title="Fullscreen (F)">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>
                     </button>
                   </div>
                 </div>
+
               </div>
             </div>
           </div>
         </div>
       `;
 
-      // 7. Video Player & Stream Engine
       const playerStage = watchRoot.querySelector('.watch-stage');
       const playerEl = watchRoot.querySelector('.fx-player');
       const videoEl = watchRoot.querySelector('#flicx-video');
       const bufferingEl = watchRoot.querySelector('#flicx-buffering');
+      const statusPillEl = watchRoot.querySelector('#atv-status-pill');
       const uiEl = watchRoot.querySelector('.fx-ui');
+      const topBarEl = watchRoot.querySelector('.fx-top');
+      const bottomBarEl = watchRoot.querySelector('.fx-bottom');
+      const centerPlayBtn = watchRoot.querySelector('#fx-center-play');
       const playBtn = watchRoot.querySelector('#fx-btn-play');
+      const back10Btn = watchRoot.querySelector('#fx-btn-back10');
+      const fwd10Btn = watchRoot.querySelector('#fx-btn-fwd10');
       const iconPlay = watchRoot.querySelector('#fx-icon-play');
       const iconPause = watchRoot.querySelector('#fx-icon-pause');
       const muteBtn = watchRoot.querySelector('#fx-btn-mute');
       const iconVol = watchRoot.querySelector('#fx-icon-volume');
       const iconMuted = watchRoot.querySelector('#fx-icon-muted');
       const volSlider = watchRoot.querySelector('#fx-volume-slider');
+      const volPctEl = watchRoot.querySelector('#atv-vol-pct');
       const timeNow = watchRoot.querySelector('#fx-time-now');
-      const timeTotal = watchRoot.querySelector('#fx-time-total');
+      const timeRemaining = watchRoot.querySelector('#fx-time-remaining');
+      const scrubWrap = watchRoot.querySelector('.fx-scrub-wrap');
       const scrubTrack = watchRoot.querySelector('.fx-scrub-track');
       const scrubPlayed = watchRoot.querySelector('#fx-scrub-played');
       const scrubBuffered = watchRoot.querySelector('#fx-scrub-buffered');
@@ -683,114 +1180,403 @@
       const serverMenu = watchRoot.querySelector('.fx-server-menu');
       const fsBtns = watchRoot.querySelectorAll('.fx-btn-fullscreen, #fx-btn-bottom-fs');
 
-      let currentHls = null;
+      // Apple TV popovers & buttons
+      const subsBtn = watchRoot.querySelector('#atv-btn-subs');
+      const audioBtn = watchRoot.querySelector('#atv-btn-audio');
+      const castBtn = watchRoot.querySelector('#atv-btn-cast');
+      const pipBtn = watchRoot.querySelector('#atv-btn-pip');
+      const subsPopover = watchRoot.querySelector('#atv-popover-subs');
+      const audioPopover = watchRoot.querySelector('#atv-popover-audio');
+      const castPopover = watchRoot.querySelector('#atv-popover-cast');
+      const subsListEl = watchRoot.querySelector('#atv-subs-list');
+      const castStatusEl = watchRoot.querySelector('#atv-cast-status');
+      const tabInfoBtn = watchRoot.querySelector('#atv-tab-info');
+      const tabChaptersBtn = watchRoot.querySelector('#atv-tab-chapters');
+      const drawerInfo = watchRoot.querySelector('#atv-drawer-info');
+      const drawerChapters = watchRoot.querySelector('#atv-drawer-chapters');
+      const chaptersListEl = watchRoot.querySelector('#atv-chapters-list');
 
-      function formatTime(seconds) {
-        if (!Number.isFinite(seconds) || seconds < 0) return '0:00';
-        const h = Math.floor(seconds / 3600);
-        const m = Math.floor((seconds % 3600) / 60);
-        const s = Math.floor(seconds % 60);
-        if (h > 0) {
-          return `${h}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+      let currentHls = null;
+      let hideTimeout = null;
+      let statusTimeout = null;
+      let isDestroyed = false;
+      let isPointerOverControls = false;
+      let showTotalInsteadOfRemaining = false;
+      let activePopover = null; // 'subs' | 'audio' | 'cast' | 'server' | null
+      let activeDrawer = null;  // 'info' | 'chapters' | null
+      let subtitleOptions = [
+        { id: 'off', language: 'off', label: 'Off', src: null },
+        { id: 'auto', language: 'en', label: 'Auto', src: null }
+      ];
+      let selectedSubtitleId = 'auto';
+      let renderedChaptersDuration = 0;
+
+      const CHECK_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><polyline points="20 6 9 17 4 12"/></svg>';
+
+      function showPlayerStatus(message) {
+        if (!statusPillEl || isDestroyed) return;
+        statusPillEl.textContent = message;
+        statusPillEl.classList.add('atv-visible');
+        statusPillEl.setAttribute('aria-hidden', 'false');
+        clearTimeout(statusTimeout);
+        statusTimeout = setTimeout(() => {
+          if (statusPillEl) {
+            statusPillEl.classList.remove('atv-visible');
+            statusPillEl.setAttribute('aria-hidden', 'true');
+          }
+        }, 2600);
+      }
+
+      function closeAllPopovers() {
+        activePopover = null;
+        [subsPopover, audioPopover, castPopover, serverMenu].forEach(el => {
+          if (el) {
+            el.classList.remove('atv-open');
+            el.setAttribute('aria-hidden', 'true');
+          }
+        });
+        [subsBtn, audioBtn, castBtn, serverBtn].forEach(btn => {
+          if (btn) {
+            btn.classList.remove('atv-icon-active');
+            btn.setAttribute('aria-expanded', 'false');
+          }
+        });
+        if (serverChevron) serverChevron.style.transform = 'rotate(0deg)';
+      }
+
+      function togglePopover(name) {
+        const wasOpen = activePopover === name;
+        closeAllPopovers();
+        if (wasOpen) {
+          wakeControls();
+          return;
         }
-        return `${m}:${s.toString().padStart(2, '0')}`;
+        closeAllDrawers();
+        activePopover = name;
+        if (name === 'subs' && subsPopover && subsBtn) {
+          subsPopover.classList.add('atv-open');
+          subsPopover.setAttribute('aria-hidden', 'false');
+          subsBtn.classList.add('atv-icon-active');
+          subsBtn.setAttribute('aria-expanded', 'true');
+        } else if (name === 'audio' && audioPopover && audioBtn) {
+          audioPopover.classList.add('atv-open');
+          audioPopover.setAttribute('aria-hidden', 'false');
+          audioBtn.classList.add('atv-icon-active');
+          audioBtn.setAttribute('aria-expanded', 'true');
+        } else if (name === 'cast' && castPopover && castBtn) {
+          castPopover.classList.add('atv-open');
+          castPopover.setAttribute('aria-hidden', 'false');
+          castBtn.classList.add('atv-icon-active');
+          castBtn.setAttribute('aria-expanded', 'true');
+        } else if (name === 'server' && serverMenu && serverBtn) {
+          serverMenu.classList.add('atv-open');
+          serverMenu.setAttribute('aria-hidden', 'false');
+          serverBtn.setAttribute('aria-expanded', 'true');
+          if (serverChevron) serverChevron.style.transform = 'rotate(180deg)';
+        }
+        wakeControls();
+      }
+
+      function closeAllDrawers() {
+        activeDrawer = null;
+        if (drawerInfo) {
+          drawerInfo.classList.remove('atv-open');
+          drawerInfo.setAttribute('aria-hidden', 'true');
+        }
+        if (drawerChapters) {
+          drawerChapters.classList.remove('atv-open');
+          drawerChapters.setAttribute('aria-hidden', 'true');
+        }
+        if (tabInfoBtn) {
+          tabInfoBtn.classList.remove('atv-tab-active');
+          tabInfoBtn.setAttribute('aria-selected', 'false');
+        }
+        if (tabChaptersBtn) {
+          tabChaptersBtn.classList.remove('atv-tab-active');
+          tabChaptersBtn.setAttribute('aria-selected', 'false');
+        }
+      }
+
+      function toggleDrawer(name) {
+        const wasOpen = activeDrawer === name;
+        closeAllDrawers();
+        if (wasOpen) {
+          wakeControls();
+          return;
+        }
+        closeAllPopovers();
+        activeDrawer = name;
+        if (name === 'info' && drawerInfo && tabInfoBtn) {
+          drawerInfo.classList.add('atv-open');
+          drawerInfo.setAttribute('aria-hidden', 'false');
+          tabInfoBtn.classList.add('atv-tab-active');
+          tabInfoBtn.setAttribute('aria-selected', 'true');
+        } else if (name === 'chapters' && drawerChapters && tabChaptersBtn) {
+          renderChaptersIfReady();
+          drawerChapters.classList.add('atv-open');
+          drawerChapters.setAttribute('aria-hidden', 'false');
+          tabChaptersBtn.classList.add('atv-tab-active');
+          tabChaptersBtn.setAttribute('aria-selected', 'true');
+        }
+        wakeControls();
+      }
+
+      function applySubtitleSelection(option) {
+        selectedSubtitleId = option.id;
+        // Clear existing track elements
+        Array.from(videoEl.querySelectorAll('track[data-atv-sub="1"]')).forEach(tr => tr.remove());
+        for (let i = 0; i < videoEl.textTracks.length; i++) {
+          videoEl.textTracks[i].mode = 'disabled';
+        }
+        if (option.id !== 'off' && option.src) {
+          const track = document.createElement('track');
+          track.kind = 'subtitles';
+          track.label = option.label;
+          track.srclang = option.language || 'en';
+          track.src = option.src;
+          track.default = true;
+          track.setAttribute('data-atv-sub', '1');
+          videoEl.appendChild(track);
+          track.addEventListener('load', () => {
+            if (track.track) track.track.mode = 'showing';
+          });
+          setTimeout(() => {
+            if (!isDestroyed && track.track) track.track.mode = 'showing';
+          }, 80);
+          showPlayerStatus(`Subtitles: ${option.label}`);
+        } else if (option.id === 'off') {
+          showPlayerStatus('Subtitles: Off');
+        }
+        renderSubtitleMenu();
+      }
+
+      function renderSubtitleMenu() {
+        if (!subsListEl) return;
+        subsListEl.innerHTML = subtitleOptions.map(opt => {
+          const isSelected = opt.id === selectedSubtitleId;
+          return `
+            <button type="button" class="atv-pop-item atv-sub-item" data-sub-id="${escapeAttr(opt.id)}" role="menuitemradio" aria-checked="${isSelected}">
+              <span class="atv-pop-item-label">${escapeHtml(opt.label)}</span>
+              <span class="atv-pop-check" aria-hidden="true">${isSelected ? CHECK_SVG : ''}</span>
+            </button>
+          `;
+        }).join('');
+
+        subsListEl.querySelectorAll('.atv-sub-item').forEach(btn => {
+          btn.onclick = (e) => {
+            e.stopPropagation();
+            const id = btn.getAttribute('data-sub-id');
+            const found = subtitleOptions.find(o => o.id === id);
+            if (found) applySubtitleSelection(found);
+            wakeControls();
+          };
+        });
+      }
+
+      // Fetch real subtitle tracks for this IMDb ID
+      (async function loadSubtitles() {
+        try {
+          const subUrl = `/api/subtitles/${encodeURIComponent(imdbId)}${isShow ? `?s=${seasonNum}&e=${episodeNum}` : ''}`;
+          const res = await fetch(subUrl).catch(() => null);
+          if (isDestroyed) return;
+          const data = res && res.ok ? await res.json().catch(() => null) : null;
+          if (isDestroyed) return;
+          if (data && Array.isArray(data.tracks) && data.tracks.length > 0) {
+            subtitleOptions = deduplicateSubtitles(data.tracks);
+          }
+          renderSubtitleMenu();
+        } catch {
+          if (!isDestroyed) renderSubtitleMenu();
+        }
+      })();
+
+      function renderChaptersIfReady() {
+        if (!chaptersListEl) return;
+        const dur = videoEl.duration || 0;
+        const chapters = buildChapters(dur > 60 ? dur : 7200);
+        if (renderedChaptersDuration && Math.abs(renderedChaptersDuration - dur) < 30 && chaptersListEl.children.length > 0) {
+          highlightActiveChapter();
+          return;
+        }
+        renderedChaptersDuration = dur;
+        chaptersListEl.innerHTML = chapters.map(ch => `
+          <button type="button" class="atv-chapter-card" data-start="${ch.startSeconds}">
+            <span class="atv-chapter-num">Chapter ${ch.index}</span>
+            <span class="atv-chapter-name">${escapeHtml(ch.title)}</span>
+            <span class="atv-chapter-time">${escapeHtml(ch.timeLabel)}</span>
+          </button>
+        `).join('');
+        chaptersListEl.querySelectorAll('.atv-chapter-card').forEach(card => {
+          card.onclick = (e) => {
+            e.stopPropagation();
+            const sec = Number(card.getAttribute('data-start') || 0);
+            if (Number.isFinite(sec) && videoEl.duration) {
+              videoEl.currentTime = Math.min(videoEl.duration - 1, sec);
+            }
+            highlightActiveChapter();
+            wakeControls();
+          };
+        });
+        highlightActiveChapter();
+      }
+
+      function highlightActiveChapter() {
+        if (!chaptersListEl) return;
+        const cur = videoEl.currentTime || 0;
+        const cards = Array.from(chaptersListEl.querySelectorAll('.atv-chapter-card'));
+        let activeIdx = 0;
+        cards.forEach((c, i) => {
+          if (cur >= Number(c.getAttribute('data-start') || 0)) activeIdx = i;
+        });
+        cards.forEach((c, i) => c.classList.toggle('atv-chapter-active', i === activeIdx));
       }
 
       function attachStream(source) {
+        if (isDestroyed) return;
         if (currentHls) {
-          currentHls.destroy();
+          try { currentHls.destroy(); } catch {}
           currentHls = null;
         }
 
         const streamUrl = source.src;
         bufferingEl.style.display = 'block';
 
-        if (window.Hls && window.Hls.isSupported()) {
-          const hls = new window.Hls({
-            capLevelToPlayerSize: false,
-            maxBufferLength: 30,
-            backBufferLength: 45,
-            xhrSetup: (xhr, url) => {
-              if (url && !url.includes('fx=cors')) {
-                xhr.open('GET', url + (url.includes('?') ? '&' : '?') + 'fx=cors', true);
+        ensureHlsLoaded(() => {
+          if (isDestroyed || !videoEl.isConnected) return;
+          if (window.Hls && window.Hls.isSupported()) {
+            const hls = new window.Hls({
+              capLevelToPlayerSize: false,
+              maxBufferLength: 30,
+              backBufferLength: 45,
+              xhrSetup: (xhr, url) => {
+                if (url && !url.includes('fx=cors')) {
+                  xhr.open('GET', url + (url.includes('?') ? '&' : '?') + 'fx=cors', true);
+                }
               }
-            }
-          });
-          currentHls = hls;
-          hls.loadSource(streamUrl);
-          hls.attachMedia(videoEl);
+            });
+            currentHls = hls;
+            hls.loadSource(streamUrl);
+            hls.attachMedia(videoEl);
 
-          hls.on(window.Hls.Events.MANIFEST_PARSED, () => {
-            bufferingEl.style.display = 'none';
-            videoEl.play().catch(() => {});
-          });
-
-          hls.on(window.Hls.Events.ERROR, (event, data) => {
-            if (data.fatal) {
-              console.warn('HLS stream error on', source.name, data);
+            hls.on(window.Hls.Events.MANIFEST_PARSED, () => {
+              if (isDestroyed) return;
               bufferingEl.style.display = 'none';
-            }
-          });
-        } else if (videoEl.canPlayType('application/vnd.apple.mpegurl')) {
-          videoEl.src = streamUrl;
-          videoEl.addEventListener('loadedmetadata', () => {
+              videoEl.play().catch(() => {});
+            });
+
+            hls.on(window.Hls.Events.ERROR, (event, data) => {
+              if (data.fatal && !isDestroyed) {
+                console.warn('HLS stream error on', source.name, data);
+                bufferingEl.style.display = 'none';
+              }
+            });
+          } else if (videoEl.canPlayType('application/vnd.apple.mpegurl')) {
+            videoEl.src = streamUrl;
+            videoEl.addEventListener('loadedmetadata', () => {
+              if (isDestroyed) return;
+              bufferingEl.style.display = 'none';
+              videoEl.play().catch(() => {});
+            }, { once: true });
+          } else {
             bufferingEl.style.display = 'none';
-            videoEl.play().catch(() => {});
-          }, { once: true });
-        }
+          }
+        });
       }
 
-      // Initial Stream Attach
       attachStream(currentServer);
 
-      // Play / Pause Logic
       function togglePlay() {
-        if (videoEl.paused) {
-          videoEl.play().catch(() => {});
-        } else {
-          videoEl.pause();
-        }
+        if (videoEl.paused) videoEl.play().catch(() => {});
+        else videoEl.pause();
+        wakeControls();
       }
 
-      playBtn.onclick = (e) => {
+      playBtn.onclick = (e) => { e.stopPropagation(); togglePlay(); };
+      if (centerPlayBtn) centerPlayBtn.onclick = (e) => { e.stopPropagation(); togglePlay(); };
+      if (back10Btn) back10Btn.onclick = (e) => {
         e.stopPropagation();
-        togglePlay();
+        videoEl.currentTime = Math.max(0, (videoEl.currentTime || 0) - 10);
+        wakeControls();
       };
-      videoEl.onclick = togglePlay;
+      if (fwd10Btn) fwd10Btn.onclick = (e) => {
+        e.stopPropagation();
+        videoEl.currentTime = Math.min(videoEl.duration || 1e9, (videoEl.currentTime || 0) + 10);
+        wakeControls();
+      };
+      videoEl.onclick = () => {
+        if (activePopover || activeDrawer) {
+          closeAllPopovers();
+          closeAllDrawers();
+          wakeControls();
+        } else {
+          togglePlay();
+        }
+      };
 
       videoEl.onplay = () => {
         iconPlay.style.display = 'none';
         iconPause.style.display = 'block';
+        if (centerPlayBtn) {
+          centerPlayBtn.classList.remove('atv-visible');
+          centerPlayBtn.setAttribute('aria-hidden', 'true');
+        }
+        wakeControls();
       };
       videoEl.onpause = () => {
         iconPlay.style.display = 'block';
         iconPause.style.display = 'none';
+        if (centerPlayBtn) {
+          centerPlayBtn.classList.add('atv-visible');
+          centerPlayBtn.setAttribute('aria-hidden', 'false');
+        }
+        wakeControls();
       };
-      videoEl.onwaiting = () => {
-        bufferingEl.style.display = 'block';
-      };
+      videoEl.onwaiting = () => { bufferingEl.style.display = 'block'; };
       videoEl.onplaying = () => {
         bufferingEl.style.display = 'none';
+        if (centerPlayBtn) {
+          centerPlayBtn.classList.remove('atv-visible');
+          centerPlayBtn.setAttribute('aria-hidden', 'true');
+        }
       };
 
-      // Progress & Time Updates
-      videoEl.ontimeupdate = () => {
+      function updateTimeDisplay() {
         const cur = videoEl.currentTime || 0;
         const dur = videoEl.duration || 0;
         timeNow.textContent = formatTime(cur);
         if (dur > 0) {
-          timeTotal.textContent = formatTime(dur);
-          const pct = (cur / dur) * 100;
+          timeRemaining.textContent = showTotalInsteadOfRemaining ? formatTime(dur) : formatRemaining(cur, dur);
+          const pct = Math.max(0, Math.min(100, (cur / dur) * 100));
           scrubPlayed.style.width = pct + '%';
           scrubThumb.style.left = pct + '%';
+          // Position elapsed timestamp cleanly beneath the playhead without clipping edges or remaining time
+          const clampedPct = Math.max(2, Math.min(86, pct));
+          timeNow.style.left = clampedPct + '%';
+          timeNow.style.transform = pct < 4 ? 'translateX(0)' : 'translateX(-50%)';
+          if (scrubWrap) scrubWrap.setAttribute('aria-valuenow', String(Math.round(pct)));
+          if (activeDrawer === 'chapters') highlightActiveChapter();
         }
         if (videoEl.buffered && videoEl.buffered.length > 0 && dur > 0) {
           const bufEnd = videoEl.buffered.end(videoEl.buffered.length - 1);
-          scrubBuffered.style.width = (bufEnd / dur) * 100 + '%';
+          scrubBuffered.style.width = Math.min(100, (bufEnd / dur) * 100) + '%';
         }
+      }
+
+      videoEl.ontimeupdate = updateTimeDisplay;
+      videoEl.onloadedmetadata = () => {
+        updateTimeDisplay();
+        if (activeDrawer === 'chapters') renderChaptersIfReady();
       };
 
-      // Scrub Seeking
+      if (timeRemaining) {
+        timeRemaining.onclick = (e) => {
+          e.stopPropagation();
+          showTotalInsteadOfRemaining = !showTotalInsteadOfRemaining;
+          updateTimeDisplay();
+          wakeControls();
+        };
+      }
+
       let isScrubbing = false;
       function seekAtEvent(e) {
         const rect = scrubTrack.getBoundingClientRect();
@@ -798,45 +1584,248 @@
         const pos = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
         if (videoEl.duration) {
           videoEl.currentTime = pos * videoEl.duration;
+          updateTimeDisplay();
         }
       }
 
-      scrubTrack.parentElement.addEventListener('mousedown', (e) => {
-        isScrubbing = true;
-        seekAtEvent(e);
-      });
-      window.addEventListener('mousemove', (e) => {
-        if (isScrubbing) seekAtEvent(e);
-      });
-      window.addEventListener('mouseup', () => {
+      const onWindowMouseMove = (e) => { if (isScrubbing) seekAtEvent(e); };
+      const onWindowMouseUp = () => {
         isScrubbing = false;
-      });
-
-      // Volume & Mute
-      volSlider.oninput = (e) => {
-        const val = parseFloat(e.target.value);
-        videoEl.volume = val;
-        videoEl.muted = val === 0;
-        updateVolumeUI();
+        if (scrubWrap) scrubWrap.classList.remove('atv-scrubbing');
+      };
+      const onWindowTouchMove = (e) => {
+        if (!isScrubbing) return;
+        if (e.cancelable) e.preventDefault();
+        seekAtEvent(e);
+      };
+      const onWindowTouchEnd = () => {
+        isScrubbing = false;
+        if (scrubWrap) scrubWrap.classList.remove('atv-scrubbing');
       };
 
+      scrubWrap.addEventListener('mousedown', (e) => {
+        e.stopPropagation();
+        isScrubbing = true;
+        scrubWrap.classList.add('atv-scrubbing');
+        seekAtEvent(e);
+        wakeControls();
+      });
+      scrubWrap.addEventListener('touchstart', (e) => {
+        e.stopPropagation();
+        if (e.cancelable) e.preventDefault();
+        isScrubbing = true;
+        scrubWrap.classList.add('atv-scrubbing');
+        seekAtEvent(e);
+        wakeControls();
+      }, { passive: false });
+      window.addEventListener('mousemove', onWindowMouseMove);
+      window.addEventListener('mouseup', onWindowMouseUp);
+      window.addEventListener('touchmove', onWindowTouchMove, { passive: false });
+      window.addEventListener('touchend', onWindowTouchEnd);
+      window.addEventListener('touchcancel', onWindowTouchEnd);
+
+      // Volume & Mute inside Audio popover
       function updateVolumeUI() {
-        if (videoEl.muted || videoEl.volume === 0) {
-          iconVol.style.display = 'none';
-          iconMuted.style.display = 'block';
-        } else {
-          iconVol.style.display = 'block';
-          iconMuted.style.display = 'none';
+        const isMuted = videoEl.muted || videoEl.volume === 0;
+        if (iconVol) iconVol.style.display = isMuted ? 'none' : 'block';
+        if (iconMuted) iconMuted.style.display = isMuted ? 'block' : 'none';
+        if (volPctEl) volPctEl.textContent = isMuted ? '0%' : `${Math.round(videoEl.volume * 100)}%`;
+        if (volSlider) volSlider.value = isMuted ? '0' : String(videoEl.volume);
+      }
+
+      if (volSlider) {
+        volSlider.oninput = (e) => {
+          e.stopPropagation();
+          const val = parseFloat(e.target.value);
+          videoEl.volume = val;
+          videoEl.muted = val === 0;
+          updateVolumeUI();
+          wakeControls();
+        };
+      }
+
+      if (muteBtn) {
+        muteBtn.onclick = (e) => {
+          e.stopPropagation();
+          videoEl.muted = !videoEl.muted;
+          if (!videoEl.muted && videoEl.volume === 0) videoEl.volume = 0.8;
+          updateVolumeUI();
+          wakeControls();
+        };
+      }
+
+      // Playback speed buttons inside Audio popover
+      watchRoot.querySelectorAll('.atv-speed-item').forEach(btn => {
+        btn.onclick = (e) => {
+          e.stopPropagation();
+          const rate = parseFloat(btn.getAttribute('data-rate') || '1');
+          videoEl.playbackRate = rate;
+          watchRoot.querySelectorAll('.atv-speed-item').forEach(item => {
+            const active = parseFloat(item.getAttribute('data-rate') || '1') === rate;
+            item.setAttribute('aria-checked', String(active));
+            const chk = item.querySelector('.atv-pop-check');
+            if (chk) chk.innerHTML = active ? CHECK_SVG : '';
+          });
+          showPlayerStatus(`Speed: ${rate}×`);
+          wakeControls();
+        };
+      });
+
+      // Sound mode toggle (Full Dynamic Range vs Reduce Loud Sounds)
+      watchRoot.querySelectorAll('.atv-sound-mode-item').forEach(btn => {
+        btn.onclick = (e) => {
+          e.stopPropagation();
+          const mode = btn.getAttribute('data-mode');
+          watchRoot.querySelectorAll('.atv-sound-mode-item').forEach(item => {
+            const active = item.getAttribute('data-mode') === mode;
+            item.setAttribute('aria-checked', String(active));
+            const chk = item.querySelector('.atv-pop-check');
+            if (chk) chk.innerHTML = active ? CHECK_SVG : '';
+          });
+          if (mode === 'reduce' && videoEl.volume > 0.72) {
+            videoEl.volume = 0.72;
+            updateVolumeUI();
+          }
+          showPlayerStatus(mode === 'reduce' ? 'Reduce Loud Sounds On' : 'Full Dynamic Range');
+          wakeControls();
+        };
+      });
+
+      // Apple TV Circular Action Buttons
+      if (subsBtn) subsBtn.onclick = (e) => { e.stopPropagation(); togglePopover('subs'); };
+      if (audioBtn) audioBtn.onclick = (e) => { e.stopPropagation(); togglePopover('audio'); };
+      if (castBtn) castBtn.onclick = (e) => { e.stopPropagation(); togglePopover('cast'); };
+      if (tabInfoBtn) tabInfoBtn.onclick = (e) => { e.stopPropagation(); toggleDrawer('info'); };
+      if (tabChaptersBtn) tabChaptersBtn.onclick = (e) => { e.stopPropagation(); toggleDrawer('chapters'); };
+
+      // Picture-in-Picture
+      async function togglePiP() {
+        try {
+          if (document.pictureInPictureElement) {
+            await document.exitPictureInPicture();
+          } else if (document.pictureInPictureEnabled && videoEl.requestPictureInPicture) {
+            await videoEl.requestPictureInPicture();
+          } else if (typeof videoEl.webkitSetPresentationMode === 'function') {
+            const next = videoEl.webkitPresentationMode === 'picture-in-picture' ? 'inline' : 'picture-in-picture';
+            videoEl.webkitSetPresentationMode(next);
+          } else {
+            showPlayerStatus('Picture-in-Picture unavailable in this browser');
+          }
+        } catch {
+          showPlayerStatus('Picture-in-Picture unavailable');
+        }
+      }
+      if (pipBtn) {
+        pipBtn.onclick = (e) => { e.stopPropagation(); togglePiP(); wakeControls(); };
+      }
+      const onEnterPiP = () => {
+        if (pipBtn) { pipBtn.classList.add('atv-icon-active'); pipBtn.setAttribute('aria-pressed', 'true'); }
+      };
+      const onLeavePiP = () => {
+        if (pipBtn) { pipBtn.classList.remove('atv-icon-active'); pipBtn.setAttribute('aria-pressed', 'false'); }
+      };
+      videoEl.addEventListener('enterpictureinpicture', onEnterPiP);
+      videoEl.addEventListener('leavepictureinpicture', onLeavePiP);
+
+      // Cast & AirPlay Actions
+      const castRemoteBtn = watchRoot.querySelector('#atv-cast-remote');
+      const castAirplayBtn = watchRoot.querySelector('#atv-cast-airplay');
+      const castCopyStreamBtn = watchRoot.querySelector('#atv-cast-copy-stream');
+      const castShareLinkBtn = watchRoot.querySelector('#atv-cast-share-link');
+
+      function updateCastStatus(text) {
+        if (castStatusEl) castStatusEl.textContent = text;
+      }
+
+      if (videoEl.remote) {
+        try {
+          videoEl.remote.addEventListener('connecting', () => updateCastStatus('Connecting to TV display…'));
+          videoEl.remote.addEventListener('connect', () => {
+            updateCastStatus('Casting to remote display');
+            if (castBtn) castBtn.classList.add('atv-icon-connected');
+            showPlayerStatus('Casting connected');
+          });
+          videoEl.remote.addEventListener('disconnect', () => {
+            updateCastStatus('Disconnected from remote display');
+            if (castBtn) castBtn.classList.remove('atv-icon-connected');
+          });
+        } catch {}
+      }
+
+      if (castRemoteBtn) {
+        castRemoteBtn.onclick = async (e) => {
+          e.stopPropagation();
+          if (videoEl.remote && typeof videoEl.remote.prompt === 'function') {
+            try {
+              updateCastStatus('Searching for Cast devices…');
+              await videoEl.remote.prompt();
+            } catch (err) {
+              const msg = err && err.name === 'NotFoundError'
+                ? 'No Cast devices found on this network'
+                : 'Cast device picker closed or unavailable';
+              updateCastStatus(msg);
+              showPlayerStatus(msg);
+            }
+          } else {
+            updateCastStatus('Browser Cast API unavailable — copy the stream URL below for VLC, Infuse, or Apple TV');
+            showPlayerStatus('Use Copy Stream URL for external casting');
+          }
+          wakeControls();
+        };
+      }
+
+      if (castAirplayBtn) {
+        castAirplayBtn.onclick = (e) => {
+          e.stopPropagation();
+          if (typeof videoEl.webkitShowPlaybackTargetPicker === 'function') {
+            videoEl.webkitShowPlaybackTargetPicker();
+            updateCastStatus('Opening AirPlay picker…');
+          } else {
+            updateCastStatus('AirPlay is supported in Safari on macOS, iOS, and iPadOS');
+            showPlayerStatus('AirPlay requires Safari on Apple devices');
+          }
+          wakeControls();
+        };
+      }
+
+      async function copyTextWithFeedback(text, successMsg) {
+        try {
+          if (navigator.clipboard && navigator.clipboard.writeText) {
+            await navigator.clipboard.writeText(text);
+          } else {
+            const ta = document.createElement('textarea');
+            ta.value = text;
+            ta.style.cssText = 'position:fixed;opacity:0;';
+            document.body.appendChild(ta);
+            ta.select();
+            document.execCommand('copy');
+            ta.remove();
+          }
+          updateCastStatus(successMsg);
+          showPlayerStatus(successMsg);
+        } catch {
+          updateCastStatus('Could not access clipboard');
+          showPlayerStatus('Could not copy to clipboard');
         }
       }
 
-      muteBtn.onclick = (e) => {
-        e.stopPropagation();
-        videoEl.muted = !videoEl.muted;
-        updateVolumeUI();
-      };
+      if (castCopyStreamBtn) {
+        castCopyStreamBtn.onclick = (e) => {
+          e.stopPropagation();
+          const fullStreamUrl = new URL(currentServer.src, window.location.origin).href;
+          copyTextWithFeedback(fullStreamUrl, 'Stream URL copied for VLC / Infuse');
+          wakeControls();
+        };
+      }
 
-      // Fullscreen
+      if (castShareLinkBtn) {
+        castShareLinkBtn.onclick = (e) => {
+          e.stopPropagation();
+          copyTextWithFeedback(window.location.href, 'Watch link copied to clipboard');
+          wakeControls();
+        };
+      }
+
       function toggleFullscreen() {
         if (!document.fullscreenElement) {
           if (playerStage.requestFullscreen) playerStage.requestFullscreen();
@@ -850,22 +1839,21 @@
       }
 
       fsBtns.forEach(btn => {
-        btn.onclick = (e) => {
-          e.stopPropagation();
-          toggleFullscreen();
-        };
+        btn.onclick = (e) => { e.stopPropagation(); toggleFullscreen(); };
       });
 
-      // Flicx Star Server Menu Interactivity
+      const onOutsideClick = (e) => {
+        if (!activePopover) return;
+        const popEls = [subsPopover, audioPopover, castPopover, serverMenu, subsBtn, audioBtn, castBtn, serverBtn];
+        if (!popEls.some(el => el && el.contains(e.target))) {
+          closeAllPopovers();
+        }
+      };
+
       if (serverBtn && serverMenu) {
         serverBtn.onclick = (e) => {
           e.stopPropagation();
-          const isOpen = serverMenu.style.display === 'flex';
-          serverMenu.style.display = isOpen ? 'none' : 'flex';
-          serverBtn.setAttribute('aria-expanded', String(!isOpen));
-          if (serverChevron) {
-            serverChevron.style.transform = isOpen ? 'rotate(0deg)' : 'rotate(180deg)';
-          }
+          togglePopover('server');
         };
 
         const serverItems = serverMenu.querySelectorAll('.fx-menu-item');
@@ -880,58 +1868,53 @@
             const qualityEl = watchRoot.querySelector('#fx-active-quality');
             if (qualityEl) qualityEl.textContent = currentServer.quality || 'HD';
 
-            try { localStorage.setItem('flicx:player:server', currentServer.name); } catch(err){}
-
-            // Switch HLS Stream immediately
+            try { localStorage.setItem('flicx:player:server', currentServer.name); } catch {}
             attachStream(currentServer);
+            closeAllPopovers();
 
-            // Close server menu
-            serverMenu.style.display = 'none';
-            serverBtn.setAttribute('aria-expanded', 'false');
-            if (serverChevron) serverChevron.style.transform = 'rotate(0deg)';
-
-            // Re-render checkmarks in server list
             serverItems.forEach(it => {
               const itIdx = parseInt(it.getAttribute('data-idx'), 10);
-              it.style.background = itIdx === idx ? 'rgba(255,255,255,0.12)' : 'transparent';
-              it.style.color = itIdx === idx ? '#fff' : 'rgba(255,255,255,0.7)';
-              const existingSvg = it.querySelector('svg');
-              if (existingSvg) existingSvg.remove();
-              if (itIdx === idx) {
-                it.insertAdjacentHTML('beforeend', '<svg width="16" height="16" viewBox="0 0 256 256" fill="currentColor"><path d="M229.66,77.66l-128,128a8,8,0,0,1-11.32,0l-56-56a8,8,0,0,1,11.32-11.32L96,188.69,218.34,66.34a8,8,0,0,1,11.32,11.32Z"/></svg>');
-              }
+              it.setAttribute('aria-checked', String(itIdx === idx));
+              const chk = it.querySelector('.atv-pop-check');
+              if (chk) chk.innerHTML = itIdx === idx ? CHECK_SVG : '';
             });
+            showPlayerStatus(`Server: ${currentServer.name}`);
             wakeControls();
           };
         });
-
-        document.addEventListener('click', (e) => {
-          if (!serverBtn.contains(e.target) && !serverMenu.contains(e.target)) {
-            serverMenu.style.display = 'none';
-            serverBtn.setAttribute('aria-expanded', 'false');
-            if (serverChevron) serverChevron.style.transform = 'rotate(0deg)';
-          }
-        });
       }
 
-      // Auto-Hide / Auto-Wake Controls
-      let hideTimeout = null;
+      document.addEventListener('click', onOutsideClick);
+
       function wakeControls() {
+        if (isDestroyed) return;
+        uiEl.setAttribute('data-chrome', '');
         uiEl.style.opacity = '1';
         clearTimeout(hideTimeout);
         hideTimeout = setTimeout(() => {
-          if (serverMenu.style.display !== 'flex' && !videoEl.paused) {
+          if (!isDestroyed && !activePopover && !activeDrawer && !videoEl.paused && !isPointerOverControls && !isScrubbing) {
+            uiEl.removeAttribute('data-chrome');
             uiEl.style.opacity = '0';
           }
-        }, 3400);
+        }, 3800);
       }
 
+      if (topBarEl) {
+        topBarEl.addEventListener('mouseenter', () => { isPointerOverControls = true; wakeControls(); });
+        topBarEl.addEventListener('mouseleave', () => { isPointerOverControls = false; wakeControls(); });
+      }
+      if (bottomBarEl) {
+        bottomBarEl.addEventListener('mouseenter', () => { isPointerOverControls = true; wakeControls(); });
+        bottomBarEl.addEventListener('mouseleave', () => { isPointerOverControls = false; wakeControls(); });
+      }
+      playerEl.addEventListener('pointermove', wakeControls);
       playerEl.addEventListener('mousemove', wakeControls);
+      playerEl.addEventListener('click', wakeControls);
       playerEl.addEventListener('touchstart', wakeControls, { passive: true });
       wakeControls();
 
-      // Keyboard Controls
       const onKeyDown = (e) => {
+        if (isDestroyed || !videoEl.isConnected) return;
         if (/^(input|textarea|select)$/i.test(document.activeElement?.tagName || '')) return;
         if (e.key === ' ' || e.key === 'k' || e.key === 'K') {
           e.preventDefault();
@@ -940,6 +1923,12 @@
         } else if (e.key === 'f' || e.key === 'F') {
           e.preventDefault();
           toggleFullscreen();
+        } else if (e.key === 'c' || e.key === 'C') {
+          e.preventDefault();
+          togglePopover('subs');
+        } else if (e.key === 'p' || e.key === 'P') {
+          e.preventDefault();
+          togglePiP();
         } else if (e.key === 'm' || e.key === 'M') {
           e.preventDefault();
           videoEl.muted = !videoEl.muted;
@@ -948,51 +1937,86 @@
         } else if (e.key === 'ArrowLeft') {
           e.preventDefault();
           videoEl.currentTime = Math.max(0, videoEl.currentTime - 10);
+          updateTimeDisplay();
           wakeControls();
         } else if (e.key === 'ArrowRight') {
           e.preventDefault();
           videoEl.currentTime = Math.min(videoEl.duration || 1e9, videoEl.currentTime + 10);
+          updateTimeDisplay();
           wakeControls();
         } else if (e.key === 'ArrowUp') {
           e.preventDefault();
           videoEl.volume = Math.min(1, videoEl.volume + 0.1);
-          volSlider.value = videoEl.volume;
           updateVolumeUI();
           wakeControls();
         } else if (e.key === 'ArrowDown') {
           e.preventDefault();
           videoEl.volume = Math.max(0, videoEl.volume - 0.1);
-          volSlider.value = videoEl.volume;
           updateVolumeUI();
           wakeControls();
         } else if (e.key === 'Escape') {
-          if (serverMenu.style.display === 'flex') {
-            serverMenu.style.display = 'none';
-            serverBtn.setAttribute('aria-expanded', 'false');
-            if (serverChevron) serverChevron.style.transform = 'rotate(0deg)';
+          if (activePopover || activeDrawer) {
+            closeAllPopovers();
+            closeAllDrawers();
+            wakeControls();
           }
         }
       };
       document.addEventListener('keydown', onKeyDown);
+
+      // Register complete teardown hook so leaving /watch/* never leaks streams or listeners
+      activePlayerCleanup = () => {
+        isDestroyed = true;
+        clearTimeout(hideTimeout);
+        clearTimeout(statusTimeout);
+        if (currentHls) {
+          try { currentHls.destroy(); } catch {}
+          currentHls = null;
+        }
+        try {
+          videoEl.removeEventListener('enterpictureinpicture', onEnterPiP);
+          videoEl.removeEventListener('leavepictureinpicture', onLeavePiP);
+          videoEl.pause();
+          videoEl.removeAttribute('src');
+          videoEl.load();
+        } catch {}
+        window.removeEventListener('mousemove', onWindowMouseMove);
+        window.removeEventListener('mouseup', onWindowMouseUp);
+        window.removeEventListener('touchmove', onWindowTouchMove);
+        window.removeEventListener('touchend', onWindowTouchEnd);
+        window.removeEventListener('touchcancel', onWindowTouchEnd);
+        document.removeEventListener('click', onOutsideClick);
+        document.removeEventListener('keydown', onKeyDown);
+      };
     }
   }
 
-  // --- 3. Trailer Modal ---
+  // --- 3. Trailer Modal & Detail Page Controls (Trailers, Ratings, Downloads) ---
   function openTrailerModal(trailerId, title) {
+    if (!trailerId || !/^[A-Za-z0-9_-]{6,20}$/.test(trailerId)) {
+      showKairaToast(`Trailer unavailable${title ? ' for ' + title : ''}`);
+      return;
+    }
     let modal = document.getElementById('flicx-trailer-modal');
     if (!modal) {
       modal = document.createElement('div');
       modal.id = 'flicx-trailer-modal';
+      modal.setAttribute('role', 'dialog');
+      modal.setAttribute('aria-modal', 'true');
+      modal.setAttribute('aria-label', 'Trailer');
       modal.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.85);-webkit-backdrop-filter:blur(16px);backdrop-filter:blur(16px);display:flex;align-items:center;justify-content:center;padding:1.5rem;';
       modal.innerHTML = `
         <div style="position:relative;width:100%;max-width:960px;aspect-ratio:16/9;background:#000;border-radius:1rem;overflow:hidden;box-shadow:0 25px 50px -12px rgba(0,0,0,0.8),0 0 0 1px rgba(255,255,255,0.1);">
-          <button id="close-trailer-modal" aria-label="Close trailer" style="position:absolute;top:1rem;right:1rem;z-index:10;width:2.5rem;height:2.5rem;border-radius:50%;border:none;background:rgba(0,0,0,0.6);color:#fff;cursor:pointer;display:grid;place-items:center;font-size:1.5rem;line-height:1;">&times;</button>
-          <iframe id="trailer-iframe" style="width:100%;height:100%;border:none;" allow="autoplay; fullscreen; encrypted-media; picture-in-picture" allowfullscreen></iframe>
+          <button type="button" id="close-trailer-modal" aria-label="Close trailer" style="position:absolute;top:1rem;right:1rem;z-index:10;width:2.5rem;height:2.5rem;border-radius:50%;border:none;background:rgba(0,0,0,0.65);color:#fff;cursor:pointer;display:grid;place-items:center;font-size:1.5rem;line-height:1;">&times;</button>
+          <iframe id="trailer-iframe" title="Trailer" style="width:100%;height:100%;border:none;" allow="autoplay; fullscreen; encrypted-media; picture-in-picture"></iframe>
         </div>
       `;
       document.body.appendChild(modal);
 
-      modal.querySelector('#close-trailer-modal').onclick = closeTrailerModal;
+      modal.querySelector('#close-trailer-modal').onclick = (e) => {
+        e.stopPropagation();
+        closeTrailerModal();
+      };
       modal.onclick = (e) => {
         if (e.target === modal) closeTrailerModal();
       };
@@ -1004,7 +2028,9 @@
     }
 
     const iframe = modal.querySelector('#trailer-iframe');
-    iframe.src = `https://www.youtube-nocookie.com/embed/${trailerId}?autoplay=1&rel=0`;
+    const muteParam = (typeof settingsState !== 'undefined' && settingsState.trailerSound === false) ? '&mute=1' : '';
+    iframe.title = title ? `Trailer: ${title}` : 'Trailer';
+    iframe.src = `https://www.youtube-nocookie.com/embed/${encodeURIComponent(trailerId)}?autoplay=1&rel=0${muteParam}`;
     modal.style.display = 'flex';
   }
 
@@ -1017,8 +2043,151 @@
     }
   }
 
-  // --- 4. Card Clicks & Navigation ---
+  let detailActionsBound = false;
+  function initDetailPageControls() {
+    // 1. Restore saved 5-star user rating on movie/TV detail pages
+    const rateGroup = document.querySelector('.rate-stars[role="radiogroup"]');
+    if (rateGroup) {
+      const rateKey = rateGroup.getAttribute('aria-labelledby') || normalizeWatchSlug(window.location.pathname);
+      let ratingsMap = {};
+      try { ratingsMap = JSON.parse(localStorage.getItem('kaira:ratings:v1') || '{}'); } catch {}
+      const savedVal = Number(ratingsMap[rateKey]) || 0;
+      const stars = Array.from(rateGroup.querySelectorAll('button[role="radio"]'));
+      const applyRatingUI = (val) => {
+        stars.forEach((btn, idx) => {
+          const starNum = idx + 1;
+          btn.setAttribute('aria-checked', String(starNum === val));
+          btn.classList.toggle('rate-star-active', starNum <= val);
+          btn.style.color = starNum <= val ? 'var(--color-flare, #f59e0b)' : '';
+        });
+      };
+      applyRatingUI(savedVal);
+      if (!rateGroup.__ratingBound) {
+        rateGroup.__ratingBound = true;
+        stars.forEach((btn, idx) => {
+          btn.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            const starNum = idx + 1;
+            let map = {};
+            try { map = JSON.parse(localStorage.getItem('kaira:ratings:v1') || '{}'); } catch {}
+            const nextVal = map[rateKey] === starNum ? 0 : starNum;
+            if (nextVal === 0) delete map[rateKey];
+            else map[rateKey] = nextVal;
+            try { localStorage.setItem('kaira:ratings:v1', JSON.stringify(map)); } catch {}
+            applyRatingUI(nextVal);
+            showKairaToast(nextVal ? `Rated ${nextVal} of 5 stars` : 'Rating cleared');
+          });
+        });
+      }
+    }
+
+    // 2. Wire "Show all N files" download expander
+    document.querySelectorAll('button.dl-more').forEach((btn) => {
+      if (btn.__dlMoreBound) return;
+      btn.__dlMoreBound = true;
+      const origLabel = btn.textContent.trim();
+      btn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const container = btn.closest('.downloads-part, section, div');
+        const list = container?.querySelector('.dl-list');
+        const isExpanded = btn.getAttribute('aria-expanded') === 'true';
+        btn.setAttribute('aria-expanded', String(!isExpanded));
+        if (list) {
+          list.classList.toggle('dl-list-expanded', !isExpanded);
+          list.querySelectorAll('li[hidden], li.hidden').forEach((li) => {
+            li.hidden = isExpanded;
+            li.classList.toggle('hidden', isExpanded);
+          });
+        }
+        const folderLink = container?.querySelector('a.dl-folder');
+        if (!isExpanded) {
+          btn.textContent = 'Show fewer files';
+          if (folderLink && (!list || list.children.length <= 3)) {
+            showKairaToast('All available files are shown — use "Open the folder" for the complete directory.');
+          }
+        } else {
+          btn.textContent = origLabel;
+        }
+      });
+    });
+
+    // 3. Global delegated Trailer click handler (once)
+    if (!detailActionsBound) {
+      detailActionsBound = true;
+      document.addEventListener('click', async (e) => {
+        // A. Detail page trailer thumbnail cards
+        const trailerCard = e.target.closest('button[aria-label^="Play trailer"]');
+        if (trailerCard) {
+          e.preventDefault();
+          e.stopPropagation();
+          const img = trailerCard.querySelector('img');
+          const src = img?.getAttribute('src') || '';
+          const m = src.match(/\/y\/vi\/([A-Za-z0-9_-]{6,20})\//);
+          if (m) {
+            openTrailerModal(m[1], trailerCard.getAttribute('aria-label') || 'Trailer');
+          } else {
+            showKairaToast('Trailer preview unavailable');
+          }
+          return;
+        }
+
+        // B. Hero or detail page "Trailer" capsule button
+        const trailerBtn = e.target.closest('button.capsule-btn');
+        if (trailerBtn && !trailerBtn.hasAttribute('data-watchlist-button') && /trailer/i.test(trailerBtn.textContent || '')) {
+          e.preventDefault();
+          e.stopPropagation();
+
+          // If on detail page and trailer thumbnail already exists in DOM, play immediately
+          const firstThumb = document.querySelector('button[aria-label^="Play trailer"] img[src*="/y/vi/"]');
+          if (firstThumb && !trailerBtn.getAttribute('data-trailer-slug')) {
+            const m = firstThumb.getAttribute('src').match(/\/y\/vi\/([A-Za-z0-9_-]{6,20})\//);
+            if (m) {
+              const title = document.querySelector('h1')?.textContent?.trim() || 'Trailer';
+              openTrailerModal(m[1], title);
+              return;
+            }
+          }
+
+          const slug =
+            trailerBtn.getAttribute('data-trailer-slug') ||
+            normalizeWatchSlug(window.location.pathname) ||
+            currentHeroSlides[currentSlideIndex]?.slug;
+          const title =
+            trailerBtn.getAttribute('data-trailer-title') ||
+            document.querySelector('h1')?.textContent?.trim() ||
+            currentHeroSlides[currentSlideIndex]?.title ||
+            '';
+          const kind = trailerBtn.getAttribute('data-trailer-kind') || (window.location.pathname.startsWith('/tv/') ? 'show' : 'movie');
+
+          if (!slug) {
+            showKairaToast('Trailer unavailable');
+            return;
+          }
+
+          showKairaToast(`Loading trailer for ${title || slug}...`);
+          try {
+            const res = await fetch(`/api/title?slug=${encodeURIComponent(slug)}&kind=${encodeURIComponent(kind)}`);
+            const meta = res.ok ? await res.json() : null;
+            if (meta && meta.trailerId) {
+              openTrailerModal(meta.trailerId, meta.title || title);
+            } else {
+              showKairaToast(`No trailer available for ${title || slug}`);
+            }
+          } catch {
+            showKairaToast('Could not load trailer right now');
+          }
+        }
+      });
+    }
+  }
+
+  // --- 4. Card Clicks & Navigation (Guarded single listener) ---
+  let cardNavBound = false;
   function initCardNavigation() {
+    if (cardNavBound) return;
+    cardNavBound = true;
     document.addEventListener('click', (e) => {
       if (e.target.closest('[data-watchlist-button], .cover-add, .card-over-genre, button, input, select')) {
         return;
@@ -1038,7 +2207,6 @@
 
   // --- 5. Horizontal Rail Scrolling ---
   function initRailScroll() {
-    // Mouse drag scrolling for all rail tracks
     document.querySelectorAll('.rail-scroll, .rail-track, .rail').forEach(rail => {
       if (rail.__dragBound) return;
       rail.__dragBound = true;
@@ -1063,7 +2231,6 @@
       });
     });
 
-    // Wire up rail-arrow buttons (Prev / Next chevrons)
     document.querySelectorAll('.rail, .section').forEach(container => {
       const track = container.querySelector('.rail-track') || container.querySelector('.rail-scroll');
       if (!track) return;
@@ -1116,58 +2283,280 @@
         };
       }
 
-      track.addEventListener('scroll', updateArrowStates, { passive: true });
+      if (!track.__scrollArrowBound) {
+        track.__scrollArrowBound = true;
+        track.addEventListener('scroll', updateArrowStates, { passive: true });
+      }
       updateArrowStates();
     });
   }
 
-  // --- 6. Watchlist & Actions Management ---
-  const WATCHLIST_PLUS_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" fill="currentColor" viewBox="0 0 256 256"><path d="M228,128a12,12,0,0,1-12,12H140v76a12,12,0,0,1-24,0V140H40a12,12,0,0,1,0-24h76V40a12,12,0,0,1,24,0v76h76A12,12,0,0,1,228,128Z"></path></svg>';
-  const WATCHLIST_CHECK_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" fill="currentColor" viewBox="0 0 256 256" class="text-accent" style="color:var(--color-flare, #ffa750);"><path d="M229.66,77.66l-128,128a8,8,0,0,1-11.32,0l-56-56a8,8,0,0,1,11.32-11.32L96,188.69,218.34,66.34a8,8,0,0,1,11.32,11.32Z"></path></svg>';
+  // --- 6. Shared Poster Card Builder, Watchlist (+ Icon) & Dynamic Library ---
+  const WATCHLIST_PLUS_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" fill="currentColor" viewBox="0 0 256 256" aria-hidden="true"><path d="M228,128a12,12,0,0,1-12,12H140v76a12,12,0,0,1-24,0V140H40a12,12,0,0,1,0-24h76V40a12,12,0,0,1,24,0v76h76A12,12,0,0,1,228,128Z"></path></svg>';
+  const WATCHLIST_CHECK_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" fill="currentColor" viewBox="0 0 256 256" aria-hidden="true"><path d="M229.66,77.66l-128,128a8,8,0,0,1-11.32,0l-56-56a8,8,0,0,1,11.32-11.32L96,188.69,218.34,66.34a8,8,0,0,1,11.32,11.32Z"></path></svg>';
 
-  function getWatchlist() {
-    try {
-      return JSON.parse(localStorage.getItem('flicx:watchlist:v1') || '[]');
-    } catch {
-      return [];
-    }
+  // Shared card HTML generator: keeps <a class="card-link"> and <button class="cover-add"> INSIDE .card-art so container-query sizing (16cqi) is always card-relative!
+  function renderPosterCardHtml(item, opts) {
+    const isShow = item.kind === 'show' || (opts && opts.defaultIsTv) || isItemTvShow(item, false);
+    const slug = normalizeWatchSlug(item.slug || '');
+    const title = item.title || slug.replace(/-\d{4}$/, '').split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+    const year = item.year || (slug.match(/-(\d{4})$/)?.[1] || '');
+    const detailUrl = isShow ? `/tv/${encodeURIComponent(slug)}` : `/movie/${encodeURIComponent(slug)}`;
+    const posterUrl = safeImageUrl(item.poster) || (item.id ? `https://s.fli.cx/a/poster/medium/${encodeURIComponent(item.id)}/img` : '');
+    const stillUrl = safeImageUrl(item.still) || '';
+    const ratingStr = item.rating ? Number(item.rating).toFixed(1) : '';
+    const genre = (Array.isArray(item.genres) && item.genres[0]) || item.genre || (opts && opts.fallbackGenre) || (isShow ? 'Series' : 'Film');
+    const toneColor = safeColor(item.tone, '#2a2623');
+    const inLib = isInWatchlist(slug);
+
+    return `
+      <div class="card" style="--tone:${toneColor}">
+        <div class="card-art card-poster">
+          <span class="card-pic">
+            ${posterUrl
+              ? `<img data-fade="true" src="${escapeAttr(posterUrl)}" ${stillUrl ? `data-fallback-src="${escapeAttr(stillUrl)}"` : ''} alt="" width="500" height="750" loading="lazy" decoding="async" draggable="false" />`
+              : `<img data-fade="true" data-failed="true" alt="" width="500" height="750" />`}
+          </span>
+          <span class="card-fallback" aria-hidden="true">${escapeHtml(title)}</span>
+          <span class="card-over">
+            <span class="card-over-cap">
+              <span class="card-over-title" aria-hidden="true">${escapeHtml(title)}</span>
+              <span class="card-over-meta">
+                <span class="card-over-genre">${escapeHtml(genre)}</span>
+                <span class="card-over-year">${escapeHtml(year)}</span>
+                ${ratingStr ? `<span class="card-over-score" aria-label="Rated ${escapeAttr(ratingStr)} out of 10">${escapeHtml(ratingStr)}<span class="card-over-star" aria-hidden="true"></span></span>` : ''}
+              </span>
+            </span>
+          </span>
+          <a class="card-link" data-film="${escapeAttr(slug)}" data-rail-focus="true" aria-label="${escapeAttr(title)}${year ? ` (${escapeAttr(year)})` : ''}" href="${escapeAttr(detailUrl)}"></a>
+          <button type="button" class="cover-add" aria-pressed="${inLib ? 'true' : 'false'}" aria-label="${inLib ? 'In your library' : 'Add to library'}: ${escapeAttr(title)}" title="${inLib ? 'In your library' : 'Add to library'}" tabindex="-1" data-watchlist-button="" data-title-slug="${escapeAttr(slug)}" data-title-id="${escapeAttr(item.id || '')}" data-title="${escapeAttr(title)}" data-title-kind="${isShow ? 'show' : 'movie'}" data-title-year="${escapeAttr(year)}" data-title-rating="${escapeAttr(ratingStr)}" data-title-genre="${escapeAttr(genre)}" data-title-tone="${escapeAttr(toneColor)}">
+            ${inLib ? WATCHLIST_CHECK_SVG : WATCHLIST_PLUS_SVG}
+          </button>
+        </div>
+      </div>
+    `;
   }
 
-  function saveWatchlist(wl) {
+  function getWatchlistItems() {
     try {
-      localStorage.setItem('flicx:watchlist:v1', JSON.stringify(wl));
+      const raw = JSON.parse(localStorage.getItem('flicx:watchlist:v1') || 'null');
+      if (Array.isArray(raw)) {
+        return raw
+          .map(entry => (typeof entry === 'string' ? { slug: normalizeWatchSlug(entry) } : entry))
+          .filter(item => item && item.slug)
+          .map(item => ({ ...item, slug: normalizeWatchSlug(item.slug) }));
+      }
+      if (raw && Array.isArray(raw.items)) {
+        return raw.items
+          .map(entry => (typeof entry === 'string' ? { slug: normalizeWatchSlug(entry) } : entry))
+          .filter(item => item && item.slug)
+          .map(item => ({ ...item, slug: normalizeWatchSlug(item.slug) }));
+      }
     } catch {}
+    return [];
+  }
+
+  function getWatchlist() {
+    return getWatchlistItems().map(item => item.slug);
+  }
+
+  function saveWatchlistItems(items) {
+    // Deduplicate by normalized slug while preserving insertion order
+    const deduped = [];
+    const seen = new Set();
+    for (const item of items) {
+      const clean = normalizeWatchSlug(item?.slug);
+      if (!clean || seen.has(clean)) continue;
+      seen.add(clean);
+      deduped.push({ ...item, slug: clean });
+    }
+    try {
+      localStorage.setItem('flicx:watchlist:v1', JSON.stringify({ items: deduped }));
+    } catch {}
+    document.documentElement.setAttribute('data-watchlist', deduped.length ? 'some' : 'empty');
+    return deduped;
   }
 
   function isInWatchlist(slug) {
-    if (!slug) return false;
-    const clean = slug.replace(/^\/(movie|tv|watch)\//, '').replace(/\/$/, '');
+    const clean = normalizeWatchSlug(slug);
+    if (!clean) return false;
     return getWatchlist().includes(clean);
   }
 
+  function extractItemMetaFromElement(btn) {
+    const card = btn.closest('.card, .card-over, .hero-copy, .hero-actions, .hero, article');
+    let rawSlug =
+      btn.getAttribute('data-title-slug') ||
+      btn.getAttribute('data-slug') ||
+      (card && card.querySelector('a.card-link, a[href^="/movie/"], a[href^="/tv/"]')
+        ? card.querySelector('a.card-link, a[href^="/movie/"], a[href^="/tv/"]').getAttribute('href')
+        : null);
+
+    if (!rawSlug && /^\/(movie|tv)\//.test(window.location.pathname)) {
+      rawSlug = window.location.pathname;
+    }
+    if (!rawSlug && card) {
+      const anyLink = card.querySelector('a[href]');
+      if (anyLink) rawSlug = anyLink.getAttribute('href');
+    }
+
+    const slug = normalizeWatchSlug(rawSlug || '');
+    if (!slug) return null;
+
+    const kindAttr = btn.getAttribute('data-title-kind');
+    const detailLink = card?.querySelector('a[href^="/movie/"], a[href^="/tv/"]');
+    const kind =
+      kindAttr ||
+      (detailLink && detailLink.getAttribute('href')?.startsWith('/tv/') ? 'show' : null) ||
+      (window.location.pathname.startsWith('/tv/') ? 'show' : 'movie');
+
+    const title =
+      btn.getAttribute('data-title') ||
+      card?.querySelector('.card-over-title')?.textContent?.trim() ||
+      card?.querySelector('.card-fallback')?.textContent?.trim() ||
+      card?.querySelector('h1, h2.sr-only, h2')?.textContent?.trim() ||
+      slug.replace(/-\d{4}$/, '').split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+
+    const imgEl = card?.querySelector('.card-pic img, img[src*="/a/poster/"]');
+    const posterSrc = imgEl?.getAttribute('src') || '';
+    const idFromPoster = posterSrc.match(/\/(tt\d+)\//)?.[1] || '';
+    const idFromRate = document.querySelector('[id^="rate-tt"]')?.id?.replace(/^rate-/, '') || '';
+    const id = btn.getAttribute('data-title-id') || idFromPoster || (window.location.pathname.includes(slug) ? idFromRate : '');
+
+    const year =
+      btn.getAttribute('data-title-year') ||
+      card?.querySelector('.card-over-year')?.textContent?.trim() ||
+      (slug.match(/-(\d{4})$/)?.[1] || '');
+
+    const rating =
+      btn.getAttribute('data-title-rating') ||
+      card?.querySelector('.card-over-score')?.textContent?.trim()?.replace(/[^\d.]/g, '') ||
+      '';
+
+    const genre =
+      btn.getAttribute('data-title-genre') ||
+      card?.querySelector('.card-over-genre')?.textContent?.trim() ||
+      '';
+
+    const tone =
+      btn.getAttribute('data-title-tone') ||
+      card?.style?.getPropertyValue('--tone')?.trim() ||
+      '#2a2623';
+
+    return {
+      slug,
+      id: id || undefined,
+      title,
+      kind,
+      year,
+      rating,
+      genre,
+      poster: posterSrc || (id ? `https://s.fli.cx/a/poster/medium/${id}/img` : ''),
+      tone,
+      addedAt: Date.now()
+    };
+  }
+
+  // Always render Add to library as a crisp + icon (or checkmark when saved) on both hero capsules & poster cards
   function updateWatchlistButton(btn, inLib, title) {
     btn.setAttribute('aria-pressed', inLib ? 'true' : 'false');
     btn.setAttribute('title', inLib ? 'In your library' : 'Add to library');
     btn.setAttribute('aria-label', `${inLib ? 'In your library' : 'Add to library'}${title ? ': ' + title : ''}`);
     if (btn.classList.contains('capsule-btn') || btn.closest('.capsule')) {
-      btn.classList.add('capsule-btn-text');
-      btn.innerHTML = `<span>${inLib ? 'In your library' : 'Add to library'}</span>`;
-    } else {
-      btn.innerHTML = inLib ? WATCHLIST_CHECK_SVG : WATCHLIST_PLUS_SVG;
+      btn.classList.remove('capsule-btn-text');
     }
+    btn.innerHTML = inLib ? WATCHLIST_CHECK_SVG : WATCHLIST_PLUS_SVG;
   }
 
-  function initWatchlist() {
-    // Initialize all existing [data-watchlist-button] instances to authentic icon representation
-    document.querySelectorAll('button[data-watchlist-button]').forEach(btn => {
-      const card = btn.closest('.card, .card-over, .hero-copy, .hero-actions, .hero');
-      const slug = btn.getAttribute('data-title-slug') || btn.getAttribute('data-slug') || (card && card.querySelector('a') ? card.querySelector('a').getAttribute('href') : null) || window.location.pathname;
-      if (slug) {
-        const inLib = isInWatchlist(slug);
-        const title = btn.getAttribute('data-title') || (card && card.querySelector('h2') ? card.querySelector('h2').textContent.trim() : '');
-        updateWatchlistButton(btn, inLib, title);
+  function syncWatchlistButtonsForSlug(slug, inLib, title) {
+    const clean = normalizeWatchSlug(slug);
+    document.querySelectorAll('button[data-watchlist-button], button.cover-add').forEach(btn => {
+      const meta = extractItemMetaFromElement(btn);
+      if (meta && meta.slug === clean) {
+        updateWatchlistButton(btn, inLib, title || meta.title);
       }
     });
+  }
+
+  async function renderLibraryPage() {
+    const cleanPath = window.location.pathname.split('?')[0].replace(/\/$/, '') || '/';
+    const items = getWatchlistItems();
+    document.documentElement.setAttribute('data-watchlist', items.length ? 'some' : 'empty');
+
+    if (cleanPath !== '/library') return;
+
+    const grid = document.querySelector('ul.film-grid');
+    const emptyState = document.querySelector('.empty-state');
+    const countEl = document.querySelector('#library-title span:nth-of-type(2)');
+    if (countEl) {
+      countEl.textContent = items.length ? `${items.length} ${items.length === 1 ? 'title' : 'titles'}` : '';
+    }
+
+    if (!grid) return;
+
+    if (items.length === 0) {
+      grid.innerHTML = '';
+      if (emptyState) emptyState.style.display = '';
+      return;
+    }
+
+    if (emptyState) emptyState.style.display = 'none';
+    grid.style.display = 'grid';
+
+    // Enrich any slug-only legacy items with real title/poster metadata
+    let didEnrich = false;
+    const enriched = await Promise.all(
+      items.map(async (item) => {
+        if (item.id && item.title && item.poster) return item;
+        try {
+          const res = await fetch(`/api/title?slug=${encodeURIComponent(item.slug)}`);
+          if (res.ok) {
+            const meta = await res.json();
+            didEnrich = true;
+            return {
+              ...item,
+              id: meta.id || item.id,
+              title: meta.title || item.title,
+              year: meta.year || item.year,
+              kind: meta.kind || item.kind || 'movie',
+              poster: meta.poster || item.poster,
+              rating: meta.rating || item.rating,
+              genre: (meta.genres && meta.genres[0]) || item.genre
+            };
+          }
+        } catch {}
+        return item;
+      })
+    );
+
+    if (didEnrich) {
+      saveWatchlistItems(enriched);
+    }
+
+    // Abort if user navigated away during fetch
+    if ((window.location.pathname.split('?')[0].replace(/\/$/, '') || '/') !== '/library') return;
+
+    grid.innerHTML = enriched
+      .map(item => `<li>${renderPosterCardHtml(item)}</li>`)
+      .join('');
+  }
+
+  let watchlistBound = false;
+  function initWatchlist() {
+    // Sync data-watchlist attribute & normalize legacy storage on load
+    const existing = getWatchlistItems();
+    document.documentElement.setAttribute('data-watchlist', existing.length ? 'some' : 'empty');
+
+    // Sync all visible watchlist buttons to current saved state (with + / check icons)
+    document.querySelectorAll('button[data-watchlist-button], button.cover-add').forEach(btn => {
+      const meta = extractItemMetaFromElement(btn);
+      if (meta && meta.slug) {
+        updateWatchlistButton(btn, isInWatchlist(meta.slug), meta.title);
+      }
+    });
+
+    if (watchlistBound) return;
+    watchlistBound = true;
 
     document.addEventListener('click', (e) => {
       const btn = e.target.closest('[data-watchlist-button], .cover-add');
@@ -1175,30 +2564,27 @@
       e.preventDefault();
       e.stopPropagation();
 
-      const card = btn.closest('.card, .card-over, .hero-copy, .hero-actions, .hero');
-      const slug = btn.getAttribute('data-title-slug') || btn.getAttribute('data-slug') || (card && card.querySelector('a') ? card.querySelector('a').getAttribute('href') : null) || window.location.pathname;
-      if (!slug) return;
+      const meta = extractItemMetaFromElement(btn);
+      if (!meta || !meta.slug) return;
 
-      let wl = getWatchlist();
-      const cleanSlug = slug.replace(/^\/(movie|tv|watch)\//, '').replace(/\/$/, '');
-      const idx = wl.indexOf(cleanSlug);
+      const items = getWatchlistItems();
+      const idx = items.findIndex(it => it.slug === meta.slug);
       const isNowAdded = idx === -1;
       if (isNowAdded) {
-        wl.push(cleanSlug);
+        items.unshift(meta);
       } else {
-        wl.splice(idx, 1);
+        items.splice(idx, 1);
       }
-      saveWatchlist(wl);
+      saveWatchlistItems(items);
+      syncWatchlistButtonsForSlug(meta.slug, isNowAdded, meta.title);
+      showKairaToast(isNowAdded ? `Added "${meta.title}" to your library` : `Removed "${meta.title}" from your library`);
 
-      if (btn.hasAttribute('data-watchlist-button')) {
-        const title = btn.getAttribute('data-title') || (card && card.querySelector('h2') ? card.querySelector('h2').textContent.trim() : '');
-        updateWatchlistButton(btn, isNowAdded, title);
-      } else {
-        btn.setAttribute('aria-pressed', isNowAdded ? 'true' : 'false');
+      if ((window.location.pathname.split('?')[0].replace(/\/$/, '') || '/') === '/library') {
+        renderLibraryPage();
       }
     });
 
-    // Share button interaction (copy link with tooltip feedback)
+    // Share button interaction (copy link with toast feedback)
     document.addEventListener('click', (e) => {
       const shareBtn = e.target.closest('button[title="Share"], button[aria-label*="Share"], .capsule-btn[aria-label*="Share"]');
       if (!shareBtn) return;
@@ -1210,11 +2596,7 @@
         navigator.share({ url: shareUrl, title: document.title }).catch(() => {});
       } else if (navigator.clipboard) {
         navigator.clipboard.writeText(shareUrl).then(() => {
-          const origTitle = shareBtn.getAttribute('title');
-          shareBtn.setAttribute('title', 'Copied link!');
-          setTimeout(() => {
-            shareBtn.setAttribute('title', origTitle || 'Share');
-          }, 2000);
+          showKairaToast('Link copied to clipboard');
         }).catch(() => {});
       }
     });
@@ -1246,35 +2628,108 @@
   }
 
   let activeSettingsView = 'main';
-  let settingsState = {
+  const DEFAULT_SETTINGS = {
     accentColor: '#f59e0b',
     accentName: 'Kaira',
     accentHue: 62,
     ambientLight: '60%',
     ambientEnabled: true,
     coverZoom: 'Zoom 110%',
+    coverZoomEnabled: true,
     coverZoomVal: 110,
+    coverWords: false,
+    coverScores: true,
     homeShelves: '15 shelves',
+    heroSeconds: 7,
     accessibility: '1 on',
+    reduceMotion: false,
+    contrast: true,
+    underlineLinks: false,
     trailers: 'Sound on',
     trailerSound: true,
     keyboard: 'On',
+    keyboardEnabled: true,
+    downloadsEnabled: true,
+    localOnlyMode: true,
     background: 'Black',
     glassBlur: 100
   };
+  let settingsState = { ...DEFAULT_SETTINGS };
+
+  function computeSettingsSummaries() {
+    settingsState.coverZoom = settingsState.coverZoomEnabled
+      ? `Zoom ${settingsState.coverZoomVal || 110}%`
+      : 'Zoom off';
+    const accessCount =
+      (settingsState.reduceMotion ? 1 : 0) +
+      (settingsState.contrast ? 1 : 0) +
+      (settingsState.underlineLinks ? 1 : 0);
+    settingsState.accessibility = accessCount > 0 ? `${accessCount} on` : 'Default';
+    settingsState.trailers = settingsState.trailerSound ? 'Sound on' : 'Muted';
+    settingsState.keyboard = settingsState.keyboardEnabled !== false ? 'On' : 'Off';
+    settingsState.homeShelves = `${settingsState.heroSeconds || 7}s hero`;
+  }
 
   function getSettingsState() {
     try {
-      const saved = localStorage.getItem('flicx_settings');
-      if (saved) settingsState = { ...settingsState, ...JSON.parse(saved) };
+      const legacy = JSON.parse(localStorage.getItem('flicx_settings') || 'null');
+      const v1 = JSON.parse(localStorage.getItem('flicx:settings:v1') || 'null');
+      settingsState = { ...DEFAULT_SETTINGS };
+      if (legacy && typeof legacy === 'object') {
+        settingsState = { ...settingsState, ...legacy };
+      }
+      if (v1 && typeof v1 === 'object') {
+        if (typeof v1.accentHue === 'number') settingsState.accentHue = v1.accentHue;
+        if (typeof v1.ambient === 'boolean') settingsState.ambientEnabled = v1.ambient;
+        if (typeof v1.ambientStrength === 'number') settingsState.ambientLight = `${v1.ambientStrength}%`;
+        if (typeof v1.glassBlur === 'number') settingsState.glassBlur = v1.glassBlur;
+        if (typeof v1.coverZoom === 'boolean') settingsState.coverZoomEnabled = v1.coverZoom;
+        if (typeof v1.coverZoomAmount === 'number') settingsState.coverZoomVal = v1.coverZoomAmount;
+        if (typeof v1.coverWords === 'boolean') settingsState.coverWords = v1.coverWords;
+        if (typeof v1.coverScores === 'boolean') settingsState.coverScores = v1.coverScores;
+        if (typeof v1.reduceMotion === 'boolean') settingsState.reduceMotion = v1.reduceMotion;
+        if (typeof v1.contrast === 'boolean') settingsState.contrast = v1.contrast;
+        if (typeof v1.underlineLinks === 'boolean') settingsState.underlineLinks = v1.underlineLinks;
+        if (typeof v1.downloads === 'boolean') settingsState.downloadsEnabled = v1.downloads;
+        if (typeof v1.heroSeconds === 'number') settingsState.heroSeconds = v1.heroSeconds;
+        if (v1.background === 'grey') settingsState.background = 'Dark grey';
+        else if (v1.background === 'tint') settingsState.background = 'Tinted';
+        else if (v1.background === 'black') settingsState.background = 'Black';
+      }
+      if (settingsState.accentName === 'Flicx') settingsState.accentName = 'Kaira';
+      computeSettingsSummaries();
     } catch {}
     applySettingsToDOM();
     return settingsState;
   }
 
   function saveSettingsState() {
+    computeSettingsSummaries();
     try {
       localStorage.setItem('flicx_settings', JSON.stringify(settingsState));
+      const bgCode = settingsState.background === 'Dark grey'
+        ? 'grey'
+        : settingsState.background === 'Tinted'
+          ? 'tint'
+          : 'black';
+      const v1Payload = {
+        settingsVersion: 6,
+        accentHue: Number(settingsState.accentHue) || 62,
+        background: bgCode,
+        ambient: settingsState.ambientEnabled !== false,
+        ambientStrength: parseInt(settingsState.ambientLight, 10) || 60,
+        glassBlur: Number(settingsState.glassBlur) ?? 100,
+        coverZoom: settingsState.coverZoomEnabled !== false,
+        coverZoomAmount: Number(settingsState.coverZoomVal) || 110,
+        coverWords: Boolean(settingsState.coverWords),
+        coverScores: settingsState.coverScores !== false,
+        reduceMotion: Boolean(settingsState.reduceMotion),
+        contrast: settingsState.contrast !== false,
+        underlineLinks: Boolean(settingsState.underlineLinks),
+        downloads: settingsState.downloadsEnabled !== false,
+        heroSeconds: Number(settingsState.heroSeconds) || 7
+      };
+      localStorage.setItem('flicx:settings:v1', JSON.stringify(v1Payload));
     } catch {}
     applySettingsToDOM();
   }
@@ -1282,30 +2737,75 @@
   function applySettingsToDOM() {
     const root = document.documentElement;
     // 1. Accent color
-    root.style.setProperty('--color-flare', settingsState.accentColor);
-    root.style.setProperty('--accent', settingsState.accentColor);
-    
+    const accent = safeColor(settingsState.accentColor, '#f59e0b');
+    root.style.setProperty('--color-flare', accent);
+    root.style.setProperty('--accent', accent);
+
     // 2. Glass blur scale
-    const blurScale = (settingsState.glassBlur || 100) / 100;
+    const blurScale = (settingsState.glassBlur != null ? settingsState.glassBlur : 100) / 100;
     root.style.setProperty('--blur-scale', String(blurScale));
     root.style.setProperty('--frost-chrome', `blur(${22 * blurScale}px) saturate(1.7) brightness(0.78)`);
 
-    // 3. Background color
-    if (settingsState.background === 'Black') {
-      root.style.setProperty('--color-canvas', '#000000');
-    } else if (settingsState.background === 'Dark grey') {
+    // 3. Background color & data-background attribute
+    if (settingsState.background === 'Dark grey') {
+      root.setAttribute('data-background', 'grey');
       root.style.setProperty('--color-canvas', '#0e1016');
     } else if (settingsState.background === 'Tinted') {
-      root.style.setProperty('--color-canvas', `color-mix(in oklab, ${settingsState.accentColor} 12%, #0a0c10)`);
+      root.setAttribute('data-background', 'tint');
+      root.style.setProperty('--color-canvas', `color-mix(in oklab, ${accent} 12%, #0a0c10)`);
+    } else {
+      root.removeAttribute('data-background');
+      root.style.setProperty('--color-canvas', '#000000');
     }
 
     // 4. Ambient light
     const ambStrength = settingsState.ambientEnabled ? (parseInt(settingsState.ambientLight, 10) || 60) / 100 : 0;
     root.style.setProperty('--ambient-strength', String(ambStrength));
+    if (settingsState.ambientEnabled) root.removeAttribute('data-ambient');
+    else root.setAttribute('data-ambient', 'off');
 
-    // 5. Cover Zoom
+    // 5. Covers (zoom, always show titles, show scores)
     const zoomVal = (settingsState.coverZoomVal || 110) / 100;
     root.style.setProperty('--cover-zoom-to', String(zoomVal));
+    if (settingsState.coverZoomEnabled === false) root.setAttribute('data-cover-zoom', 'off');
+    else root.removeAttribute('data-cover-zoom');
+
+    if (settingsState.coverWords) root.setAttribute('data-cover-words', 'on');
+    else root.removeAttribute('data-cover-words');
+
+    if (settingsState.coverScores === false) root.setAttribute('data-cover-scores', 'off');
+    else root.removeAttribute('data-cover-scores');
+
+    // 6. Hero slide duration
+    const heroSecs = Math.min(20, Math.max(4, Number(settingsState.heroSeconds) || 7));
+    root.style.setProperty('--hero-duration', `${heroSecs}s`);
+
+    // 7. Accessibility & Downloads
+    if (settingsState.reduceMotion) root.setAttribute('data-motion', 'reduce');
+    else root.removeAttribute('data-motion');
+
+    if (settingsState.contrast !== false) root.setAttribute('data-contrast', 'more');
+    else root.removeAttribute('data-contrast');
+
+    if (settingsState.underlineLinks) root.setAttribute('data-underline', 'on');
+    else root.removeAttribute('data-underline');
+
+    if (settingsState.downloadsEnabled === false) root.setAttribute('data-downloads', 'off');
+    else root.removeAttribute('data-downloads');
+  }
+
+  let settingsEscBound = false;
+  function closeSettingsModal(e) {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    const dialog = document.getElementById('flicx-settings-dialog');
+    const backdrop = document.getElementById('flicx-settings-backdrop');
+    if (dialog) dialog.style.display = 'none';
+    if (backdrop) backdrop.style.display = 'none';
+    document.body.style.overflow = '';
+    activeSettingsView = 'main';
   }
 
   function buildSettingsModal() {
@@ -1320,6 +2820,7 @@
     dialog = document.createElement('div');
     dialog.id = 'flicx-settings-dialog';
     dialog.className = 'set-dialog';
+    dialog.setAttribute('role', 'dialog');
     dialog.setAttribute('aria-label', 'Settings');
     dialog.setAttribute('aria-modal', 'true');
     dialog.style.display = 'none';
@@ -1341,32 +2842,79 @@
           <input type="search" class="set-search-input" placeholder="Search settings" aria-label="Search settings" autocomplete="off" />
         </div>
 
-        <div class="set-body" id="flicx-settings-body">
-          <!-- Dynamically populated view -->
-        </div>
+        <div class="set-body" id="flicx-settings-body"></div>
       </div>
     `;
 
     document.body.appendChild(backdrop);
     document.body.appendChild(dialog);
 
-    function close() {
-      dialog.style.display = 'none';
-      backdrop.style.display = 'none';
-      document.body.style.overflow = '';
-      activeSettingsView = 'main';
-    }
-
-    dialog.querySelector('.set-close').onclick = close;
-    backdrop.onclick = close;
+    dialog.querySelector('.set-close').onclick = closeSettingsModal;
+    backdrop.onclick = closeSettingsModal;
 
     const backBtn = dialog.querySelector('.set-back');
-    backBtn.onclick = () => {
+    backBtn.onclick = (e) => {
+      e.preventDefault();
+      e.stopPropagation();
       activeSettingsView = 'main';
       renderSettingsView('main');
     };
 
+    const searchInput = dialog.querySelector('.set-search-input');
+    if (searchInput) {
+      searchInput.addEventListener('input', () => {
+        filterSettingsRows(searchInput.value);
+      });
+    }
+
+    if (!settingsEscBound) {
+      settingsEscBound = true;
+      document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+          const dlg = document.getElementById('flicx-settings-dialog');
+          if (dlg && dlg.style.display !== 'none') {
+            closeSettingsModal();
+          }
+        }
+      });
+    }
+
     return dialog;
+  }
+
+  function filterSettingsRows(query) {
+    const body = document.getElementById('flicx-settings-body');
+    if (!body) return;
+    const q = (query || '').trim().toLowerCase();
+    let visibleCount = 0;
+
+    body.querySelectorAll('.set-group').forEach(group => {
+      let groupVisible = 0;
+      group.querySelectorAll('.set-row').forEach(row => {
+        const keywords = (row.getAttribute('data-keywords') || '') + ' ' + (row.textContent || '');
+        const match = !q || keywords.toLowerCase().includes(q);
+        row.style.display = match ? '' : 'none';
+        if (match) {
+          groupVisible++;
+          visibleCount++;
+        }
+      });
+      group.style.display = groupVisible > 0 ? '' : 'none';
+    });
+
+    let emptyEl = body.querySelector('.set-search-empty');
+    if (visibleCount === 0 && q) {
+      if (!emptyEl) {
+        emptyEl = document.createElement('p');
+        emptyEl.className = 'set-search-empty';
+        emptyEl.style.cssText = 'text-align:center;color:rgba(255,255,255,0.55);padding:2rem 1rem;font-size:0.9rem;';
+        body.appendChild(emptyEl);
+      }
+      emptyEl.textContent = `No settings matching "${query.trim()}"`;
+      emptyEl.style.display = 'block';
+    } else if (emptyEl) {
+      emptyEl.style.display = 'none';
+    }
   }
 
   function renderSettingsView(view) {
@@ -1375,70 +2923,76 @@
     const titleEl = dialog.querySelector('.set-title');
     const backBtn = dialog.querySelector('.set-back');
     const searchWrap = dialog.querySelector('.set-search');
+    const searchInput = dialog.querySelector('.set-search-input');
+
+    computeSettingsSummaries();
 
     if (view === 'main') {
       titleEl.textContent = 'Settings';
       backBtn.style.display = 'none';
       searchWrap.style.display = 'flex';
+      if (searchInput) searchInput.value = '';
 
       body.innerHTML = `
         <div class="set-group">
-          <button type="button" class="set-row" data-subview="appearance">
+          <button type="button" class="set-row" data-subview="appearance" data-keywords="accent color colour hue background dark grey black tinted glass blur theme">
             <span class="set-row-icon">${svg('palette')}</span>
             <span class="set-row-label">Appearance</span>
-            <span class="set-row-value">${settingsState.accentName}</span>
+            <span class="set-row-value">${escapeHtml(settingsState.accentName)}</span>
             <span class="set-row-go">${svg('caretRight')}</span>
           </button>
-          <button type="button" class="set-row" data-subview="light">
+          <button type="button" class="set-row" data-subview="light" data-keywords="ambient light glow reflections brightness">
             <span class="set-row-icon">${svg('light')}</span>
             <span class="set-row-label">Ambient light</span>
-            <span class="set-row-value">${settingsState.ambientLight}</span>
+            <span class="set-row-value">${escapeHtml(settingsState.ambientEnabled ? settingsState.ambientLight : 'Off')}</span>
             <span class="set-row-go">${svg('caretRight')}</span>
           </button>
-          <button type="button" class="set-row" data-subview="covers">
+          <button type="button" class="set-row" data-subview="covers" data-keywords="covers posters zoom titles scores ratings">
             <span class="set-row-icon">${svg('covers')}</span>
             <span class="set-row-label">Covers</span>
-            <span class="set-row-value">${settingsState.coverZoom}</span>
+            <span class="set-row-value">${escapeHtml(settingsState.coverZoom)}</span>
             <span class="set-row-go">${svg('caretRight')}</span>
           </button>
-          <button type="button" class="set-row" data-subview="home">
+          <button type="button" class="set-row" data-subview="home" data-keywords="home page hero duration carousel shelves">
             <span class="set-row-icon">${svg('home')}</span>
             <span class="set-row-label">Home page</span>
-            <span class="set-row-value">${settingsState.homeShelves}</span>
+            <span class="set-row-value">${escapeHtml(settingsState.homeShelves)}</span>
             <span class="set-row-go">${svg('caretRight')}</span>
           </button>
-          <button type="button" class="set-row" data-subview="access">
+          <button type="button" class="set-row" data-subview="access" data-keywords="accessibility reduce motion contrast underline links">
             <span class="set-row-icon">${svg('access')}</span>
             <span class="set-row-label">Accessibility</span>
-            <span class="set-row-value">${settingsState.accessibility}</span>
+            <span class="set-row-value">${escapeHtml(settingsState.accessibility)}</span>
             <span class="set-row-go">${svg('caretRight')}</span>
           </button>
-          <button type="button" class="set-row" data-subview="trailers">
+          <button type="button" class="set-row" data-subview="trailers" data-keywords="trailers sound muted audio video">
             <span class="set-row-icon">${svg('trailers')}</span>
             <span class="set-row-label">Trailers</span>
-            <span class="set-row-value">${settingsState.trailers}</span>
+            <span class="set-row-value">${escapeHtml(settingsState.trailers)}</span>
             <span class="set-row-go">${svg('caretRight')}</span>
           </button>
-          <button type="button" class="set-row" data-subview="keyboard">
+          <button type="button" class="set-row" data-subview="keyboard" data-keywords="keyboard shortcuts hotkeys slash space fullscreen">
             <span class="set-row-icon">${svg('keyboard')}</span>
             <span class="set-row-label">Keyboard</span>
-            <span class="set-row-value">${settingsState.keyboard}</span>
+            <span class="set-row-value">${escapeHtml(settingsState.keyboard)}</span>
             <span class="set-row-go">${svg('caretRight')}</span>
           </button>
         </div>
 
         <div class="set-group">
-          <button type="button" class="set-row" data-subview="integrations">
+          <button type="button" class="set-row" data-subview="integrations" data-keywords="integrations downloads export library watchlist json">
             <span class="set-row-icon">${svg('integrations')}</span>
             <span class="set-row-label">Integrations</span>
+            <span class="set-row-value">${settingsState.downloadsEnabled ? 'Downloads on' : 'Downloads off'}</span>
             <span class="set-row-go">${svg('caretRight')}</span>
           </button>
-          <button type="button" class="set-row" data-subview="privacy">
+          <button type="button" class="set-row" data-subview="privacy" data-keywords="privacy history progress ratings local storage">
             <span class="set-row-icon">${svg('privacy')}</span>
             <span class="set-row-label">Privacy</span>
+            <span class="set-row-value">${settingsState.localOnlyMode ? 'Local only' : 'Standard'}</span>
             <span class="set-row-go">${svg('caretRight')}</span>
           </button>
-          <button type="button" class="set-row" data-subview="data">
+          <button type="button" class="set-row" data-subview="data" data-keywords="your data backup export import restore clear">
             <span class="set-row-icon">${svg('data')}</span>
             <span class="set-row-label">Your data</span>
             <span class="set-row-go">${svg('caretRight')}</span>
@@ -1446,7 +3000,7 @@
         </div>
 
         <div class="set-group">
-          <button type="button" class="set-row set-reset-btn" id="flicx-reset-all">
+          <button type="button" class="set-row set-reset-btn" id="flicx-reset-all" data-keywords="reset default factory">
             <span class="set-row-icon">${svg('reset')}</span>
             <span class="set-row-label">Reset all settings</span>
           </button>
@@ -1463,28 +3017,28 @@
 
       const resetBtn = body.querySelector('#flicx-reset-all');
       if (resetBtn) {
+        let armed = false;
+        let armTimer = null;
         resetBtn.onclick = () => {
-          if (confirm('Reset all settings to default values?')) {
-            localStorage.removeItem('flicx_settings');
-            settingsState = {
-              accentColor: '#f59e0b',
-              accentName: 'Kaira',
-              accentHue: 62,
-              ambientLight: '60%',
-              ambientEnabled: true,
-              coverZoom: 'Zoom 110%',
-              coverZoomVal: 110,
-              homeShelves: '15 shelves',
-              accessibility: '1 on',
-              trailers: 'Sound on',
-              trailerSound: true,
-              keyboard: 'On',
-              background: 'Black',
-              glassBlur: 100
-            };
-            saveSettingsState();
-            renderSettingsView('main');
+          if (!armed) {
+            armed = true;
+            const lbl = resetBtn.querySelector('.set-row-label');
+            if (lbl) lbl.textContent = 'Click again to confirm reset';
+            resetBtn.style.color = '#f59e0b';
+            armTimer = setTimeout(() => {
+              armed = false;
+              if (lbl) lbl.textContent = 'Reset all settings';
+              resetBtn.style.color = '';
+            }, 3500);
+            return;
           }
+          clearTimeout(armTimer);
+          localStorage.removeItem('flicx_settings');
+          localStorage.removeItem('flicx:settings:v1');
+          settingsState = { ...DEFAULT_SETTINGS };
+          saveSettingsState();
+          showKairaToast('Settings reset to defaults');
+          renderSettingsView('main');
         };
       }
     } else if (view === 'appearance') {
@@ -1505,7 +3059,7 @@
         <div class="set-field">
           <label class="set-label">Accent colour</label>
           <div class="set-swatches" role="radiogroup">
-            <button type="button" class="set-swatch" data-color="#f59e0b" data-name="Flicx" data-hue="62" style="--swatch:#f59e0b;" aria-label="Flicx Gold">
+            <button type="button" class="set-swatch" data-color="#f59e0b" data-name="Kaira" data-hue="62" style="--swatch:#f59e0b;" aria-label="Kaira Gold">
               <span class="set-swatch-dot"></span>
             </button>
             <button type="button" class="set-swatch" data-color="#f43f5e" data-name="Rose" data-hue="350" style="--swatch:#f43f5e;" aria-label="Rose">
@@ -1535,21 +3089,20 @@
         <div class="set-field">
           <div class="set-slider-head">
             <label class="set-label">Accent hue</label>
-            <span class="set-slider-value" id="flicx-hue-val">${settingsState.accentHue}&deg;</span>
+            <span class="set-slider-value" id="flicx-hue-val">${Number(settingsState.accentHue) || 62}&deg;</span>
           </div>
-          <input type="range" class="set-range" id="flicx-hue-range" min="0" max="360" value="${settingsState.accentHue}" />
+          <input type="range" class="set-range" id="flicx-hue-range" min="0" max="360" value="${Number(settingsState.accentHue) || 62}" />
         </div>
 
         <div class="set-field">
           <div class="set-slider-head">
             <label class="set-label">Glass blur</label>
-            <span class="set-slider-value" id="flicx-blur-val">${settingsState.glassBlur}%</span>
+            <span class="set-slider-value" id="flicx-blur-val">${Number(settingsState.glassBlur) ?? 100}%</span>
           </div>
-          <input type="range" class="set-range" id="flicx-blur-range" min="0" max="200" value="${settingsState.glassBlur}" />
+          <input type="range" class="set-range" id="flicx-blur-range" min="0" max="200" value="${Number(settingsState.glassBlur) ?? 100}" />
         </div>
       `;
 
-      // Swatches selection
       body.querySelectorAll('.set-swatch').forEach(btn => {
         btn.onclick = () => {
           settingsState.accentColor = btn.getAttribute('data-color');
@@ -1563,7 +3116,6 @@
         };
       });
 
-      // Background choices
       body.querySelectorAll('.set-choice[data-bg]').forEach(btn => {
         btn.onclick = () => {
           body.querySelectorAll('.set-choice[data-bg]').forEach(b => b.classList.remove('set-choice-active'));
@@ -1573,7 +3125,6 @@
         };
       });
 
-      // Hue slider
       const hueInput = body.querySelector('#flicx-hue-range');
       if (hueInput) {
         hueInput.oninput = (e) => {
@@ -1586,7 +3137,6 @@
         };
       }
 
-      // Blur slider
       const blurInput = body.querySelector('#flicx-blur-range');
       if (blurInput) {
         blurInput.oninput = (e) => {
@@ -1605,15 +3155,15 @@
         <div class="set-field">
           <div class="set-slider-head">
             <label class="set-label">Ambient light power</label>
-            <span class="set-slider-value" id="flicx-amb-val">${settingsState.ambientLight}</span>
+            <span class="set-slider-value" id="flicx-amb-val">${escapeHtml(settingsState.ambientLight)}</span>
           </div>
           <input type="range" class="set-range" id="flicx-amb-range" min="0" max="100" value="${parseInt(settingsState.ambientLight, 10) || 60}" />
         </div>
-        <div class="set-group" style="margin-top:1.5rem;">
-          <div class="set-row" style="cursor:default;">
+        <div class="set-group" style="margin-top:1.25rem;">
+          <label class="set-row" style="cursor:pointer;">
             <span class="set-row-label">Ambient light reflections</span>
-            <input type="checkbox" id="flicx-amb-toggle" ${settingsState.ambientEnabled ? 'checked' : ''} style="cursor:pointer;width:1.2rem;height:1.2rem;accent-color:var(--color-flare);" />
-          </div>
+            <input type="checkbox" id="flicx-amb-toggle" ${settingsState.ambientEnabled ? 'checked' : ''} style="cursor:pointer;width:1.15rem;height:1.15rem;accent-color:var(--color-flare);" />
+          </label>
         </div>
       `;
 
@@ -1634,6 +3184,120 @@
           saveSettingsState();
         };
       }
+    } else if (view === 'covers') {
+      titleEl.textContent = 'Covers';
+      backBtn.style.display = 'grid';
+      searchWrap.style.display = 'none';
+
+      body.innerHTML = `
+        <div class="set-field">
+          <div class="set-slider-head">
+            <label class="set-label">Poster hover zoom</label>
+            <span class="set-slider-value" id="kaira-zoom-val">${Number(settingsState.coverZoomVal) || 110}%</span>
+          </div>
+          <input type="range" class="set-range" id="kaira-zoom-range" min="101" max="125" value="${Number(settingsState.coverZoomVal) || 110}" />
+        </div>
+        <div class="set-group" style="margin-top:1.25rem;">
+          <label class="set-row" style="cursor:pointer;">
+            <span class="set-row-label">Enable hover zoom</span>
+            <input type="checkbox" id="kaira-zoom-toggle" ${settingsState.coverZoomEnabled !== false ? 'checked' : ''} style="cursor:pointer;width:1.15rem;height:1.15rem;accent-color:var(--color-flare);" />
+          </label>
+          <label class="set-row" style="cursor:pointer;">
+            <span class="set-row-label">Always show titles on covers</span>
+            <input type="checkbox" id="kaira-words-toggle" ${settingsState.coverWords ? 'checked' : ''} style="cursor:pointer;width:1.15rem;height:1.15rem;accent-color:var(--color-flare);" />
+          </label>
+          <label class="set-row" style="cursor:pointer;">
+            <span class="set-row-label">Show ratings on covers</span>
+            <input type="checkbox" id="kaira-scores-toggle" ${settingsState.coverScores !== false ? 'checked' : ''} style="cursor:pointer;width:1.15rem;height:1.15rem;accent-color:var(--color-flare);" />
+          </label>
+        </div>
+      `;
+
+      const zoomRange = body.querySelector('#kaira-zoom-range');
+      if (zoomRange) {
+        zoomRange.oninput = (e) => {
+          const val = parseInt(e.target.value, 10);
+          settingsState.coverZoomVal = val;
+          body.querySelector('#kaira-zoom-val').textContent = `${val}%`;
+          saveSettingsState();
+        };
+      }
+      body.querySelector('#kaira-zoom-toggle').onchange = (e) => {
+        settingsState.coverZoomEnabled = e.target.checked;
+        saveSettingsState();
+      };
+      body.querySelector('#kaira-words-toggle').onchange = (e) => {
+        settingsState.coverWords = e.target.checked;
+        saveSettingsState();
+      };
+      body.querySelector('#kaira-scores-toggle').onchange = (e) => {
+        settingsState.coverScores = e.target.checked;
+        saveSettingsState();
+      };
+    } else if (view === 'home') {
+      titleEl.textContent = 'Home page';
+      backBtn.style.display = 'grid';
+      searchWrap.style.display = 'none';
+
+      body.innerHTML = `
+        <div class="set-field">
+          <div class="set-slider-head">
+            <label class="set-label">Hero slide duration</label>
+            <span class="set-slider-value" id="kaira-hero-sec-val">${Number(settingsState.heroSeconds) || 7}s</span>
+          </div>
+          <input type="range" class="set-range" id="kaira-hero-sec-range" min="4" max="20" value="${Number(settingsState.heroSeconds) || 7}" />
+        </div>
+        <div class="set-group" style="margin-top:1.25rem;">
+          <div class="set-row" style="cursor:default;">
+            <span class="set-row-label">Featured shelves</span>
+            <span class="set-row-value">All visible</span>
+          </div>
+        </div>
+      `;
+
+      const heroRange = body.querySelector('#kaira-hero-sec-range');
+      if (heroRange) {
+        heroRange.oninput = (e) => {
+          const val = parseInt(e.target.value, 10);
+          settingsState.heroSeconds = val;
+          body.querySelector('#kaira-hero-sec-val').textContent = `${val}s`;
+          saveSettingsState();
+        };
+      }
+    } else if (view === 'access') {
+      titleEl.textContent = 'Accessibility';
+      backBtn.style.display = 'grid';
+      searchWrap.style.display = 'none';
+
+      body.innerHTML = `
+        <div class="set-group">
+          <label class="set-row" style="cursor:pointer;">
+            <span class="set-row-label">Reduce motion</span>
+            <input type="checkbox" id="kaira-motion-toggle" ${settingsState.reduceMotion ? 'checked' : ''} style="cursor:pointer;width:1.15rem;height:1.15rem;accent-color:var(--color-flare);" />
+          </label>
+          <label class="set-row" style="cursor:pointer;">
+            <span class="set-row-label">Higher contrast</span>
+            <input type="checkbox" id="kaira-contrast-toggle" ${settingsState.contrast !== false ? 'checked' : ''} style="cursor:pointer;width:1.15rem;height:1.15rem;accent-color:var(--color-flare);" />
+          </label>
+          <label class="set-row" style="cursor:pointer;">
+            <span class="set-row-label">Underline links</span>
+            <input type="checkbox" id="kaira-underline-toggle" ${settingsState.underlineLinks ? 'checked' : ''} style="cursor:pointer;width:1.15rem;height:1.15rem;accent-color:var(--color-flare);" />
+          </label>
+        </div>
+      `;
+
+      body.querySelector('#kaira-motion-toggle').onchange = (e) => {
+        settingsState.reduceMotion = e.target.checked;
+        saveSettingsState();
+      };
+      body.querySelector('#kaira-contrast-toggle').onchange = (e) => {
+        settingsState.contrast = e.target.checked;
+        saveSettingsState();
+      };
+      body.querySelector('#kaira-underline-toggle').onchange = (e) => {
+        settingsState.underlineLinks = e.target.checked;
+        saveSettingsState();
+      };
     } else if (view === 'trailers') {
       titleEl.textContent = 'Trailers';
       backBtn.style.display = 'grid';
@@ -1641,10 +3305,10 @@
 
       body.innerHTML = `
         <div class="set-group">
-          <div class="set-row" style="cursor:default;">
+          <label class="set-row" style="cursor:pointer;">
             <span class="set-row-label">Trailer sound</span>
-            <input type="checkbox" id="flicx-sound-toggle" ${settingsState.trailerSound ? 'checked' : ''} style="cursor:pointer;width:1.2rem;height:1.2rem;accent-color:var(--color-flare);" />
-          </div>
+            <input type="checkbox" id="flicx-sound-toggle" ${settingsState.trailerSound ? 'checked' : ''} style="cursor:pointer;width:1.15rem;height:1.15rem;accent-color:var(--color-flare);" />
+          </label>
         </div>
       `;
 
@@ -1652,7 +3316,6 @@
       if (soundToggle) {
         soundToggle.onchange = (e) => {
           settingsState.trailerSound = e.target.checked;
-          settingsState.trailers = e.target.checked ? 'Sound on' : 'Muted';
           saveSettingsState();
         };
       }
@@ -1662,6 +3325,12 @@
       searchWrap.style.display = 'none';
 
       body.innerHTML = `
+        <div class="set-group" style="margin-bottom:1rem;">
+          <label class="set-row" style="cursor:pointer;">
+            <span class="set-row-label">Enable keyboard shortcuts</span>
+            <input type="checkbox" id="kaira-kbd-toggle" ${settingsState.keyboardEnabled !== false ? 'checked' : ''} style="cursor:pointer;width:1.15rem;height:1.15rem;accent-color:var(--color-flare);" />
+          </label>
+        </div>
         <div class="set-group" style="font-size:0.9rem;">
           <div class="set-row"><span class="set-row-label">Search</span><kbd style="padding:0.2rem 0.5rem;background:#ffffff15;border-radius:4px;">/</kbd></div>
           <div class="set-row"><span class="set-row-label">Play / Pause</span><kbd style="padding:0.2rem 0.5rem;background:#ffffff15;border-radius:4px;">Space</kbd></div>
@@ -1671,6 +3340,81 @@
           <div class="set-row"><span class="set-row-label">Close modal / back</span><kbd style="padding:0.2rem 0.5rem;background:#ffffff15;border-radius:4px;">Esc</kbd></div>
         </div>
       `;
+
+      body.querySelector('#kaira-kbd-toggle').onchange = (e) => {
+        settingsState.keyboardEnabled = e.target.checked;
+        saveSettingsState();
+      };
+    } else if (view === 'integrations') {
+      titleEl.textContent = 'Integrations';
+      backBtn.style.display = 'grid';
+      searchWrap.style.display = 'none';
+
+      const watchlistCount = getWatchlistItems().length;
+      body.innerHTML = `
+        <div class="set-group">
+          <label class="set-row" style="cursor:pointer;">
+            <span class="set-row-label">Show download links on detail pages</span>
+            <input type="checkbox" id="kaira-dl-toggle" ${settingsState.downloadsEnabled !== false ? 'checked' : ''} style="cursor:pointer;width:1.15rem;height:1.15rem;accent-color:var(--color-flare);" />
+          </label>
+          <button type="button" class="set-row" id="kaira-export-watchlist">
+            <span class="set-row-label">Export library as JSON</span>
+            <span class="set-row-value">${watchlistCount} ${watchlistCount === 1 ? 'title' : 'titles'}</span>
+          </button>
+        </div>
+      `;
+
+      body.querySelector('#kaira-dl-toggle').onchange = (e) => {
+        settingsState.downloadsEnabled = e.target.checked;
+        saveSettingsState();
+      };
+
+      body.querySelector('#kaira-export-watchlist').onclick = () => {
+        const items = getWatchlistItems();
+        const blob = new Blob([JSON.stringify({ exportedAt: new Date().toISOString(), items }, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'kaira-watchlist.json';
+        a.click();
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+        showKairaToast(`Exported ${items.length} saved ${items.length === 1 ? 'title' : 'titles'}`);
+      };
+    } else if (view === 'privacy') {
+      titleEl.textContent = 'Privacy';
+      backBtn.style.display = 'grid';
+      searchWrap.style.display = 'none';
+
+      body.innerHTML = `
+        <div class="set-group">
+          <label class="set-row" style="cursor:pointer;">
+            <span class="set-row-label">Keep watchlist &amp; ratings local only</span>
+            <input type="checkbox" id="kaira-local-toggle" ${settingsState.localOnlyMode !== false ? 'checked' : ''} style="cursor:pointer;width:1.15rem;height:1.15rem;accent-color:var(--color-flare);" />
+          </label>
+          <button type="button" class="set-row" id="kaira-clear-progress">
+            <span class="set-row-label">Clear playback progress</span>
+            <span class="set-row-go">${svg('caretRight')}</span>
+          </button>
+          <button type="button" class="set-row" id="kaira-clear-ratings">
+            <span class="set-row-label">Clear your ratings</span>
+            <span class="set-row-go">${svg('caretRight')}</span>
+          </button>
+        </div>
+      `;
+
+      body.querySelector('#kaira-local-toggle').onchange = (e) => {
+        settingsState.localOnlyMode = e.target.checked;
+        saveSettingsState();
+      };
+      body.querySelector('#kaira-clear-progress').onclick = () => {
+        localStorage.removeItem('flicx:player:progress');
+        document.documentElement.classList.remove('has-progress');
+        showKairaToast('Playback progress cleared');
+      };
+      body.querySelector('#kaira-clear-ratings').onclick = () => {
+        localStorage.removeItem('kaira:ratings:v1');
+        showKairaToast('Saved ratings cleared');
+      };
     } else if (view === 'data') {
       titleEl.textContent = 'Your data';
       backBtn.style.display = 'grid';
@@ -1696,10 +3440,13 @@
 
       body.querySelector('#flicx-export-data').onclick = () => {
         const blob = new Blob([JSON.stringify(settingsState, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
-        a.href = URL.createObjectURL(blob);
-        a.download = 'flicx-settings.json';
+        a.href = url;
+        a.download = 'kaira-settings.json';
         a.click();
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+        showKairaToast('Settings exported to kaira-settings.json');
       };
 
       const fileInput = body.querySelector('#flicx-file-input');
@@ -1710,36 +3457,41 @@
         const reader = new FileReader();
         reader.onload = (re) => {
           try {
-            settingsState = { ...settingsState, ...JSON.parse(re.target.result) };
+            const parsed = JSON.parse(re.target.result);
+            if (!parsed || typeof parsed !== 'object') throw new Error('Invalid');
+            settingsState = { ...DEFAULT_SETTINGS, ...parsed };
             saveSettingsState();
-            alert('Settings restored successfully!');
+            showKairaToast('Settings restored successfully');
             renderSettingsView('main');
           } catch {
-            alert('Invalid settings file format.');
+            showKairaToast('Invalid settings file format');
           }
         };
         reader.readAsText(file);
       };
 
-      body.querySelector('#flicx-clear-data').onclick = () => {
-        if (confirm('Clear all settings and stored data?')) {
-          localStorage.clear();
-          location.reload();
+      const clearDataBtn = body.querySelector('#flicx-clear-data');
+      let clearArmed = false;
+      let clearArmTimer = null;
+      clearDataBtn.onclick = () => {
+        if (!clearArmed) {
+          clearArmed = true;
+          const lbl = clearDataBtn.querySelector('.set-row-label');
+          if (lbl) lbl.textContent = 'Click again to clear everything';
+          clearArmTimer = setTimeout(() => {
+            clearArmed = false;
+            if (lbl) lbl.textContent = 'Clear all local data';
+          }, 3500);
+          return;
         }
+        clearTimeout(clearArmTimer);
+        localStorage.clear();
+        settingsState = { ...DEFAULT_SETTINGS };
+        applySettingsToDOM();
+        showKairaToast('All local data cleared');
+        closeSettingsModal();
+        renderLibraryPage();
       };
-    } else {
-      titleEl.textContent = view.charAt(0).toUpperCase() + view.slice(1);
-      backBtn.style.display = 'grid';
-      searchWrap.style.display = 'none';
-
-      body.innerHTML = `
-        <div class="set-group">
-          <div class="set-row" style="cursor:default;">
-            <span class="set-row-label">Settings configured</span>
-            <span class="set-row-value">Default</span>
-          </div>
-        </div>
-      `;
     }
   }
 
@@ -1754,6 +3506,57 @@
   }
 
   // --- 8. Notifications Popover ---
+  let notifOutsideHandler = null;
+  let notifResizeHandler = null;
+
+  function positionNotificationsPopover(popover) {
+    if (!popover) return;
+    const bell = document.querySelector('.notes-bell');
+    const vw = window.innerWidth;
+    const margin = 12;
+    const panelWidth = Math.min(360, vw - margin * 2);
+    const topPos = bell ? Math.round(bell.getBoundingClientRect().bottom + 12) : 72;
+
+    popover.style.position = 'fixed';
+    popover.style.top = topPos + 'px';
+    popover.style.zIndex = '9999';
+    popover.style.maxWidth = `calc(100vw - ${margin * 2}px)`;
+
+    if (vw <= 540) {
+      popover.style.left = margin + 'px';
+      popover.style.right = margin + 'px';
+      popover.style.width = 'auto';
+    } else {
+      const bellRect = bell ? bell.getBoundingClientRect() : null;
+      const desiredRight = bellRect ? Math.max(margin, vw - bellRect.right) : margin;
+      const maxRight = Math.max(margin, vw - panelWidth - margin);
+      popover.style.left = 'auto';
+      popover.style.right = Math.min(desiredRight, maxRight) + 'px';
+      popover.style.width = panelWidth + 'px';
+    }
+  }
+
+  function closeNotifications() {
+    const popover = document.getElementById('flicx-notes-popover');
+    if (popover) {
+      popover.classList.remove('notes-open');
+      popover.setAttribute('aria-hidden', 'true');
+      setTimeout(() => {
+        if (!popover.classList.contains('notes-open')) {
+          popover.style.display = 'none';
+        }
+      }, 220);
+    }
+    if (notifOutsideHandler) {
+      document.removeEventListener('click', notifOutsideHandler);
+      notifOutsideHandler = null;
+    }
+    if (notifResizeHandler) {
+      window.removeEventListener('resize', notifResizeHandler);
+      notifResizeHandler = null;
+    }
+  }
+
   function buildNotificationsPopover() {
     let popover = document.getElementById('flicx-notes-popover');
     if (popover) return popover;
@@ -1762,6 +3565,7 @@
     popover.id = 'flicx-notes-popover';
     popover.className = 'notes-popup';
     popover.style.display = 'none';
+    popover.setAttribute('aria-hidden', 'true');
 
     popover.innerHTML = `
       <div class="notes-panel">
@@ -1782,46 +3586,51 @@
     `;
 
     document.body.appendChild(popover);
-
-    function close() {
-      popover.style.display = 'none';
-      document.removeEventListener('click', outsideClick);
-    }
-
-    function outsideClick(e) {
-      if (!popover.contains(e.target) && !e.target.closest('.notes-bell')) {
-        close();
-      }
-    }
-
-    popover.querySelector('.notes-close').onclick = close;
+    popover.querySelector('.notes-close').onclick = (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      closeNotifications();
+    };
 
     return popover;
   }
 
   function toggleNotifications() {
     const popover = buildNotificationsPopover();
-    if (popover.style.display === 'block') {
-      popover.style.display = 'none';
-    } else {
-      const bell = document.querySelector('.notes-bell');
-      if (bell) {
-        const rect = bell.getBoundingClientRect();
-        popover.style.position = 'fixed';
-        popover.style.top = (rect.bottom + 12) + 'px';
-        popover.style.right = (window.innerWidth - rect.right) + 'px';
-        popover.style.zIndex = '9999';
-      }
-      popover.style.display = 'block';
-      setTimeout(() => {
-        document.addEventListener('click', function outside(e) {
-          if (!popover.contains(e.target) && !e.target.closest('.notes-bell')) {
-            popover.style.display = 'none';
-            document.removeEventListener('click', outside);
-          }
-        });
-      }, 10);
+    if (popover.classList.contains('notes-open')) {
+      closeNotifications();
+      return;
     }
+
+    positionNotificationsPopover(popover);
+    popover.style.display = 'block';
+    popover.setAttribute('aria-hidden', 'false');
+    requestAnimationFrame(() => {
+      popover.classList.add('notes-open');
+    });
+
+    if (notifOutsideHandler) {
+      document.removeEventListener('click', notifOutsideHandler);
+    }
+    notifOutsideHandler = function(e) {
+      if (!popover.contains(e.target) && !e.target.closest('.notes-bell')) {
+        closeNotifications();
+      }
+    };
+    if (notifResizeHandler) {
+      window.removeEventListener('resize', notifResizeHandler);
+    }
+    notifResizeHandler = function() {
+      if (popover.classList.contains('notes-open')) {
+        positionNotificationsPopover(popover);
+      }
+    };
+    window.addEventListener('resize', notifResizeHandler);
+    setTimeout(() => {
+      if (notifOutsideHandler && popover.classList.contains('notes-open')) {
+        document.addEventListener('click', notifOutsideHandler);
+      }
+    }, 10);
   }
 
   // --- 9. Animated Logo Hover Re-trigger ---
@@ -1830,12 +3639,11 @@
       if (link.dataset.logoHoverActive) return;
       link.dataset.logoHoverActive = 'true';
 
-      const svg = link.querySelector('svg');
-      if (!svg) return;
-      const parts = svg.querySelectorAll('#Rectangle_22048, #Union, #Rectangle_22049');
+      const svgEl = link.querySelector('svg');
+      if (!svgEl) return;
+      const parts = svgEl.querySelectorAll('#Rectangle_22048, #Union, #Rectangle_22049');
       if (!parts.length) return;
 
-      // Ensure parts start completely paused
       parts.forEach(el => {
         el.style.animationPlayState = 'paused';
       });
@@ -1843,9 +3651,6 @@
       let animTimer = null;
       link.addEventListener('mouseenter', () => {
         if (animTimer) clearTimeout(animTimer);
-        link.classList.add('is-animating');
-
-        // Restart animation cleanly from 0
         link.classList.remove('is-animating');
         parts.forEach(el => {
           el.style.animation = 'none';
@@ -1858,7 +3663,6 @@
         });
         link.classList.add('is-animating');
 
-        // 1.9s duration cleanly finishes the spring rebound back to rest
         animTimer = setTimeout(() => {
           link.classList.remove('is-animating');
           parts.forEach(el => {
@@ -1868,7 +3672,6 @@
       });
     });
   }
-
 
   // Dynamically update shelf rail with live filtered items (time or genre)
   function updateShelfRail(triggerBtn, isGenre, selectedOpt) {
@@ -1896,7 +3699,7 @@
       }
       fetchPromise = fetch(`/api/browse?genre=${encodeURIComponent(genreVal)}&kind=${kindParam}`)
         .then(r => r.json())
-        .then(data => data?.films || []);
+        .then(data => data?.films || data?.results || []);
     } else {
       const timeKeyMap = {
         'today': 'day',
@@ -1919,50 +3722,19 @@
           return;
         }
 
-        railTrack.innerHTML = items.map(item => {
-          const detailUrl = (isTv || item.kind === 'show') ? `/tv/${item.slug}` : `/movie/${item.slug}`;
-          const posterUrl = `https://s.fli.cx/a/poster/medium/${item.id}/img`;
-          const ratingStr = item.rating ? Number(item.rating).toFixed(1) : '';
-          const firstGenre = item.genres && item.genres.length > 0 ? item.genres[0] : (isGenre ? selectedOpt.label : 'Film');
-          const toneColor = item.tone || '#5d341e';
-
-          return `
-            <div role="listitem">
-              <div class="card" style="--tone:${toneColor}">
-                <div class="card-art card-poster">
-                  <span class="card-pic">
-                    <img data-fade="true" src="${posterUrl}" alt="" width="500" height="750" loading="lazy" decoding="async" draggable="false" onerror="this.src='${item.still || ''}'" />
-                  </span>
-                  <span class="card-over">
-                    <span class="card-over-cap">
-                      <span class="card-over-title" aria-hidden="true">${item.title}</span>
-                      <span class="card-over-meta">
-                        <span class="card-over-genre">${firstGenre}</span>
-                        <span class="card-over-year">${item.year || ''}</span>
-                        ${ratingStr ? `
-                        <span class="card-over-score" aria-label="Rated ${ratingStr} out of 10">
-                          ${ratingStr}<span class="card-over-star" aria-hidden="true"></span>
-                        </span>` : ''}
-                      </span>
-                    </span>
-                  </span>
-                </div>
-                <a href="${detailUrl}" class="card-link" data-rail-focus="true" aria-label="${item.title} (${item.year || ''})"></a>
-                <button type="button" class="cover-add" aria-label="Add to library: ${item.title}" data-watchlist-button="" data-title-slug="${item.slug}" data-title="${item.title}">
-                  <svg class="cover-add-icon cover-add-plus" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="width:1.25rem;height:1.25rem;display:block;">
-                    <line x1="12" y1="5" x2="12" y2="19"></line>
-                    <line x1="5" y1="12" x2="19" y2="12"></line>
-                  </svg>
-                </button>
-              </div>
-            </div>
-          `;
-        }).join('');
+        // Uses shared renderPosterCardHtml so <button class="cover-add"> stays INSIDE .card-art
+        railTrack.innerHTML = items.map(item => `
+          <div role="listitem">
+            ${renderPosterCardHtml(item, {
+              defaultIsTv: isTv,
+              fallbackGenre: isGenre ? selectedOpt.label : undefined
+            })}
+          </div>
+        `).join('');
 
         railTrack.scrollLeft = 0;
         railTrack.style.opacity = '1';
-
-        try { initWatchlist(); } catch (e) {}
+        try { initRailScroll(); } catch (e) {}
       })
       .catch(err => {
         console.warn('Failed to filter rail:', err);
@@ -1970,8 +3742,7 @@
       });
   }
 
-  // --- 10. <title-select> & Season Selection with Smooth Transitions ---
-  // Option definitions matching user reference images:
+  // --- 10. <title-select>, Discover Filters & Season Selection ---
   const TIME_FILTER_OPTIONS = [
     { value: "today", label: "Today" },
     { value: "this-week", label: "This week" },
@@ -2026,8 +3797,18 @@
 
   let activePopupEl = null;
   let activeTriggerBtn = null;
+  let popupOutsideHandler = null;
+  let popupKeyHandler = null;
 
   function closeCurrentPopup() {
+    if (popupOutsideHandler) {
+      document.removeEventListener('click', popupOutsideHandler);
+      popupOutsideHandler = null;
+    }
+    if (popupKeyHandler) {
+      document.removeEventListener('keydown', popupKeyHandler);
+      popupKeyHandler = null;
+    }
     if (!activePopupEl) return;
     const popup = activePopupEl;
     const trigger = activeTriggerBtn;
@@ -2037,7 +3818,7 @@
     popup.classList.remove('select-popup-open');
     if (trigger) {
       trigger.setAttribute('aria-expanded', 'false');
-      const caret = trigger.querySelector('.title-select-caret svg, svg:last-child');
+      const caret = trigger.querySelector('.title-select-caret svg, .select-caret svg, svg:last-child');
       if (caret) caret.style.transform = '';
     }
 
@@ -2053,7 +3834,6 @@
     popup.className = 'select-popup title-select-popup';
     popup.setAttribute('role', 'listbox');
 
-    // Build option items matching reference images
     options.forEach(opt => {
       const optBtn = document.createElement('button');
       optBtn.type = 'button';
@@ -2068,8 +3848,8 @@
 
       optBtn.innerHTML = `
         <span class="select-option-text">
-          <span class="select-option-title">${opt.label}</span>
-          ${opt.subtitle ? `<span class="select-option-subtitle">${opt.subtitle}</span>` : ''}
+          <span class="select-option-title">${escapeHtml(opt.label)}</span>
+          ${opt.subtitle ? `<span class="select-option-subtitle">${escapeHtml(opt.subtitle)}</span>` : ''}
         </span>
         ${isSelected ? `
         <svg class="select-check" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="color:#ffffff;flex-shrink:0;">
@@ -2089,34 +3869,39 @@
 
     document.body.appendChild(popup);
 
-    // Calculate position
     const rect = triggerBtn.getBoundingClientRect();
     popup.style.position = 'fixed';
-    popup.style.top = (rect.bottom + 8) + 'px';
-    popup.style.left = Math.max(12, Math.min(rect.left, window.innerWidth - 300)) + 'px';
+    popup.style.top = Math.min(rect.bottom + 8, window.innerHeight - 340) + 'px';
+    popup.style.left = Math.max(12, Math.min(rect.left, window.innerWidth - 280)) + 'px';
+    popup.style.maxHeight = 'min(70vh, 22rem)';
+    popup.style.overflowY = 'auto';
     popup.style.zIndex = '99999';
 
-    // Trigger opening transition
     void popup.offsetHeight;
     popup.classList.add('select-popup-open');
     triggerBtn.setAttribute('aria-expanded', 'true');
-    const caret = triggerBtn.querySelector('.title-select-caret svg, svg:last-child');
+    const caret = triggerBtn.querySelector('.title-select-caret svg, .select-caret svg, svg:last-child');
     if (caret) caret.style.transform = 'rotate(180deg)';
 
     activePopupEl = popup;
     activeTriggerBtn = triggerBtn;
 
+    popupOutsideHandler = function(e) {
+      if (!popup.contains(e.target) && !triggerBtn.contains(e.target)) {
+        closeCurrentPopup();
+      }
+    };
+    popupKeyHandler = function(e) {
+      if (e.key === 'Escape') closeCurrentPopup();
+    };
     setTimeout(() => {
-      document.addEventListener('click', function outside(e) {
-        if (!popup.contains(e.target) && !triggerBtn.contains(e.target)) {
-          closeCurrentPopup();
-          document.removeEventListener('click', outside);
-        }
-      });
+      if (popupOutsideHandler && activePopupEl === popup) {
+        document.addEventListener('click', popupOutsideHandler);
+        document.addEventListener('keydown', popupKeyHandler);
+      }
     }, 10);
   }
 
-  // Dynamically update shelf rail with live trending releases
   function handleDynamicTrendingFilter(timeKey) {
     const isTv = window.location.pathname.startsWith('/tv');
     const railTrack = document.querySelector('.rail-track[role="list"]');
@@ -2134,22 +3919,10 @@
 
         railTrack.innerHTML = list.map(item => `
           <div role="listitem">
-            <div class="card-wrap">
-              <a class="card group relative flex flex-col overflow-hidden rounded-xl transition-colors" data-rail-focus="true" href="${isTv ? '/tv/' : '/movie/'}${item.slug}">
-                <div class="card-art relative aspect-[2/3] w-[140px] md:w-[170px] overflow-hidden rounded-lg ">
-                  <img src="https://s.fli.cx/a/poster/medium/${item.id}/img" alt="${item.title}" class="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105" loading="lazy" onerror="this.src='${item.still || ''}'" />
-                  ${item.rating ? `<div class="absolute bottom-2 left-2 rounded bg-black/75 px-1.5 py-0.5 text-xs font-semibold text-white">★ ${Number(item.rating).toFixed(1)}</div>` : ''}
-                </div>
-                <div class="mt-2 flex flex-col">
-                  <h4 class="font-semibold text-sm text-fg truncate">${item.title}</h4>
-                  <p class="text-xs text-fg-subtle truncate mt-0.5">${item.year} ${item.genres && item.genres.length ? '· ' + item.genres[0] : ''}</p>
-                </div>
-              </a>
-            </div>
+            ${renderPosterCardHtml(item, { defaultIsTv: isTv })}
           </div>
         `).join('');
 
-        initCardNavigation();
         initRailScroll();
       })
       .catch(() => {
@@ -2171,7 +3944,6 @@
       const isSeasonSelect = isTvDetail || btnText.startsWith('Season') || (parentRow && parentRow.textContent.includes('Episodes'));
 
       if (isSeasonSelect) {
-        // --- SEASONS SELECTOR ---
         triggerBtn.onclick = (e) => {
           e.preventDefault();
           e.stopPropagation();
@@ -2181,10 +3953,8 @@
             return;
           }
 
-          // Discover show seasons
           let seasons = KNOWN_SHOW_SEASONS[pathSlug];
           if (!seasons) {
-            // Parse from page's download buttons or facts
             const dlButtons = document.querySelectorAll('.dl-file-title');
             const foundNums = new Set();
             dlButtons.forEach(b => {
@@ -2196,12 +3966,12 @@
               const maxSeason = Math.max(...foundNums);
               seasons = [];
               for (let i = 1; i <= maxSeason; i++) {
-                seasons.push({ n: i, label: `Season ${i}`, subtitle: `Episodes available` });
+                seasons.push({ n: i, label: `Season ${i}`, subtitle: 'Episodes available' });
               }
             } else {
               seasons = [
-                { n: 1, label: "Season 1", subtitle: "8 episodes" },
-                { n: 2, label: "Season 2", subtitle: "8 episodes" }
+                { n: 1, label: 'Season 1', subtitle: '8 episodes' },
+                { n: 2, label: 'Season 2', subtitle: '8 episodes' }
               ];
             }
           }
@@ -2212,14 +3982,11 @@
           openDropdownPopup(triggerBtn, seasons, currentSeasonVal, (selectedOpt) => {
             const labelSpan = triggerBtn.querySelector('.title-select-text') || triggerBtn;
             labelSpan.textContent = selectedOpt.label;
-
-            // Load and switch season episodes
             loadSeasonEpisodes(pathSlug, selectedOpt.n);
           });
         };
       } else {
-        // --- TIME / GENRE TITLE-SELECT ---
-        const isGenre = btnText === 'Drama' || btnText === 'Action' || btnText === 'Comedy' || (parentRow && parentRow.textContent.includes('Greats'));
+        const isGenre = ['Drama', 'Action', 'Comedy', 'Animation', 'Horror', 'Sci-Fi', 'Romance', 'Thriller'].includes(btnText) || (parentRow && parentRow.textContent.includes('Greats'));
         const options = isGenre ? GENRE_FILTER_OPTIONS : TIME_FILTER_OPTIONS;
 
         triggerBtn.onclick = (e) => {
@@ -2235,8 +4002,6 @@
           openDropdownPopup(triggerBtn, options, currentVal, (selectedOpt) => {
             const labelSpan = triggerBtn.querySelector('.title-select-text') || triggerBtn;
             labelSpan.textContent = selectedOpt.label;
-
-            // Dynamically update the shelf rail items
             updateShelfRail(triggerBtn, isGenre, selectedOpt);
           });
         };
@@ -2244,99 +4009,375 @@
     });
   }
 
-  // Fetch and update TV episodes rail dynamically
   function loadSeasonEpisodes(showSlug, seasonNum) {
     const railTrack = document.querySelector('.rail-track[role="list"]');
     if (!railTrack) return;
 
     railTrack.style.opacity = '0.5';
-    fetch(`/api/tv/season?show=${encodeURIComponent(showSlug)}&n=${seasonNum}`)
+    fetch(`/api/tv/season?show=${encodeURIComponent(showSlug)}&n=${encodeURIComponent(seasonNum)}`)
       .then(res => res.json())
       .then(data => {
         railTrack.style.opacity = '1';
         if (!data || !data.episodes || data.episodes.length === 0) return;
 
         railTrack.innerHTML = data.episodes.map(ep => {
-          const stillUrl = ep.still && ep.still.src ? ep.still.src : (ep.still ? `https://s.fli.cx/t/w500/${ep.still}` : '');
-          const ratingVal = ep.rating ? (typeof ep.rating === 'number' ? ep.rating.toFixed(1) : ep.rating) : '';
+          const rawStill = ep.still && ep.still.src ? ep.still.src : (ep.still ? `https://s.fli.cx/t/w500/${ep.still}` : '');
+          const stillUrl = safeImageUrl(rawStill);
+          const ratingVal = ep.rating ? (typeof ep.rating === 'number' ? ep.rating.toFixed(1) : String(ep.rating)) : '';
+          const epNum = Number(ep.n) || 1;
+          const epTitle = ep.title || `Episode ${epNum}`;
           return `
-            <div role="listitem" data-episode="${ep.n}">
-              <a class="card episode" data-rail-focus="true" aria-label="Episode ${ep.n}: ${ep.title}" href="/watch/${showSlug}/s${seasonNum}e${ep.n}">
+            <div role="listitem" data-episode="${epNum}">
+              <a class="card episode" data-rail-focus="true" aria-label="Episode ${epNum}: ${escapeAttr(epTitle)}" href="/watch/${encodeURIComponent(showSlug)}/s${encodeURIComponent(seasonNum)}e${epNum}">
                 <span class="card-art card-still">
                   <span class="card-pic">
-                    <img data-fade="true" src="${stillUrl}" alt="${ep.title}" width="780" height="439" loading="lazy" decoding="async" draggable="false" />
+                    ${stillUrl ? `<img data-fade="true" src="${escapeAttr(stillUrl)}" alt="${escapeAttr(epTitle)}" width="780" height="439" loading="lazy" decoding="async" draggable="false" />` : ''}
                   </span>
                 </span>
                 <span class="episode-text">
                   <span class="episode-meta">
-                    <span>Episode ${ep.n}${ep.runtime ? ` · ${ep.runtime}m` : ''}</span>
+                    <span>Episode ${epNum}${ep.runtime ? ` · ${escapeHtml(ep.runtime)}m` : ''}</span>
                     ${ratingVal ? `
                     <span class="episode-score">
                       <svg xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" fill="currentColor" viewBox="0 0 256 256" aria-hidden="true">
                         <path d="M234.29,114.85l-45,38.83L203,211.75a16.4,16.4,0,0,1-24.5,17.82L128,198.49,77.47,229.57A16.4,16.4,0,0,1,53,211.75l13.76-58.07-45-38.83A16.46,16.46,0,0,1,31.08,86l59-4.76,22.76-55.08a16.36,16.36,0,0,1,30.27,0l22.75,55.08,59,4.76a16.46,16.46,0,0,1,9.37,28.86Z"></path>
-                      </svg>${ratingVal}<span class="sr-only"> out of 10</span>
+                      </svg>${escapeHtml(ratingVal)}<span class="sr-only"> out of 10</span>
                     </span>` : ''}
                   </span>
-                  <span class="episode-title">${ep.title}</span>
-                  <span class="episode-story">${ep.overview || ''}</span>
+                  <span class="episode-title">${escapeHtml(epTitle)}</span>
+                  <span class="episode-story">${escapeHtml(ep.overview || '')}</span>
                 </span>
               </a>
             </div>
           `;
         }).join('');
         try { initRailScroll(); } catch (e) {}
-        try { initCardNavigation(); } catch (e) {}
       })
       .catch(() => {
         railTrack.style.opacity = '1';
       });
   }
 
-  // --- 11. Full Search Functionality on /search ---
-  function initSearchPage() {
-    const isSearchPage = window.location.pathname.startsWith('/search');
-    const searchInput = document.getElementById('search-page-input') || document.querySelector('input[type="search"]');
+  // --- 10b. Discover Page Filters & Surprise Me ---
+  const DISCOVER_FILTER_OPTIONS = {
+    source: [
+      { value: 'all', label: 'All titles' },
+      { value: 'library', label: 'In Kaira library' }
+    ],
+    sort: [
+      { value: 'popular', label: 'Popular' },
+      { value: 'rating', label: 'Highest rated' },
+      { value: 'newest', label: 'Newest' },
+      { value: 'oldest', label: 'Oldest' }
+    ],
+    type: [
+      { value: '', label: 'Any type' },
+      { value: 'movie', label: 'Films' },
+      { value: 'show', label: 'TV shows' }
+    ],
+    genre: [
+      { value: '', label: 'Any genre' },
+      { value: 'action', label: 'Action' },
+      { value: 'adventure', label: 'Adventure' },
+      { value: 'animation', label: 'Animation' },
+      { value: 'comedy', label: 'Comedy' },
+      { value: 'crime', label: 'Crime' },
+      { value: 'documentary', label: 'Documentary' },
+      { value: 'drama', label: 'Drama' },
+      { value: 'family', label: 'Family' },
+      { value: 'fantasy', label: 'Fantasy' },
+      { value: 'horror', label: 'Horror' },
+      { value: 'mystery', label: 'Mystery' },
+      { value: 'romance', label: 'Romance' },
+      { value: 'sci-fi', label: 'Sci-Fi' },
+      { value: 'thriller', label: 'Thriller' }
+    ],
+    decade: [
+      { value: '', label: 'Any decade' },
+      { value: '2020s', label: '2020s' },
+      { value: '2010s', label: '2010s' },
+      { value: '2000s', label: '2000s' },
+      { value: '1990s', label: '1990s' },
+      { value: '1980s', label: '1980s' },
+      { value: '1970s', label: '1970s' }
+    ],
+    rating: [
+      { value: '', label: 'Any rating' },
+      { value: '8', label: '8.0+' },
+      { value: '7', label: '7.0+' },
+      { value: '6', label: '6.0+' }
+    ],
+    length: [
+      { value: '', label: 'Any length' },
+      { value: 'short', label: 'Under 90m' },
+      { value: 'medium', label: '90–140m' },
+      { value: 'long', label: 'Over 140m' }
+    ]
+  };
 
-    // Global shortcut: press "/" anywhere outside inputs to open / focus search
-    document.addEventListener('keydown', (e) => {
-      if (e.key === '/' && !['INPUT', 'TEXTAREA'].includes(document.activeElement.tagName)) {
-        e.preventDefault();
-        if (isSearchPage && searchInput) {
-          searchInput.focus();
-          searchInput.select();
+  function initDiscoverPage() {
+    const cleanPath = window.location.pathname.split('?')[0].replace(/\/$/, '') || '/';
+    if (cleanPath !== '/discover') return;
+
+    const grid = document.querySelector('ul.film-grid');
+    const triggers = document.querySelectorAll('button.select-trigger');
+    if (!grid || !triggers.length) return;
+
+    const state = {
+      source: 'all',
+      sort: 'popular',
+      type: '',
+      genre: '',
+      decade: '',
+      rating: '',
+      length: ''
+    };
+    let reqId = 0;
+
+    async function fetchDiscoverResults() {
+      const currentReq = ++reqId;
+      grid.style.transition = 'opacity 0.2s ease';
+      grid.style.opacity = '0.45';
+
+      const params = new URLSearchParams();
+      if (state.type) params.set('kind', state.type);
+      if (state.genre) params.set('genre', state.genre);
+      if (state.sort && state.sort !== 'popular') params.set('sort', state.sort);
+      if (state.decade) params.set('decade', state.decade);
+      if (state.rating) params.set('minRating', state.rating);
+      if (state.length) params.set('length', state.length);
+      if (state.source === 'library') params.set('source', 'library');
+
+      try {
+        const res = await fetch(`/api/browse?${params.toString()}`);
+        const data = await res.json();
+        if (currentReq !== reqId) return;
+
+        let items = data?.films || data?.results || [];
+        // Apply client-side refinement when upstream omits optional filter params
+        if (state.rating) {
+          const minR = parseFloat(state.rating);
+          items = items.filter(it => !it.rating || Number(it.rating) >= minR);
+        }
+        if (state.decade) {
+          const startYear = parseInt(state.decade, 10);
+          if (Number.isFinite(startYear)) {
+            items = items.filter(it => !it.year || (Number(it.year) >= startYear && Number(it.year) < startYear + 10));
+          }
+        }
+        if (state.length) {
+          items = items.filter(it => {
+            const rt = Number(it.runtime);
+            if (!rt) return true;
+            if (state.length === 'short') return rt < 90;
+            if (state.length === 'medium') return rt >= 90 && rt <= 140;
+            if (state.length === 'long') return rt > 140;
+            return true;
+          });
+        }
+        if (state.sort === 'rating') {
+          items = [...items].sort((a, b) => (Number(b.rating) || 0) - (Number(a.rating) || 0));
+        } else if (state.sort === 'newest') {
+          items = [...items].sort((a, b) => (Number(b.year) || 0) - (Number(a.year) || 0));
+        } else if (state.sort === 'oldest') {
+          items = [...items].sort((a, b) => (Number(a.year) || 9999) - (Number(b.year) || 9999));
+        }
+
+        if (items.length === 0) {
+          grid.innerHTML = `
+            <li style="grid-column:1 / -1;text-align:center;padding:4rem 1rem;color:rgba(255,255,255,0.65);">
+              <p style="font-size:1.15rem;font-weight:600;color:#fff;">No titles match these filters</p>
+              <p style="margin-top:0.4rem;font-size:0.9rem;">Try widening the genre, decade, or rating filter.</p>
+            </li>
+          `;
         } else {
-          navigateTo('/search');
+          grid.innerHTML = items
+            .map(item => `<li>${renderPosterCardHtml(item, { defaultIsTv: state.type === 'show' })}</li>`)
+            .join('');
+        }
+        grid.setAttribute('aria-label', `${items.length} filtered titles`);
+      } catch (err) {
+        console.warn('Discover filter fetch failed:', err);
+      } finally {
+        if (currentReq === reqId) {
+          grid.style.opacity = '1';
         }
       }
+    }
+
+    triggers.forEach(btn => {
+      if (btn.__discoverBound) return;
+      btn.__discoverBound = true;
+
+      const labelEl = btn.querySelector('.select-label');
+      const valueEl = btn.querySelector('.select-value');
+      const key = (labelEl?.textContent || '').trim().toLowerCase();
+      const options = DISCOVER_FILTER_OPTIONS[key];
+      if (!options) return;
+
+      btn.onclick = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (activeTriggerBtn === btn) {
+          closeCurrentPopup();
+          return;
+        }
+        const currentVal = (valueEl?.textContent || '').trim();
+        openDropdownPopup(btn, options, currentVal, (selectedOpt) => {
+          state[key] = selectedOpt.value;
+          if (valueEl) valueEl.textContent = selectedOpt.label;
+          btn.setAttribute('aria-label', `${labelEl?.textContent || key}: ${selectedOpt.label}`);
+          fetchDiscoverResults();
+        });
+      };
     });
 
-    if (!isSearchPage || !searchInput) return;
+    // Wire "Surprise me" button
+    document.querySelectorAll('main button').forEach(btn => {
+      if (btn.__surpriseBound) return;
+      if (!/surprise me/i.test(btn.textContent || '')) return;
+      btn.__surpriseBound = true;
+      btn.onclick = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const links = Array.from(grid.querySelectorAll('a.card-link[href]'));
+        if (!links.length) return;
+        const pick = links[Math.floor(Math.random() * links.length)];
+        const href = pick.getAttribute('href');
+        if (href) navigateTo(href);
+      };
+    });
+  }
 
-    const searchField = searchInput.closest('.search-field') || searchInput.parentElement;
+  // --- 11. Full Categorized Search Functionality on /search ---
+  let searchShortcutBound = false;
+
+  function renderPersonCardHtml(person) {
+    const name = person.name || 'Unknown';
+    const initial = name.trim().charAt(0).toUpperCase() || '?';
+    const roleParts = [];
+    if (person.role) roleParts.push(person.role);
+    if (person.films) roleParts.push(`${person.films} ${person.films === 1 ? 'film' : 'films'}`);
+    const roleMeta = roleParts.join(' · ');
+    const photoPath = typeof person.photo === 'string' && person.photo.startsWith('/') ? person.photo : '';
+    const photoUrl = photoPath ? `https://s.fli.cx/t/w185${photoPath}` : safeImageUrl(person.photo);
+    const fallbackPhotoUrl = photoPath ? `https://image.tmdb.org/t/p/w185${photoPath}` : '';
+    const href = person.href && person.href.startsWith('/') ? person.href : `/search?q=${encodeURIComponent(name)}`;
+
+    return `
+      <a class="person" href="${escapeAttr(href)}">
+        <span class="person-photo">
+          <span class="person-initial" aria-hidden="true">${escapeHtml(initial)}</span>
+          ${photoUrl ? `
+          <span class="person-pic">
+            <img data-fade="true" src="${escapeAttr(photoUrl)}" ${fallbackPhotoUrl ? `data-fallback-src="${escapeAttr(fallbackPhotoUrl)}"` : ''} alt="" loading="lazy" decoding="async" draggable="false" />
+          </span>` : ''}
+        </span>
+        <span class="person-name">${escapeHtml(name)}</span>
+        ${roleMeta ? `<span class="person-role">${escapeHtml(roleMeta)}</span>` : ''}
+      </a>
+    `;
+  }
+
+  function renderSearchGroupCardHtml(group) {
+    const name = group.name || '';
+    const metaParts = [];
+    if (group.kind) metaParts.push(group.kind);
+    if (group.films) metaParts.push(`${group.films} ${group.films === 1 ? 'film' : 'films'}`);
+    const href = group.href && group.href.startsWith('/') ? group.href : `/search?q=${encodeURIComponent(name)}`;
+
+    return `
+      <a class="search-group" href="${escapeAttr(href)}">
+        <span class="search-group-name">${escapeHtml(name)}</span>
+        ${metaParts.length ? `<span class="search-group-meta">${escapeHtml(metaParts.join(' · '))}</span>` : ''}
+      </a>
+    `;
+  }
+
+  function initSearchPage() {
+    // Guard global "/" shortcut once per window session
+    if (!searchShortcutBound) {
+      searchShortcutBound = true;
+      document.addEventListener('keydown', (e) => {
+        if (settingsState.keyboardEnabled === false) return;
+        const activeTag = document.activeElement?.tagName || '';
+        if (e.key === '/' && !['INPUT', 'TEXTAREA', 'SELECT'].includes(activeTag) && !document.activeElement?.isContentEditable) {
+          e.preventDefault();
+          const liveInput = document.getElementById('search-page-input');
+          if (window.location.pathname.startsWith('/search') && liveInput) {
+            liveInput.focus();
+            liveInput.select();
+          } else {
+            navigateTo('/search');
+          }
+        }
+      });
+    }
+
+    const isSearchPage = window.location.pathname.startsWith('/search');
+    const searchInput = document.getElementById('search-page-input') || document.querySelector('main input[type="search"]');
+    if (!isSearchPage || !searchInput || searchInput.__kairaSearchBound) return;
+    searchInput.__kairaSearchBound = true;
+
+    const searchForm = searchInput.closest('form.search-field') || searchInput.parentElement;
+    const searchTop = searchInput.closest('.search-top') || searchForm.parentElement;
+    const searchBrowse = searchTop?.querySelector('.search-browse');
     const searchStart = document.querySelector('.search-start');
-    const pageEl = document.querySelector('.page') || document.body;
+    const pageEl = document.querySelector('.page') || document.querySelector('main') || document.body;
 
-    // Add clear button inside search field
-    let clearBtn = searchField.querySelector('.search-field-clear');
+    // Ensure light pillar engine script is loaded & running on /search (even after SPA navigation from /)
+    try {
+      if (typeof window.initFlicxLightPillar === 'function') {
+        window.initFlicxLightPillar();
+      } else if (!document.querySelector('script[src*="/flicx-pillar-engine.js"]')) {
+        const s = document.createElement('script');
+        s.src = '/flicx-pillar-engine.js';
+        s.async = true;
+        s.onload = () => {
+          if (window.location.pathname.startsWith('/search') && typeof window.initFlicxLightPillar === 'function') {
+            window.initFlicxLightPillar();
+          }
+        };
+        document.body.appendChild(s);
+      }
+    } catch (e) {}
+
+    // Prevent full page reload when pressing Enter in search form
+    if (searchForm && searchForm.tagName === 'FORM') {
+      searchForm.addEventListener('submit', (e) => {
+        e.preventDefault();
+        clearTimeout(searchTimer);
+        executeSearch(searchInput.value);
+      });
+    }
+
+    // Clear button inside search field
+    let clearBtn = searchForm.querySelector('.search-field-clear');
     if (!clearBtn) {
       clearBtn = document.createElement('button');
       clearBtn.type = 'button';
       clearBtn.className = 'search-field-clear';
       clearBtn.setAttribute('aria-label', 'Clear search');
-      clearBtn.style.cssText = 'display:none;position:absolute;right:1rem;top:50%;transform:translateY(-50%);background:rgba(255,255,255,0.15);border:none;border-radius:50%;width:1.8rem;height:1.8rem;color:#fff;cursor:pointer;place-items:center;font-size:1rem;';
-      clearBtn.innerHTML = '&times;';
-      if (searchField.style.position !== 'absolute' && searchField.style.position !== 'relative') {
-        searchField.style.position = 'relative';
-      }
-      searchField.appendChild(clearBtn);
+      clearBtn.style.display = 'none';
+      clearBtn.innerHTML = svg('close');
+      searchForm.appendChild(clearBtn);
     }
 
-    // Results container
+    // Segmented filter tabs container inside .search-top (replaces .search-browse while searching)
+    let tabsWrap = searchTop?.querySelector('.search-tabs');
+    if (!tabsWrap && searchTop) {
+      tabsWrap = document.createElement('div');
+      tabsWrap.className = 'search-tabs';
+      tabsWrap.style.display = 'none';
+      searchTop.appendChild(tabsWrap);
+    }
+
+    // Categorized results container
     let resultsContainer = document.querySelector('.search-results');
     if (!resultsContainer) {
       resultsContainer = document.createElement('div');
-      resultsContainer.className = 'search-results shell gutter';
-      resultsContainer.style.cssText = 'display:none;padding-top:2rem;min-height:50vh;';
+      resultsContainer.className = 'search-results';
+      resultsContainer.style.display = 'none';
       if (searchStart && searchStart.parentNode) {
         searchStart.parentNode.insertBefore(resultsContainer, searchStart.nextSibling);
       } else {
@@ -2345,86 +4386,221 @@
     }
 
     let searchTimer = null;
+    let searchReqId = 0;
+    let activeTab = 'all';
+    let lastPayload = null;
 
-    function executeSearch(query) {
-      query = query.trim();
+    function setActiveTab(tabKey) {
+      activeTab = tabKey;
+      renderSearchPayload();
+    }
+
+    function renderTabs(films, shows, people) {
+      if (!tabsWrap) return;
+      const tabs = [{ key: 'all', label: 'All', count: null }];
+      if (films.length > 0) tabs.push({ key: 'films', label: 'Films', count: films.length });
+      if (shows.length > 0) tabs.push({ key: 'shows', label: 'TV shows', count: shows.length });
+      if (people.length > 0) tabs.push({ key: 'people', label: 'People', count: people.length });
+
+      if (!tabs.some(t => t.key === activeTab)) activeTab = 'all';
+
+      tabsWrap.innerHTML = `
+        <div class="segmented" role="radiogroup" aria-label="Filter search results">
+          ${tabs.map(t => {
+            const checked = activeTab === t.key;
+            return `
+              <button type="button" role="radio" class="segmented-item" data-search-tab="${t.key}" aria-checked="${checked ? 'true' : 'false'}">
+                ${checked ? '<span class="segmented-active" aria-hidden="true"></span>' : ''}
+                <span class="segmented-label">${escapeHtml(t.label)}</span>
+                ${t.count != null ? `<span class="segmented-count">${t.count}</span>` : ''}
+              </button>
+            `;
+          }).join('')}
+        </div>
+      `;
+      tabsWrap.style.display = 'block';
+
+      tabsWrap.querySelectorAll('[data-search-tab]').forEach(btn => {
+        btn.onclick = () => {
+          setActiveTab(btn.getAttribute('data-search-tab'));
+        };
+      });
+    }
+
+    function renderSearchPayload() {
+      if (!lastPayload) return;
+      const { query, films, shows, people, groups } = lastPayload;
+      const total = films.length + shows.length + people.length + groups.length;
+
+      if (total === 0) {
+        if (tabsWrap) tabsWrap.style.display = 'none';
+        resultsContainer.innerHTML = `
+          <div class="shell gutter search-none" style="text-align:center;padding:5rem 1rem;">
+            <h3 class="search-none-title" style="font-size:1.35rem;font-weight:700;color:#fff;">No results found for "${escapeHtml(query)}"</h3>
+            <p class="search-none-text" style="color:rgba(255,255,255,0.58);margin-top:0.5rem;font-size:0.95rem;">Try checking the spelling or searching for another title, person, or studio.</p>
+          </div>
+        `;
+        return;
+      }
+
+      renderTabs(films, shows, people);
+
+      const sectionsHtml = [];
+      const showFilms = activeTab === 'all' || activeTab === 'films';
+      const showShows = activeTab === 'all' || activeTab === 'shows';
+      const showPeople = activeTab === 'all' || activeTab === 'people';
+      const showGroups = activeTab === 'all';
+
+      if (showFilms && films.length > 0) {
+        const displayFilms = activeTab === 'all' ? films.slice(0, 7) : films;
+        sectionsHtml.push(`
+          <section class="section search-section" aria-label="Films">
+            <header class="shell gutter search-section-head">
+              <h2 class="section-title">Films</h2>
+              ${activeTab === 'all' && films.length > 7
+                ? `<button type="button" class="search-section-all" data-switch-tab="films">All ${films.length} films</button>`
+                : ''}
+            </header>
+            <div class="shell gutter">
+              <ul class="film-grid search-film-grid" role="list" aria-label="Films matching ${escapeAttr(query)}">
+                ${displayFilms.map(item => `<li>${renderPosterCardHtml(item, { defaultIsTv: false })}</li>`).join('')}
+              </ul>
+            </div>
+          </section>
+        `);
+      }
+
+      if (showShows && shows.length > 0) {
+        const displayShows = activeTab === 'all' ? shows.slice(0, 7) : shows;
+        sectionsHtml.push(`
+          <section class="section search-section" aria-label="TV shows">
+            <header class="shell gutter search-section-head">
+              <h2 class="section-title">TV shows</h2>
+              ${activeTab === 'all' && shows.length > 7
+                ? `<button type="button" class="search-section-all" data-switch-tab="shows">All ${shows.length} TV shows</button>`
+                : ''}
+            </header>
+            <div class="shell gutter">
+              <ul class="film-grid search-film-grid" role="list" aria-label="TV shows matching ${escapeAttr(query)}">
+                ${displayShows.map(item => `<li>${renderPosterCardHtml(item, { defaultIsTv: true })}</li>`).join('')}
+              </ul>
+            </div>
+          </section>
+        `);
+      }
+
+      if (showPeople && people.length > 0) {
+        const displayPeople = activeTab === 'all' ? people.slice(0, 10) : people;
+        sectionsHtml.push(`
+          <section class="section search-section" aria-label="People">
+            <header class="shell gutter search-section-head">
+              <h2 class="section-title">People</h2>
+              ${activeTab === 'all' && people.length > 10
+                ? `<button type="button" class="search-section-all" data-switch-tab="people">All ${people.length} people</button>`
+                : ''}
+            </header>
+            <div class="shell gutter">
+              <div class="search-people" role="list" aria-label="People matching ${escapeAttr(query)}">
+                ${displayPeople.map(p => renderPersonCardHtml(p)).join('')}
+              </div>
+            </div>
+          </section>
+        `);
+      }
+
+      if (showGroups && groups.length > 0) {
+        sectionsHtml.push(`
+          <section class="section search-section" aria-label="Series and studios">
+            <header class="shell gutter search-section-head">
+              <h2 class="section-title">Series and studios</h2>
+            </header>
+            <div class="shell gutter">
+              <div class="search-groups">
+                ${groups.map(g => renderSearchGroupCardHtml(g)).join('')}
+              </div>
+            </div>
+          </section>
+        `);
+      }
+
+      resultsContainer.innerHTML = sectionsHtml.join('');
+
+      resultsContainer.querySelectorAll('[data-switch-tab]').forEach(btn => {
+        btn.onclick = () => {
+          setActiveTab(btn.getAttribute('data-switch-tab'));
+          window.scrollTo({ top: 0, behavior: 'smooth' });
+        };
+      });
+    }
+
+    function executeSearch(rawQuery) {
+      const query = (rawQuery || '').trim();
+
+      // Keep URL query synchronized
+      try {
+        const nextUrl = query ? `/search?q=${encodeURIComponent(query)}` : '/search';
+        if (window.location.pathname + window.location.search !== nextUrl) {
+          window.history.replaceState({ path: nextUrl }, document.title, nextUrl);
+          currentRenderedPath = nextUrl;
+        }
+      } catch {}
+
       if (!query) {
+        searchReqId++;
+        lastPayload = null;
+        activeTab = 'all';
         clearBtn.style.display = 'none';
         resultsContainer.style.display = 'none';
+        if (tabsWrap) tabsWrap.style.display = 'none';
+        if (searchBrowse) searchBrowse.style.display = '';
         if (searchStart) searchStart.style.display = 'block';
         return;
       }
 
+      const reqId = ++searchReqId;
+      activeTab = 'all';
       clearBtn.style.display = 'grid';
+      if (searchBrowse) searchBrowse.style.display = 'none';
       if (searchStart) searchStart.style.display = 'none';
       resultsContainer.style.display = 'block';
-      resultsContainer.innerHTML = `
-        <div style="text-align:center;padding:4rem 0;color:rgba(255,255,255,0.6);">
-          <div class="search-wait-spinner" style="display:inline-block;width:2rem;height:2rem;border:3px solid rgba(255,255,255,0.2);border-top-color:var(--color-flare, #f59e0b);border-radius:50%;animation:spin 0.8s linear infinite;"></div>
-          <p style="margin-top:1rem;font-size:0.95rem;">Searching for "${query}"...</p>
-        </div>
-      `;
+      resultsContainer.classList.add('search-results-stale');
 
-      fetch(`/api/search?q=${encodeURIComponent(query)}`)
+      if (!lastPayload) {
+        resultsContainer.innerHTML = `
+          <div class="shell gutter" style="text-align:center;padding:4rem 0;color:rgba(255,255,255,0.62);">
+            <div class="search-wait-spinner" style="display:inline-block;width:1.85rem;height:1.85rem;border:2.5px solid rgba(255,255,255,0.2);border-top-color:var(--color-flare, #f59e0b);border-radius:50%;animation:spin 0.8s linear infinite;"></div>
+            <p style="margin-top:0.85rem;font-size:0.92rem;">Searching for "${escapeHtml(query)}"...</p>
+          </div>
+        `;
+      }
+
+      fetch(`/api/search?q=${encodeURIComponent(query)}&full=1`)
         .then(res => res.json())
         .then(data => {
-          const results = data.results || [];
-          if (results.length === 0) {
-            resultsContainer.innerHTML = `
-              <div class="search-none" style="text-align:center;padding:5rem 1rem;">
-                <h3 class="search-none-title" style="font-size:1.4rem;font-weight:700;color:#fff;">No results found for "${query}"</h3>
-                <p class="search-none-text" style="color:rgba(255,255,255,0.55);margin-top:0.5rem;font-size:0.95rem;">Try checking the spelling or searching for another title, actor, or genre.</p>
-              </div>
-            `;
-            return;
+          if (reqId !== searchReqId) return;
+          resultsContainer.classList.remove('search-results-stale');
+
+          let films = Array.isArray(data.films) ? data.films : [];
+          let shows = Array.isArray(data.shows) ? data.shows : [];
+          if (!films.length && !shows.length && Array.isArray(data.results)) {
+            for (const item of data.results) {
+              if (item.kind === 'show') shows.push(item);
+              else films.push(item);
+            }
           }
+          const people = Array.isArray(data.people) ? data.people : [];
+          const groups = Array.isArray(data.groups) ? data.groups : [];
 
-          resultsContainer.innerHTML = `
-            <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-x-4 gap-y-6">
-              ${results.map(item => {
-                const isShow = item.kind === 'show' || (item.runtime && item.runtime < 65 && item.runtime > 15);
-                const itemHref = isShow ? `/tv/${item.slug}` : `/movie/${item.slug}`;
-                const posterUrl = `https://s.fli.cx/a/poster/medium/${item.id}/img`;
-                const stillUrl = item.still || '';
-                const rating = item.rating ? Number(item.rating).toFixed(1) : '';
-                const genre = item.genres && item.genres[0] ? item.genres[0] : (isShow ? 'Series' : 'Film');
-                const tone = item.tone || '#5d341e';
-
-                return `
-                  <div class="card" style="--tone:${tone}">
-                    <div class="card-art card-poster">
-                      <span class="card-pic">
-                        <img data-fade="true" src="${posterUrl}" alt="" width="500" height="750" loading="lazy" decoding="async" draggable="false" onerror="this.onerror=null;if('${stillUrl}')this.src='${stillUrl}';else this.style.display='none';" />
-                      </span>
-                      <span class="card-fallback" aria-hidden="true">${item.title}</span>
-                      <span class="card-over">
-                        <span class="card-over-cap">
-                          <span class="card-over-title" aria-hidden="true">${item.title}</span>
-                          <span class="card-over-meta">
-                            <span class="card-over-genre">${genre}</span>
-                            <span class="card-over-year">${item.year || ''}</span>
-                            ${rating ? `<span class="card-over-score" aria-label="Rated ${rating} out of 10">${rating}<span class="card-over-star" aria-hidden="true"></span></span>` : ''}
-                          </span>
-                        </span>
-                      </span>
-                    </div>
-                    <a class="card-link" data-film="${item.slug}" data-rail-focus="true" aria-label="${item.title} (${item.year || ''})" href="${itemHref}"></a>
-                    <button type="button" class="cover-add" aria-pressed="false" aria-label="Add to library: ${item.title}" title="Add to library" tabindex="-1" data-watchlist-button="" data-title-slug="${item.slug}" data-title="${item.title}">
-                      <svg class="cover-add-icon cover-add-plus" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="width:1.25rem;height:1.25rem;display:block;"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
-                    </button>
-                  </div>
-                `;
-              }).join('')}
-            </div>
-          `;
-
-          try { initWatchlist(); } catch (e) {}
-          try { initCardNavigation(); } catch (e) {}
+          lastPayload = { query, films, shows, people, groups };
+          renderSearchPayload();
         })
         .catch(() => {
+          if (reqId !== searchReqId) return;
+          resultsContainer.classList.remove('search-results-stale');
+          if (tabsWrap) tabsWrap.style.display = 'none';
           resultsContainer.innerHTML = `
-            <div class="search-none" style="text-align:center;padding:5rem 1rem;">
-              <h3 class="search-none-title" style="font-size:1.4rem;font-weight:700;color:#fff;">Search is unavailable</h3>
+            <div class="shell gutter search-none" style="text-align:center;padding:5rem 1rem;">
+              <h3 class="search-none-title" style="font-size:1.35rem;font-weight:700;color:#fff;">Search is unavailable</h3>
               <p class="search-none-text" style="color:rgba(255,255,255,0.55);margin-top:0.5rem;">Could not load search results. Please try again.</p>
             </div>
           `;
@@ -2444,25 +4620,25 @@
       searchInput.focus();
     };
 
-    // Check URL parameters for ?q=
     const params = new URLSearchParams(window.location.search);
-    if (params.has('q')) {
+    if (params.has('q') && params.get('q').trim()) {
       searchInput.value = params.get('q');
       executeSearch(params.get('q'));
     }
   }
 
   // --- 12. Liquid Glass Styles & Animation Injection ---
-  
-  // --- Liquid Glass Attribute Helper ---
   function applyLiquidChromeAttributes() {
     try {
+      // Never put data-liquid on the outer fixed .tab-bar wrapper — only on its inner chrome pill
+      document.querySelectorAll('nav.tab-bar[data-liquid]').forEach(el => {
+        el.removeAttribute('data-liquid');
+      });
       const selectors = [
-        '[data-chrome]',
-                '.top-nav',
+        '.site-header [data-chrome]',
+        '.top-nav',
         '.top-pill',
         '.header-tools',
-        '.tab-bar',
         '.tab-bar [data-chrome]'
       ];
       document.querySelectorAll(selectors.join(', ')).forEach(el => {
@@ -2481,7 +4657,6 @@
     const style = document.createElement('style');
     style.id = 'flicx-liquid-glass-styles';
     style.textContent = `
-      
       /* Ensure absolute nav container centering */
       nav[aria-label="Primary"].absolute,
       .site-header nav.absolute {
@@ -2491,10 +4666,7 @@
         translate: none !important;
       }
 
-      
-      .hero { --hero-duration: 7s !important; }
-      
-      /* Authentic Flicx Hero Switcher Progress Bar & Dots */
+      /* Hero Switcher Progress Bar & Dots */
       .hero-switch-bars {
         align-items: center !important;
         height: 100% !important;
@@ -2534,7 +4706,7 @@
         display: block !important;
       }
       .hero-clock {
-        animation: hero-clock var(--hero-duration, 9s) linear both !important;
+        animation: hero-clock var(--hero-duration, 7s) linear both !important;
         animation-play-state: var(--hero-play, running) !important;
       }
       @keyframes hero-clock {
@@ -2542,8 +4714,19 @@
         100% { transform: scaleX(1); }
       }
 
-      /* Authentic Capsule Button Text (Add to library / In your library) */
-      .capsule-btn.capsule-btn-text {
+      /* Hero Title Logo Fallback Typography */
+      .hero-title-fallback {
+        margin: 0;
+        font-size: clamp(2rem, 4.2vw, 3.6rem);
+        font-weight: 800;
+        letter-spacing: -0.025em;
+        line-height: 1.05;
+        color: #ffffff;
+        text-shadow: 0 4px 24px rgba(0, 0, 0, 0.65);
+      }
+
+      /* Capsule Buttons: Keep Play button dark ink on bright white pill, dark buttons crisp white */
+      .capsule-btn.capsule-btn-text:not(.capsule-btn-lit) {
         padding-inline: 0.875rem 1.078rem !important;
         font-size: 0.9375rem !important;
         font-weight: 600 !important;
@@ -2552,6 +4735,296 @@
         align-items: center !important;
         gap: 0.5rem !important;
         white-space: nowrap !important;
+      }
+      .capsule-btn.capsule-btn-lit,
+      .capsule-btn.capsule-btn-lit span,
+      .capsule-btn.capsule-btn-lit.capsule-btn-text,
+      .capsule-btn.capsule-btn-play.capsule-btn-lit,
+      .capsule-btn.capsule-btn-play.capsule-btn-lit span {
+        color: #0b0d13 !important;
+      }
+      .capsule-btn.capsule-btn-lit,
+      .capsule-btn.capsule-btn-lit.capsule-btn-text,
+      .capsule-btn.capsule-btn-play.capsule-btn-lit {
+        background: #f5f5f7 !important;
+        display: inline-flex !important;
+        align-items: center !important;
+        gap: 0.45rem !important;
+      }
+      .capsule-btn.capsule-btn-lit:hover,
+      .capsule-btn.capsule-btn-play.capsule-btn-lit:hover {
+        background: #ffffff !important;
+        color: #0b0d13 !important;
+      }
+      .capsule-btn.capsule-btn-lit svg,
+      .capsule-btn.capsule-btn-play.capsule-btn-lit svg {
+        color: #0b0d13 !important;
+        fill: currentColor !important;
+      }
+
+      /* Defensive Poster Card + Button Sizing (never overflows card) */
+      .card-art > .cover-add {
+        width: clamp(28px, 16cqi, 36px) !important;
+        height: clamp(28px, 16cqi, 36px) !important;
+      }
+      .cover-add > svg {
+        width: 47% !important;
+        height: 47% !important;
+      }
+
+      /* Graceful Fallback Card when poster image fails or is missing */
+      .card-art:has(img[data-failed]) {
+        background: #1a1b20 !important;
+      }
+      .card-art:has(img[data-failed]) .card-pic {
+        opacity: 0 !important;
+      }
+      .card-art:has(img[data-failed]) .card-fallback {
+        display: grid !important;
+        place-items: center !important;
+        color: rgba(248, 247, 244, 0.78) !important;
+        font-size: 0.875rem !important;
+        font-weight: 600 !important;
+        padding: 0.85rem !important;
+        text-align: center !important;
+        line-height: 1.3 !important;
+      }
+
+      /* Search Page Categorized View (matches reference screenshot) */
+      .search-field {
+        position: relative;
+      }
+      .search-field-clear {
+        position: absolute;
+        right: 0.75rem;
+        top: 50%;
+        transform: translateY(-50%);
+        width: 1.75rem;
+        height: 1.75rem;
+        border-radius: 9999px;
+        border: none;
+        background: rgba(255, 255, 255, 0.14);
+        color: rgba(255, 255, 255, 0.85);
+        place-items: center;
+        cursor: pointer;
+        font-size: 0.85rem;
+        transition: background-color 0.16s ease, color 0.16s ease;
+        z-index: 3;
+      }
+      .search-field-clear:hover {
+        background: rgba(255, 255, 255, 0.25);
+        color: #ffffff;
+      }
+      .search-tabs {
+        margin-top: 1rem !important;
+        position: relative;
+        z-index: 2;
+      }
+      .search-tabs .segmented {
+        display: inline-flex !important;
+        align-items: center !important;
+        gap: 0.2rem !important;
+        padding: 0.25rem !important;
+        border-radius: 999px !important;
+        background: rgba(255, 255, 255, 0.08) !important;
+        -webkit-backdrop-filter: blur(22px) saturate(1.5) !important;
+        backdrop-filter: blur(22px) saturate(1.5) !important;
+        box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.12) !important;
+      }
+      .search-tabs .segmented-item {
+        position: relative !important;
+        height: 2.15rem !important;
+        padding-inline: 0.9rem !important;
+        border: none !important;
+        background: transparent !important;
+        box-shadow: none !important;
+        color: rgba(255, 255, 255, 0.72) !important;
+        font-size: 0.84rem !important;
+        font-weight: 500 !important;
+        border-radius: 999px !important;
+        display: inline-flex !important;
+        align-items: center !important;
+        gap: 0.42rem !important;
+        cursor: pointer !important;
+        transition: color 0.18s ease, background-color 0.18s ease !important;
+      }
+      .search-tabs .segmented-item:hover {
+        color: #ffffff !important;
+      }
+      .search-tabs .segmented-item[aria-checked="true"] {
+        color: #ffffff !important;
+        font-weight: 600 !important;
+      }
+      .search-tabs .segmented-active {
+        position: absolute !important;
+        inset: 0 !important;
+        border-radius: 999px !important;
+        background: rgba(255, 255, 255, 0.18) !important;
+        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.22) !important;
+        z-index: 0 !important;
+      }
+      .search-tabs .segmented-label,
+      .search-tabs .segmented-count {
+        position: relative;
+        z-index: 1;
+      }
+      .search-tabs .segmented-count {
+        color: rgba(255, 255, 255, 0.5) !important;
+        font-size: 0.76rem !important;
+        font-weight: 500 !important;
+      }
+      .search-tabs .segmented-item[aria-checked="true"] .segmented-count {
+        color: rgba(255, 255, 255, 0.72) !important;
+      }
+
+      .search-results {
+        position: relative !important;
+        z-index: 1 !important;
+        padding-bottom: 4.5rem !important;
+      }
+      .search-section {
+        margin-top: 2rem !important;
+      }
+      .search-section:first-child {
+        margin-top: 1.5rem !important;
+      }
+      .search-section-head {
+        display: flex !important;
+        align-items: baseline !important;
+        justify-content: space-between !important;
+        gap: 1rem !important;
+        margin-bottom: 0.9rem !important;
+      }
+      .search-section-head .section-title {
+        font-size: 1.15rem !important;
+        font-weight: 700 !important;
+        color: #ffffff !important;
+        margin: 0 !important;
+        letter-spacing: -0.01em !important;
+      }
+      .search-section-all {
+        background: transparent !important;
+        border: none !important;
+        color: rgba(255, 255, 255, 0.65) !important;
+        font-size: 0.84rem !important;
+        font-weight: 500 !important;
+        cursor: pointer !important;
+        padding: 0.2rem 0.4rem !important;
+        border-radius: 0.5rem !important;
+        transition: color 0.18s ease !important;
+      }
+      .search-section-all:hover {
+        color: #ffffff !important;
+      }
+
+      .search-film-grid.film-grid {
+        display: grid !important;
+        grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+        gap: 1.15rem 0.85rem !important;
+        list-style: none !important;
+        padding: 0 !important;
+        margin: 0 !important;
+      }
+      @media (min-width: 560px) {
+        .search-film-grid.film-grid { grid-template-columns: repeat(3, minmax(0, 1fr)) !important; }
+      }
+      @media (min-width: 820px) {
+        .search-film-grid.film-grid { grid-template-columns: repeat(5, minmax(0, 1fr)) !important; }
+      }
+      @media (min-width: 1180px) {
+        .search-film-grid.film-grid { grid-template-columns: repeat(7, minmax(0, 1fr)) !important; }
+      }
+
+      .search-people {
+        display: grid !important;
+        grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+        gap: 1.5rem 0.95rem !important;
+      }
+      @media (min-width: 640px) {
+        .search-people { grid-template-columns: repeat(5, minmax(0, 1fr)) !important; }
+      }
+      @media (min-width: 960px) {
+        .search-people { grid-template-columns: repeat(7, minmax(0, 1fr)) !important; }
+      }
+      @media (min-width: 1240px) {
+        .search-people { grid-template-columns: repeat(10, minmax(0, 1fr)) !important; }
+      }
+      .person-photo {
+        background: #1c1d22 !important;
+        overflow: hidden !important;
+      }
+      .person-pic {
+        z-index: 2 !important;
+      }
+      .person-pic:has(img[data-failed]) {
+        display: none !important;
+      }
+      .person-initial {
+        z-index: 1 !important;
+        color: rgba(255, 255, 255, 0.52) !important;
+        font-size: 1.45rem !important;
+        font-weight: 500 !important;
+      }
+      .person-name {
+        color: #ffffff !important;
+        font-size: 0.8rem !important;
+        font-weight: 600 !important;
+        margin-top: 0.55rem !important;
+      }
+      .person:hover .person-name {
+        color: var(--color-flare, #f59e0b) !important;
+      }
+      .person-role {
+        color: rgba(255, 255, 255, 0.52) !important;
+        font-size: 0.72rem !important;
+      }
+
+      .search-groups {
+        display: grid !important;
+        grid-template-columns: repeat(auto-fill, minmax(14.5rem, 1fr)) !important;
+        gap: 0.75rem !important;
+      }
+      .search-group {
+        background: rgba(255, 255, 255, 0.06) !important;
+        -webkit-backdrop-filter: blur(18px) !important;
+        backdrop-filter: blur(18px) !important;
+        border-radius: 0.9rem !important;
+        padding: 0.9rem 1.05rem !important;
+        box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.1) !important;
+        text-decoration: none !important;
+        color: #ffffff !important;
+      }
+      .search-group:hover {
+        background: rgba(255, 255, 255, 0.12) !important;
+      }
+
+      /* Rating star active state & Kaira Toast */
+      .rate-star-active {
+        color: var(--color-flare, #f59e0b) !important;
+        opacity: 1 !important;
+      }
+      .kaira-toast {
+        position: fixed;
+        bottom: 1.75rem;
+        left: 50%;
+        transform: translateX(-50%) translateY(16px);
+        background: rgba(22, 24, 32, 0.92);
+        -webkit-backdrop-filter: blur(20px) saturate(1.6);
+        backdrop-filter: blur(20px) saturate(1.6);
+        color: #ffffff;
+        padding: 0.65rem 1.15rem;
+        border-radius: 999px;
+        font-size: 0.875rem;
+        font-weight: 500;
+        box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.12), 0 16px 36px -8px rgba(0, 0, 0, 0.75);
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 0.2s ease, transform 0.24s cubic-bezier(0.16, 1, 0.3, 1);
+        z-index: 100000;
+      }
+      .kaira-toast.kaira-toast-visible {
+        opacity: 1;
+        transform: translateX(-50%) translateY(0);
       }
 
       /* Rail Arrow Smooth Transitions */
@@ -2567,14 +5040,13 @@
         pointer-events: none !important;
       }
 
-      /* Logo Hover-Only Spring Animation (Strictly no interval looping) */
+      /* Logo Hover-Only Spring Animation */
       #Rectangle_22048,
       #Union,
       #Rectangle_22049 {
         animation-play-state: paused !important;
         animation-iteration-count: 1 !important;
       }
-
       .flicx-logo-link:hover #Rectangle_22048,
       .flicx-logo-link:hover #Union,
       .flicx-logo-link:hover #Rectangle_22049,
@@ -2584,8 +5056,8 @@
         animation-play-state: running !important;
       }
 
-      /* Authentic Flicx Liquid Glass Header & Navbar via data-liquid */
-      [data-liquid],
+      /* Liquid Glass Header & Navbar via data-liquid (excluding outer fixed .tab-bar wrapper) */
+      [data-liquid]:not(.tab-bar),
       .site-header [data-chrome][data-liquid],
       .site-header [data-chrome],
       .top-nav.top-pill,
@@ -2597,8 +5069,8 @@
         background: color-mix(in oklab, #141721 44%, transparent) !important;
         -webkit-backdrop-filter: blur(calc(24px * var(--blur-scale, 1))) saturate(1.85) brightness(0.9) !important;
         backdrop-filter: blur(calc(24px * var(--blur-scale, 1))) saturate(1.85) brightness(0.9) !important;
-        box-shadow: 
-          0 0 0 1px rgba(255, 255, 255, 0.12), 
+        box-shadow:
+          0 0 0 1px rgba(255, 255, 255, 0.12),
           0 18px 45px -12px rgba(0, 0, 0, 0.65),
           inset 0 1px 1px 0 rgba(255, 255, 255, 0.32),
           inset 0 -1px 1px 0 rgba(0, 0, 0, 0.25) !important;
@@ -2606,7 +5078,39 @@
         position: relative !important;
         overflow: hidden !important;
       }
-      [data-liquid]:before,
+      /* Keep mobile & tablet bottom navigation dock genuinely fixed at viewport bottom */
+      nav.tab-bar {
+        position: fixed !important;
+        left: 0 !important;
+        right: 0 !important;
+        bottom: 0 !important;
+        z-index: 50 !important;
+        background: transparent !important;
+        box-shadow: none !important;
+        border-radius: 0 !important;
+        -webkit-backdrop-filter: none !important;
+        backdrop-filter: none !important;
+        overflow: visible !important;
+        pointer-events: none !important;
+      }
+      nav.tab-bar::before,
+      nav.tab-bar::after {
+        display: none !important;
+        content: none !important;
+      }
+      nav.tab-bar [data-chrome] {
+        pointer-events: auto !important;
+        width: 100% !important;
+        max-width: min(440px, calc(100vw - 24px)) !important;
+        margin-inline: auto !important;
+      }
+      /* Hide navigation dock, header, and footer while playing a movie/show */
+      body.kaira-watching nav.tab-bar,
+      body.kaira-watching .site-header,
+      body.kaira-watching footer {
+        display: none !important;
+      }
+      [data-liquid]:not(.tab-bar):before,
       .site-header [data-chrome][data-liquid]:before,
       .top-pill[data-liquid]:before,
       .header-tools[data-liquid]:before,
@@ -2625,7 +5129,7 @@
         pointer-events: none !important;
         z-index: 1 !important;
       }
-      [data-liquid]:after,
+      [data-liquid]:not(.tab-bar):after,
       .site-header [data-chrome][data-liquid]:after,
       .site-header [data-chrome]:after,
       .top-nav.top-pill:after,
@@ -2639,14 +5143,14 @@
         inset: 0 !important;
         border-radius: inherit !important;
         pointer-events: none !important;
-        box-shadow: 
-          inset 0 0 0 0.5px rgba(255, 255, 255, 0.18), 
+        box-shadow:
+          inset 0 0 0 0.5px rgba(255, 255, 255, 0.18),
           inset 0 1px 1.5px 0 rgba(255, 255, 255, 0.38) !important;
         z-index: 1 !important;
       }
       .top-pill[data-liquid] > *,
       .header-tools[data-liquid] > *,
-      [data-liquid] > * {
+      [data-liquid]:not(.tab-bar) > * {
         position: relative !important;
         z-index: 2 !important;
       }
@@ -2669,7 +5173,8 @@
       }
 
       /* <title-select> & Dropdown Popup Animations */
-      .title-select-caret svg {
+      .title-select-caret svg,
+      .select-caret svg {
         transition: transform 0.22s cubic-bezier(0.2, 0.8, 0.2, 1);
       }
       .select-popup {
@@ -2743,7 +5248,7 @@
         to { transform: rotate(360deg); }
       }
 
-      /* --- Authentic Flicx View Transitions & Page Transitions --- */
+      /* View Transitions & Page Transitions */
       ::view-transition { pointer-events: none; }
       ::view-transition-old(.page-fade) { animation: .24s linear both vt-hold; }
       ::view-transition-new(.page-fade) { animation: .24s ease-out both vt-fade-in; }
@@ -2761,20 +5266,8 @@
       html:active-view-transition .site-header [data-chrome=tools] { view-transition-name: chrome-tools; }
       html:active-view-transition .tab-bar [data-chrome=tabs] { view-transition-name: chrome-tabs; }
 
-      ::view-transition-group(chrome-nav) {
-        z-index: 101;
-        border-radius: calc(999px * var(--corner-scale, 1));
-        -webkit-backdrop-filter: var(--frost-chrome);
-        backdrop-filter: var(--frost-chrome);
-        animation: none;
-      }
-      ::view-transition-group(chrome-tools) {
-        z-index: 101;
-        border-radius: calc(999px * var(--corner-scale, 1));
-        -webkit-backdrop-filter: var(--frost-chrome);
-        backdrop-filter: var(--frost-chrome);
-        animation: none;
-      }
+      ::view-transition-group(chrome-nav),
+      ::view-transition-group(chrome-tools),
       ::view-transition-group(chrome-tabs) {
         z-index: 101;
         border-radius: calc(999px * var(--corner-scale, 1));
@@ -2785,7 +5278,6 @@
       ::view-transition-old(chrome-nav), ::view-transition-old(chrome-tools), ::view-transition-old(chrome-tabs) { display: none; }
       ::view-transition-new(chrome-nav), ::view-transition-new(chrome-tools), ::view-transition-new(chrome-tabs) { animation: none; }
 
-      /* Authentic Flicx Top Pending Progress Bar */
       html[data-pending]:after {
         content: "";
         z-index: 200;
@@ -2804,7 +5296,7 @@
         to { transform: scaleX(.94); }
       }
 
-      /* Hero Transitions from authentic Flicx */
+      /* Hero Transitions */
       .hero-slide {
         position: absolute;
         inset: 0;
@@ -2830,58 +5322,8 @@
         0% { opacity: 0; }
         100% { opacity: 1; }
       }
-      .hero-clock {
-        animation: hero-clock var(--hero-duration, 9s) linear both;
-        animation-play-state: var(--hero-play, running);
-      }
-      @keyframes hero-clock {
-        0% { transform: scaleX(0); }
-        to { transform: scaleX(1); }
-      }
       .hero[data-paused] { --hero-play: paused; }
 
-      /* Switcher bar styling from authentic Flicx */
-      .hero-switch-bars {
-        align-items: center;
-        height: 100%;
-        display: flex;
-      }
-      .hero-switch-bar {
-        align-items: center;
-        height: 100%;
-        padding-inline: .25rem;
-        display: flex;
-        background: transparent;
-        border: none;
-        cursor: pointer;
-        padding-block: 0;
-        margin: 0;
-      }
-      .hero-switch-bar > span {
-        width: .5rem;
-        height: .3125rem;
-        transition: width .6s cubic-bezier(0.16, 1, 0.3, 1), background-color .2s ease;
-        background: rgba(255, 255, 255, 0.32);
-        border-radius: 999px;
-        display: block;
-        overflow: clip;
-      }
-      .hero-switch-bar[aria-current="true"] > span {
-        width: 2.25rem;
-      }
-      .hero-switch-bar:not([aria-current="true"]):hover > span {
-        background: rgba(255, 255, 255, 0.62);
-      }
-      .hero-switch-fill {
-        border-radius: inherit;
-        background: #ffffff;
-        transform-origin: 0% 50%;
-        height: 100%;
-        width: 100%;
-        display: block;
-      }
-
-      /* Popups, Modals & Settings Transitions from authentic Flicx */
       @keyframes set-fade {
         0% { opacity: 0; transform: translateY(-4px); }
         100% { opacity: 1; transform: translateY(0); }
@@ -2896,7 +5338,6 @@
         rotate: 180deg;
       }
 
-      /* CSS Fallback animations */
       main.page-transitioning-out, .watch-root.page-transitioning-out {
         animation: 0.18s ease-out both vt-hold !important;
       }
@@ -2907,50 +5348,953 @@
       #flicx-nav-progress {
         display: none !important;
       }
+
+      /* Apple TV / tvOS Style Video Player & Upstream CSS Isolation */
+      .atv-player video::cue {
+        background: rgba(12, 12, 16, 0.72);
+        color: #ffffff;
+        font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Plus Jakarta Sans", system-ui, sans-serif;
+        font-size: 1.05em;
+        font-weight: 500;
+        text-shadow: 0 2px 6px rgba(0, 0, 0, 0.85);
+      }
+      .fx-player .fx-ui {
+        transition: opacity 0.34s cubic-bezier(0.22, 1, 0.36, 1) !important;
+      }
+      .fx-player .fx-ui .fx-top {
+        transition: opacity 0.34s cubic-bezier(0.22, 1, 0.36, 1), transform 0.38s cubic-bezier(0.22, 1, 0.36, 1) !important;
+      }
+      .fx-player .fx-ui .fx-bottom {
+        transition: opacity 0.34s cubic-bezier(0.22, 1, 0.36, 1), transform 0.4s cubic-bezier(0.22, 1, 0.36, 1) !important;
+      }
+      .fx-player .fx-ui[data-chrome] .fx-top,
+      .fx-player .fx-ui[data-chrome] .fx-bottom {
+        opacity: 1 !important;
+        transform: translate3d(0, 0, 0) !important;
+        pointer-events: auto !important;
+      }
+      .fx-player .fx-ui[data-chrome] .fx-top > *,
+      .fx-player .fx-ui[data-chrome] .fx-bottom > * {
+        pointer-events: auto !important;
+      }
+      .fx-player .fx-ui:not([data-chrome]) .fx-top {
+        opacity: 0 !important;
+        transform: translate3d(0, -10px, 0) !important;
+        pointer-events: none !important;
+      }
+      .fx-player .fx-ui:not([data-chrome]) .fx-bottom {
+        opacity: 0 !important;
+        transform: translate3d(0, 14px, 0) !important;
+        pointer-events: none !important;
+      }
+      .atv-top {
+        display: flex !important;
+        align-items: center !important;
+        justify-content: space-between !important;
+        padding: calc(1.35rem + env(safe-area-inset-top, 0px)) calc(3rem + env(safe-area-inset-right, 0px)) 1.5rem calc(3rem + env(safe-area-inset-left, 0px)) !important;
+        background: linear-gradient(to bottom, rgba(0, 0, 0, 0.65) 0%, rgba(0, 0, 0, 0.22) 60%, transparent 100%) !important;
+        position: relative !important;
+        top: auto !important;
+        left: auto !important;
+        right: auto !important;
+      }
+      .atv-top-circle {
+        width: 40px;
+        height: 40px;
+        border-radius: 50%;
+        border: 1px solid rgba(255, 255, 255, 0.14);
+        background: rgba(24, 24, 28, 0.48);
+        -webkit-backdrop-filter: blur(22px) saturate(1.6);
+        backdrop-filter: blur(22px) saturate(1.6);
+        color: rgba(255, 255, 255, 0.94);
+        display: grid;
+        place-items: center;
+        text-decoration: none;
+        cursor: pointer;
+        transition: background-color 0.2s cubic-bezier(0.22, 1, 0.36, 1), transform 0.2s cubic-bezier(0.22, 1, 0.36, 1), color 0.18s ease;
+      }
+      .atv-top-circle:hover {
+        background: rgba(255, 255, 255, 0.92);
+        color: #111114;
+        transform: scale(1.06);
+      }
+      .atv-top-circle:active {
+        transform: scale(0.94);
+      }
+      .atv-server-btn {
+        display: inline-flex !important;
+        align-items: center !important;
+        gap: 0.4rem !important;
+        height: 40px !important;
+        padding: 0 0.95rem !important;
+        border-radius: 999px !important;
+        border: 1px solid rgba(255, 255, 255, 0.14) !important;
+        background: rgba(24, 24, 28, 0.48) !important;
+        -webkit-backdrop-filter: blur(22px) saturate(1.6) !important;
+        backdrop-filter: blur(22px) saturate(1.6) !important;
+        color: rgba(255, 255, 255, 0.94) !important;
+        font-size: 0.85rem !important;
+        font-weight: 600 !important;
+        cursor: pointer !important;
+        transition: background-color 0.2s cubic-bezier(0.22, 1, 0.36, 1), color 0.18s ease, transform 0.18s cubic-bezier(0.22, 1, 0.36, 1);
+      }
+      .atv-server-btn:active {
+        transform: scale(0.96);
+      }
+      .atv-server-btn > .fx-server-name,
+      .atv-server-btn > span {
+        display: inline !important;
+      }
+      .atv-server-btn:hover {
+        background: rgba(255, 255, 255, 0.18) !important;
+      }
+      .atv-server-sep {
+        opacity: 0.48;
+      }
+      .atv-server-qual {
+        opacity: 0.8;
+        font-size: 0.78rem;
+        font-weight: 600;
+      }
+      .atv-status-pill {
+        position: absolute;
+        top: 1.75rem;
+        left: 50%;
+        display: inline-flex;
+        align-items: center;
+        transform: translate3d(-50%, -8px, 0) scale(0.94);
+        opacity: 0;
+        visibility: hidden;
+        padding: 0.5rem 1.05rem;
+        border-radius: 999px;
+        background: rgba(226, 226, 230, 0.88);
+        -webkit-backdrop-filter: blur(28px) saturate(1.8);
+        backdrop-filter: blur(28px) saturate(1.8);
+        color: #111114;
+        font-size: 0.82rem;
+        font-weight: 600;
+        box-shadow: 0 12px 32px rgba(0, 0, 0, 0.42);
+        z-index: 25;
+        pointer-events: none;
+        white-space: nowrap;
+        transition: opacity 0.24s cubic-bezier(0.22, 1, 0.36, 1), transform 0.28s cubic-bezier(0.22, 1, 0.36, 1), visibility 0.28s;
+      }
+      .atv-status-pill.atv-visible {
+        opacity: 1;
+        visibility: visible;
+        transform: translate3d(-50%, 0, 0) scale(1);
+      }
+      .atv-bottom {
+        position: relative !important;
+        bottom: auto !important;
+        left: auto !important;
+        right: auto !important;
+        display: flex !important;
+        flex-direction: column !important;
+        gap: 0.75rem !important;
+        padding: 3.5rem calc(3rem + env(safe-area-inset-right, 0px)) calc(1.75rem + env(safe-area-inset-bottom, 0px)) calc(3rem + env(safe-area-inset-left, 0px)) !important;
+        background: linear-gradient(to top, rgba(0, 0, 0, 0.88) 0%, rgba(0, 0, 0, 0.54) 55%, rgba(0, 0, 0, 0.16) 82%, transparent 100%) !important;
+        font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Plus Jakarta Sans", system-ui, sans-serif;
+      }
+      .atv-header-row {
+        display: flex;
+        align-items: flex-end;
+        justify-content: space-between;
+        gap: 1.5rem;
+        width: 100%;
+      }
+      .atv-title-block {
+        min-width: 0;
+        flex: 1;
+      }
+      .atv-kicker {
+        font-size: 0.84rem;
+        font-weight: 600;
+        color: rgba(255, 255, 255, 0.74);
+        margin-bottom: 0.2rem;
+        letter-spacing: 0.01em;
+      }
+      .atv-title {
+        margin: 0;
+        font-size: clamp(1.7rem, 2.75vw, 2.45rem);
+        font-weight: 700;
+        line-height: 1.08;
+        letter-spacing: -0.025em;
+        color: #ffffff;
+        text-shadow: 0 2px 16px rgba(0, 0, 0, 0.55);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .atv-actions-wrap {
+        position: relative;
+        flex: none;
+      }
+      .atv-actions {
+        display: flex;
+        align-items: center;
+        gap: 0.65rem;
+      }
+      .atv-icon-btn {
+        width: 44px;
+        height: 44px;
+        border-radius: 50%;
+        border: none;
+        background: transparent;
+        color: rgba(255, 255, 255, 0.92);
+        display: grid;
+        place-items: center;
+        cursor: pointer;
+        transition: background-color 0.22s cubic-bezier(0.22, 1, 0.36, 1), color 0.18s ease, transform 0.22s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.22s ease;
+      }
+      .atv-icon-btn:hover {
+        background: rgba(255, 255, 255, 0.18);
+        color: #ffffff;
+        transform: scale(1.06);
+      }
+      .atv-icon-btn:active {
+        transform: scale(0.93);
+      }
+      .atv-icon-btn.atv-icon-active {
+        background: #f2f2f5 !important;
+        color: #141418 !important;
+        transform: scale(1.07);
+        box-shadow: 0 10px 28px rgba(0, 0, 0, 0.42);
+      }
+      .atv-icon-btn.atv-icon-connected {
+        color: #38bdf8;
+      }
+      .atv-icon-btn:focus-visible,
+      .atv-tab-btn:focus-visible,
+      .atv-transport-btn:focus-visible,
+      .atv-pop-item:focus-visible {
+        outline: 2px solid #ffffff;
+        outline-offset: 2px;
+      }
+
+      /* Apple TV Frosted Translucent Popovers (Matches tvOS Subtitles Glass Card) */
+      .atv-glass-popover {
+        position: absolute !important;
+        display: flex !important;
+        width: min(260px, calc(100vw - 24px)) !important;
+        max-height: min(332px, calc(100dvh - 190px)) !important;
+        overflow-y: auto !important;
+        -webkit-overflow-scrolling: touch;
+        padding: 10px 8px !important;
+        border-radius: 16px !important;
+        background: rgba(216, 214, 208, 0.62) !important;
+        -webkit-backdrop-filter: blur(42px) saturate(1.85) !important;
+        backdrop-filter: blur(42px) saturate(1.85) !important;
+        border: 1px solid rgba(255, 255, 255, 0.3) !important;
+        box-shadow: 0 24px 64px rgba(0, 0, 0, 0.55) !important;
+        color: #16161a !important;
+        flex-direction: column;
+        gap: 2px;
+        z-index: 40 !important;
+        scrollbar-width: thin;
+        scrollbar-color: rgba(20, 20, 24, 0.25) transparent;
+        opacity: 0;
+        visibility: hidden;
+        pointer-events: none;
+        transform: translate3d(0, 10px, 0) scale(0.95);
+        transform-origin: bottom right;
+        transition: opacity 0.22s cubic-bezier(0.22, 1, 0.36, 1), transform 0.28s cubic-bezier(0.16, 1, 0.3, 1), visibility 0.28s;
+        will-change: opacity, transform;
+      }
+      .atv-glass-popover.atv-open {
+        opacity: 1;
+        visibility: visible;
+        pointer-events: auto;
+        transform: translate3d(0, 0, 0) scale(1);
+      }
+      .atv-popover {
+        bottom: calc(100% + 14px);
+        right: 0;
+        left: auto;
+        top: auto;
+      }
+      .atv-server-popover {
+        top: calc(100% + 10px) !important;
+        bottom: auto !important;
+        right: 0 !important;
+        left: auto !important;
+        transform-origin: top right;
+        transform: translate3d(0, -8px, 0) scale(0.95);
+      }
+      .atv-server-popover.atv-open {
+        transform: translate3d(0, 0, 0) scale(1);
+      }
+      .atv-pop-heading {
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        color: rgba(24, 24, 28, 0.56);
+        padding: 4px 12px 6px;
+        user-select: none;
+      }
+      .atv-pop-list {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+      }
+      .atv-pop-item {
+        width: 100%;
+        min-height: 36px;
+        padding: 8px 12px;
+        border: none;
+        border-radius: 10px;
+        background: transparent;
+        color: rgba(18, 18, 22, 0.86);
+        font-family: inherit;
+        font-size: 13.5px;
+        font-weight: 500;
+        text-align: left;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.6rem;
+        transition: background-color 0.14s ease, transform 0.14s ease, box-shadow 0.14s ease, color 0.14s ease;
+      }
+      .atv-pop-item:hover {
+        background: rgba(255, 255, 255, 0.36);
+        color: #0b0b0e;
+      }
+      .atv-pop-item[aria-checked="true"] {
+        background: rgba(255, 255, 255, 0.96) !important;
+        color: #0b0b0e !important;
+        font-weight: 600 !important;
+        box-shadow: 0 6px 18px rgba(0, 0, 0, 0.18);
+        transform: scale(1.015);
+      }
+      .atv-pop-item-label {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.5rem;
+        min-width: 0;
+      }
+      .atv-pop-meta {
+        font-size: 11px;
+        font-weight: 600;
+        color: rgba(20, 20, 24, 0.54);
+      }
+      .atv-pop-check {
+        display: inline-flex;
+        align-items: center;
+        color: #111114;
+        flex: none;
+      }
+      .atv-pop-divider {
+        height: 1px;
+        background: rgba(20, 20, 24, 0.14);
+        margin: 6px 10px;
+      }
+      .atv-pop-empty {
+        padding: 10px 12px;
+        font-size: 13px;
+        color: rgba(20, 20, 24, 0.64);
+      }
+      .atv-audio-section {
+        padding: 4px 10px 6px;
+      }
+      .atv-audio-vol-row {
+        display: flex;
+        align-items: center;
+        gap: 0.55rem;
+      }
+      .atv-pop-mini-btn {
+        width: 32px;
+        height: 32px;
+        border-radius: 50%;
+        border: none;
+        background: rgba(255, 255, 255, 0.42);
+        color: #111114;
+        display: grid;
+        place-items: center;
+        cursor: pointer;
+        flex: none;
+      }
+      .atv-pop-mini-btn:hover {
+        background: rgba(255, 255, 255, 0.78);
+      }
+      .atv-vol-slider {
+        flex: 1;
+        height: 4px;
+        accent-color: #141418;
+        cursor: pointer;
+      }
+      .atv-vol-pct {
+        font-size: 12px;
+        font-weight: 600;
+        font-variant-numeric: tabular-nums;
+        color: rgba(18, 18, 22, 0.76);
+        min-width: 34px;
+        text-align: right;
+      }
+      .atv-cast-status {
+        padding: 2px 12px 8px;
+        font-size: 12px;
+        line-height: 1.38;
+        color: rgba(18, 18, 22, 0.74);
+      }
+
+      /* Apple TV Scrubber Bar & Floating Timestamps */
+      .atv-scrubber-section {
+        width: 100%;
+        display: flex;
+        flex-direction: column;
+      }
+      .atv-scrub-wrap {
+        position: relative;
+        width: 100%;
+        height: 22px;
+        display: flex;
+        align-items: center;
+        cursor: pointer;
+      }
+      .atv-scrub-track {
+        position: relative;
+        width: 100%;
+        height: 7px;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.28);
+        overflow: visible;
+        transition: height 0.2s cubic-bezier(0.22, 1, 0.36, 1), background-color 0.2s ease;
+      }
+      .atv-scrub-wrap:hover .atv-scrub-track,
+      .atv-scrub-wrap.atv-scrubbing .atv-scrub-track {
+        height: 10px;
+        background: rgba(255, 255, 255, 0.34);
+      }
+      .atv-scrub-buffered {
+        position: absolute;
+        top: 0;
+        left: 0;
+        bottom: 0;
+        background: rgba(255, 255, 255, 0.4);
+        border-radius: 999px;
+        pointer-events: none;
+        transition: width 0.25s ease;
+      }
+      .atv-scrub-played {
+        position: absolute;
+        top: 0;
+        left: 0;
+        bottom: 0;
+        background: #ffffff;
+        border-radius: 999px;
+        pointer-events: none;
+      }
+      .atv-scrub-thumb {
+        position: absolute;
+        top: 50%;
+        width: 3px;
+        height: 16px;
+        background: #ffffff;
+        border-radius: 2px;
+        transform: translate(-50%, -50%);
+        box-shadow: 0 0 8px rgba(0, 0, 0, 0.55);
+        pointer-events: none;
+        transition: height 0.18s cubic-bezier(0.22, 1, 0.36, 1), width 0.18s ease;
+      }
+      .atv-scrub-wrap:hover .atv-scrub-thumb,
+      .atv-scrub-wrap.atv-scrubbing .atv-scrub-thumb {
+        width: 4px;
+        height: 20px;
+      }
+      .atv-time-row {
+        position: relative;
+        width: 100%;
+        height: 22px;
+        margin-top: 6px;
+        font-size: 13px;
+        font-weight: 600;
+        font-variant-numeric: tabular-nums;
+      }
+      .atv-time-elapsed {
+        position: absolute;
+        top: 0;
+        color: rgba(255, 255, 255, 0.86);
+        white-space: nowrap;
+        text-shadow: 0 1px 6px rgba(0, 0, 0, 0.6);
+        pointer-events: none;
+      }
+      .atv-time-remaining {
+        position: absolute;
+        top: 0;
+        right: 0;
+        border: none;
+        background: transparent;
+        padding: 0;
+        font: inherit;
+        color: rgba(255, 255, 255, 0.78);
+        cursor: pointer;
+        text-shadow: 0 1px 6px rgba(0, 0, 0, 0.6);
+      }
+      .atv-time-remaining:hover {
+        color: #ffffff;
+      }
+
+      /* Row 3: Apple TV Info / Chapters Tabs & Subtle Transport */
+      .atv-footer-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 1rem;
+        margin-top: 2px;
+      }
+      .atv-tabs {
+        display: flex;
+        align-items: center;
+        gap: 1.75rem;
+      }
+      .atv-tab-btn {
+        border: none;
+        background: transparent;
+        padding: 4px 0;
+        font-family: inherit;
+        font-size: 1rem;
+        font-weight: 650;
+        color: rgba(255, 255, 255, 0.78);
+        cursor: pointer;
+        position: relative;
+        transition: color 0.16s ease;
+        text-shadow: 0 1px 6px rgba(0, 0, 0, 0.5);
+      }
+      .atv-tab-btn:hover,
+      .atv-tab-btn.atv-tab-active {
+        color: #ffffff;
+      }
+      .atv-tab-btn.atv-tab-active::after {
+        content: "";
+        position: absolute;
+        left: 0;
+        right: 0;
+        bottom: -2px;
+        height: 2.5px;
+        border-radius: 999px;
+        background: #ffffff;
+      }
+      .atv-transport {
+        display: flex;
+        align-items: center;
+        gap: 0.35rem;
+      }
+      .atv-transport-btn {
+        width: 38px;
+        height: 38px;
+        border-radius: 50%;
+        border: none;
+        background: transparent;
+        color: rgba(255, 255, 255, 0.8);
+        display: grid;
+        place-items: center;
+        cursor: pointer;
+        transition: background-color 0.15s ease, color 0.15s ease, transform 0.14s ease;
+      }
+      .atv-transport-btn:hover {
+        background: rgba(255, 255, 255, 0.16);
+        color: #ffffff;
+        transform: scale(1.06);
+      }
+      .atv-transport-btn:active {
+        transform: scale(0.92);
+      }
+
+      /* Expandable Info & Chapters Frosted Panels (Smooth Spring Reveal) */
+      .atv-glass-panel {
+        border-radius: 18px;
+        background: rgba(26, 26, 32, 0.72);
+        -webkit-backdrop-filter: blur(36px) saturate(1.7);
+        backdrop-filter: blur(36px) saturate(1.7);
+        border: 1px solid rgba(255, 255, 255, 0.16);
+        box-shadow: 0 22px 56px rgba(0, 0, 0, 0.55);
+        padding: 1.15rem 1.35rem;
+        margin-bottom: 0.5rem;
+        color: #ffffff;
+      }
+      .atv-drawer {
+        display: block;
+        max-height: 0;
+        opacity: 0;
+        visibility: hidden;
+        padding-top: 0;
+        padding-bottom: 0;
+        margin-bottom: 0;
+        border-color: transparent;
+        box-shadow: none;
+        overflow: hidden;
+        pointer-events: none;
+        transform: translate3d(0, 12px, 0) scale(0.985);
+        transition: max-height 0.34s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.24s ease, transform 0.32s cubic-bezier(0.22, 1, 0.36, 1), padding 0.3s cubic-bezier(0.22, 1, 0.36, 1), margin 0.3s cubic-bezier(0.22, 1, 0.36, 1), visibility 0.32s;
+      }
+      .atv-drawer.atv-open {
+        max-height: 260px;
+        opacity: 1;
+        visibility: visible;
+        padding-top: 1.15rem;
+        padding-bottom: 1.15rem;
+        margin-bottom: 0.5rem;
+        border-color: rgba(255, 255, 255, 0.16);
+        box-shadow: 0 22px 56px rgba(0, 0, 0, 0.55);
+        pointer-events: auto;
+        transform: translate3d(0, 0, 0) scale(1);
+      }
+      .atv-info-grid {
+        display: flex;
+        align-items: flex-start;
+        gap: 1.15rem;
+      }
+      .atv-info-poster {
+        width: 68px;
+        height: 102px;
+        border-radius: 10px;
+        object-fit: cover;
+        flex: none;
+        box-shadow: 0 8px 20px rgba(0, 0, 0, 0.45);
+      }
+      .atv-info-body {
+        min-width: 0;
+        flex: 1;
+      }
+      .atv-info-title-row {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: baseline;
+        gap: 0.65rem;
+        margin-bottom: 0.45rem;
+      }
+      .atv-info-heading {
+        margin: 0;
+        font-size: 1.15rem;
+        font-weight: 700;
+        color: #ffffff;
+      }
+      .atv-info-meta {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        column-gap: 0.45rem;
+        row-gap: 0.2rem;
+        font-size: 0.84rem;
+        color: rgba(255, 255, 255, 0.72);
+      }
+      .atv-info-synopsis {
+        margin: 0;
+        font-size: 0.9rem;
+        line-height: 1.5;
+        color: rgba(255, 255, 255, 0.86);
+        max-width: 68ch;
+      }
+      .atv-chapters-strip {
+        display: flex;
+        align-items: stretch;
+        gap: 0.65rem;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        padding-bottom: 4px;
+      }
+      .atv-chapter-card {
+        flex: 0 0 156px;
+        padding: 0.75rem 0.9rem;
+        border-radius: 12px;
+        border: 1px solid rgba(255, 255, 255, 0.14);
+        background: rgba(255, 255, 255, 0.08);
+        color: #ffffff;
+        text-align: left;
+        cursor: pointer;
+        display: flex;
+        flex-direction: column;
+        gap: 0.2rem;
+        transition: background-color 0.2s cubic-bezier(0.22, 1, 0.36, 1), transform 0.2s cubic-bezier(0.22, 1, 0.36, 1), color 0.18s ease;
+      }
+      .atv-chapter-card:hover {
+        background: rgba(255, 255, 255, 0.2);
+        transform: translateY(-2px);
+      }
+      .atv-chapter-card:active {
+        transform: scale(0.97);
+      }
+      .atv-chapter-card.atv-chapter-active {
+        background: rgba(255, 255, 255, 0.94);
+        color: #111114;
+        border-color: transparent;
+      }
+      .atv-chapter-num {
+        font-size: 11px;
+        font-weight: 600;
+        opacity: 0.65;
+      }
+      .atv-chapter-name {
+        font-size: 14px;
+        font-weight: 650;
+      }
+      .atv-chapter-time {
+        font-size: 12px;
+        font-variant-numeric: tabular-nums;
+        opacity: 0.72;
+        margin-top: auto;
+      }
+
+      .fx-player .kaira-center-play {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%) scale(0.84);
+        opacity: 0;
+        visibility: hidden;
+        width: 4.75rem;
+        height: 4.75rem;
+        padding: 0;
+        margin: 0;
+        border-radius: 50%;
+        border: none;
+        outline: none;
+        background: rgba(212, 212, 218, 0.34);
+        -webkit-backdrop-filter: blur(28px) saturate(1.7);
+        backdrop-filter: blur(28px) saturate(1.7);
+        color: #ffffff;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        line-height: 0;
+        cursor: pointer;
+        pointer-events: none;
+        box-shadow: 0 18px 44px rgba(0, 0, 0, 0.55);
+        transition: transform 0.26s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.22s ease, background-color 0.18s ease, color 0.18s ease, visibility 0.26s;
+        z-index: 6;
+      }
+      .fx-player .kaira-center-play.atv-visible {
+        opacity: 1;
+        visibility: visible;
+        pointer-events: auto;
+        transform: translate(-50%, -50%) scale(1);
+      }
+      .fx-player .kaira-center-play.atv-visible:hover {
+        transform: translate(-50%, -50%) scale(1.08);
+        background: rgba(255, 255, 255, 0.92);
+        color: #111114;
+      }
+      .fx-player .kaira-center-play.atv-visible:active {
+        transform: translate(-50%, -50%) scale(0.95);
+      }
+
+      /* Responsive Notifications Popover (Never clips off-screen on mobile) */
+      #flicx-notes-popover.notes-popup {
+        box-sizing: border-box !important;
+        max-width: calc(100vw - 24px) !important;
+        opacity: 0;
+        transform: translate3d(0, -8px, 0) scale(0.97);
+        transform-origin: top right;
+        transition: opacity 0.22s cubic-bezier(0.22, 1, 0.36, 1), transform 0.24s cubic-bezier(0.22, 1, 0.36, 1);
+      }
+      #flicx-notes-popover.notes-popup.notes-open {
+        opacity: 1;
+        transform: translate3d(0, 0, 0) scale(1);
+      }
+      #flicx-notes-popover .notes-panel {
+        width: 100% !important;
+        max-width: 100% !important;
+        box-sizing: border-box !important;
+      }
+
+      /* Mobile & Tablet Responsive Layout (App-Wide + Apple TV Player) */
+      @media (max-width: 1023px) {
+        main {
+          padding-bottom: calc(5.5rem + env(safe-area-inset-bottom, 0px));
+        }
+        .tab-bar a {
+          min-height: 44px;
+          min-width: 44px;
+        }
+        .search-tabs,
+        .search-tabs .segmented {
+          max-width: 100%;
+          overflow-x: auto;
+          scrollbar-width: none;
+          -webkit-overflow-scrolling: touch;
+        }
+        .search-tabs .segmented::-webkit-scrollbar {
+          display: none;
+        }
+        .set-dialog {
+          padding: 12px !important;
+        }
+        .set-window {
+          width: min(560px, calc(100vw - 24px)) !important;
+          max-height: calc(100dvh - 32px) !important;
+        }
+        .set-close,
+        .set-back {
+          min-width: 44px;
+          min-height: 44px;
+        }
+        .atv-top {
+          padding: calc(1rem + env(safe-area-inset-top, 0px)) calc(1.75rem + env(safe-area-inset-right, 0px)) 1rem calc(1.75rem + env(safe-area-inset-left, 0px)) !important;
+        }
+        .atv-bottom {
+          padding: 2.5rem calc(1.75rem + env(safe-area-inset-right, 0px)) calc(1.5rem + env(safe-area-inset-bottom, 0px)) calc(1.75rem + env(safe-area-inset-left, 0px)) !important;
+        }
+        .atv-top-circle,
+        .atv-icon-btn,
+        .atv-transport-btn {
+          width: 44px;
+          height: 44px;
+        }
+        .atv-tab-btn {
+          min-height: 44px;
+          display: inline-flex;
+          align-items: center;
+        }
+        .atv-pop-item {
+          min-height: 42px;
+        }
+        .atv-scrub-wrap {
+          height: 30px;
+          touch-action: none;
+        }
+      }
+
+      /* Narrow Portrait Mobile (360px - 600px) */
+      @media (max-width: 600px) {
+        .atv-top {
+          padding: calc(0.85rem + env(safe-area-inset-top, 0px)) calc(1rem + env(safe-area-inset-right, 0px)) 0.75rem calc(1rem + env(safe-area-inset-left, 0px)) !important;
+        }
+        .atv-bottom {
+          padding: 1.75rem calc(1rem + env(safe-area-inset-right, 0px)) calc(1.15rem + env(safe-area-inset-bottom, 0px)) calc(1rem + env(safe-area-inset-left, 0px)) !important;
+          gap: 0.55rem !important;
+        }
+        .atv-header-row {
+          position: relative;
+          flex-direction: column;
+          align-items: stretch;
+          gap: 0.5rem;
+        }
+        .atv-title {
+          font-size: 1.45rem;
+          white-space: normal;
+          display: -webkit-box;
+          -webkit-line-clamp: 2;
+          -webkit-box-orient: vertical;
+        }
+        .atv-actions-wrap {
+          position: static;
+          align-self: flex-end;
+        }
+        .atv-popover {
+          bottom: calc(100% + 12px);
+          right: 0;
+        }
+        .atv-actions {
+          gap: 0.35rem;
+        }
+        .atv-tabs {
+          gap: 1.1rem;
+        }
+        .atv-transport {
+          gap: 0.1rem;
+        }
+        .atv-glass-panel.atv-open {
+          padding: 0.9rem 1rem;
+        }
+        .atv-info-grid {
+          gap: 0.85rem;
+        }
+        .atv-info-poster {
+          width: 56px;
+          height: 84px;
+        }
+        .atv-info-synopsis {
+          font-size: 0.84rem;
+          display: -webkit-box;
+          -webkit-line-clamp: 4;
+          -webkit-box-orient: vertical;
+          overflow: hidden;
+        }
+        .search-people {
+          grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+        }
+      }
+
+      /* Landscape Phone & Short Viewport (e.g. 844x390, 667x375) */
+      @media (max-height: 520px) {
+        .atv-top {
+          padding: calc(0.55rem + env(safe-area-inset-top, 0px)) calc(1.5rem + env(safe-area-inset-right, 0px)) 0.5rem calc(1.5rem + env(safe-area-inset-left, 0px)) !important;
+        }
+        .atv-bottom {
+          padding: 1.15rem calc(1.5rem + env(safe-area-inset-right, 0px)) calc(0.65rem + env(safe-area-inset-bottom, 0px)) calc(1.5rem + env(safe-area-inset-left, 0px)) !important;
+          gap: 0.35rem !important;
+        }
+        .atv-header-row {
+          flex-direction: row !important;
+          align-items: flex-end !important;
+          gap: 1rem !important;
+        }
+        .atv-title {
+          font-size: 1.3rem !important;
+          white-space: nowrap !important;
+        }
+        .atv-actions-wrap {
+          position: relative !important;
+          align-self: auto !important;
+        }
+        .atv-icon-btn,
+        .atv-top-circle,
+        .atv-transport-btn {
+          width: 40px !important;
+          height: 40px !important;
+        }
+        .atv-tab-btn {
+          min-height: 36px !important;
+          font-size: 0.92rem !important;
+        }
+        .atv-glass-popover {
+          max-height: min(172px, calc(100dvh - 200px)) !important;
+          padding: 8px 6px !important;
+        }
+        .atv-popover {
+          bottom: calc(100% + 8px) !important;
+        }
+        .atv-server-popover {
+          max-height: min(210px, calc(100dvh - 96px)) !important;
+        }
+        .atv-drawer.atv-open {
+          max-height: calc(100dvh - 150px);
+          overflow-y: auto;
+          padding: 0.75rem 1rem;
+          margin-bottom: 0.25rem;
+        }
+        .atv-info-poster {
+          width: 48px;
+          height: 72px;
+        }
+        .atv-pop-item {
+          min-height: 34px !important;
+          padding: 6px 10px !important;
+        }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        .fx-player .fx-ui,
+        .fx-player .fx-ui .fx-top,
+        .fx-player .fx-ui .fx-bottom,
+        .atv-glass-popover,
+        .atv-drawer,
+        .atv-status-pill,
+        .fx-player .kaira-center-play,
+        #flicx-notes-popover.notes-popup {
+          transition-duration: 0.01ms !important;
+        }
+      }
     `;
     document.head.appendChild(style);
   }
 
-  // --- 12. Ultra-Smooth Page Transitions & Client-Side Navigation ---
+  // --- 13. Ultra-Smooth Page Transitions & Client-Side Navigation ---
   const pageCache = new Map();
   let isNavigating = false;
-  let navProgressBar = null;
   let currentRenderedPath = window.location.pathname + window.location.search;
-
-  function ensureProgressBar() {
-    if (!navProgressBar) {
-      navProgressBar = document.getElementById('flicx-nav-progress');
-      if (!navProgressBar) {
-        navProgressBar = document.createElement('div');
-        navProgressBar.id = 'flicx-nav-progress';
-        document.body.appendChild(navProgressBar);
-      }
-    }
-    return navProgressBar;
-  }
-
-  function startNavProgress() {
-    const bar = ensureProgressBar();
-    bar.style.transition = 'none';
-    bar.style.width = '0%';
-    bar.style.opacity = '1';
-    requestAnimationFrame(() => {
-      bar.style.transition = 'width 0.28s cubic-bezier(0.1, 0.8, 0.2, 1)';
-      bar.style.width = '45%';
-      setTimeout(() => {
-        if (isNavigating) {
-          bar.style.width = '75%';
-        }
-      }, 160);
-    });
-  }
-
-  function finishNavProgress() {
-    const bar = ensureProgressBar();
-    bar.style.transition = 'width 0.14s ease-out, opacity 0.22s ease-out 0.08s';
-    bar.style.width = '100%';
-    bar.style.opacity = '0';
-  }
 
   async function fetchPageHtml(path) {
     if (pageCache.has(path)) {
@@ -2977,7 +6321,7 @@
     }
 
     isNavigating = true;
-    document.documentElement.setAttribute("data-pending", "");
+    document.documentElement.setAttribute('data-pending', '');
 
     try {
       const html = await fetchPageHtml(targetPath);
@@ -3011,11 +6355,12 @@
       return;
     } finally {
       isNavigating = false;
-      document.documentElement.removeAttribute("data-pending");
+      document.documentElement.removeAttribute('data-pending');
     }
   }
 
   function swapPageDom(newDoc, targetPath, pushState) {
+    const prevPath = currentRenderedPath;
     currentRenderedPath = targetPath;
 
     // 1. Title
@@ -3026,22 +6371,41 @@
       window.history.pushState({ path: targetPath }, newDoc.title, targetPath);
     }
 
-    // 3. Clear timers
+    // 3. Clean up previous route timers, media players & WebGL loops
     if (heroTimer) {
-      clearInterval(heroTimer);
+      clearTimeout(heroTimer);
       heroTimer = null;
     }
+    if (prevPath.startsWith('/watch/') || !targetPath.startsWith('/watch/')) {
+      try { cleanupWatchPlayer(); } catch (e) {}
+    }
+    if (prevPath.startsWith('/search') && !targetPath.startsWith('/search')) {
+      try { if (typeof window.destroyFlicxLightPillar === 'function') window.destroyFlicxLightPillar(); } catch (e) {}
+    }
+    closeTrailerModal();
+    closeNotifications();
+    closeCurrentPopup();
 
     const isTargetWatch = targetPath.startsWith('/watch/');
     const currentHeader = document.querySelector('.site-header, header');
     const newHeader = newDoc.querySelector('.site-header, header');
+    const currentTabBar = document.querySelector('nav.tab-bar');
+    const newTabBar = newDoc.querySelector('nav.tab-bar');
+    const currentFooter = document.querySelector('footer');
+    const newFooter = newDoc.querySelector('footer');
     const currentMain = document.querySelector('main');
     const newMain = newDoc.querySelector('main');
     const currentWatchRoot = document.querySelector('.watch-root');
     const newWatchRoot = newDoc.querySelector('.watch-root');
 
+    if (document.body) {
+      document.body.classList.toggle('kaira-watching', isTargetWatch);
+    }
+
     if (isTargetWatch) {
       if (currentHeader) currentHeader.style.display = 'none';
+      if (currentTabBar) currentTabBar.style.display = 'none';
+      if (currentFooter) currentFooter.style.display = 'none';
       if (currentMain) currentMain.style.display = 'none';
 
       let watchContainer = document.querySelector('.watch-root');
@@ -3077,6 +6441,18 @@
           document.body.appendChild(newMain);
         }
       }
+
+      if (!currentFooter && newFooter) {
+        document.body.appendChild(newFooter);
+      } else if (currentFooter) {
+        currentFooter.style.display = '';
+      }
+
+      if (!currentTabBar && newTabBar) {
+        document.body.appendChild(newTabBar);
+      } else if (currentTabBar) {
+        currentTabBar.style.display = '';
+      }
     }
 
     // 4. Update Navigation active tabs
@@ -3090,12 +6466,28 @@
   }
 
   function updateActiveNavTabs(currentPath) {
-    const cleanCurrent = currentPath.split('?')[0].replace(/\/$/, '') || '/';
+    const cleanCurrent = (currentPath || window.location.pathname || '/').split('?')[0].replace(/\/$/, '') || '/';
     document.querySelectorAll('.top-tabs a, .top-nav a, nav[aria-label="Primary"] a, .site-header a').forEach(a => {
       const href = a.getAttribute('href');
-      if (!href) return;
+      if (!href || href.startsWith('#')) return;
+      if (a.classList.contains('flicx-logo-link') || a.getAttribute('aria-label') === 'Kaira home') return;
+
       const cleanHref = href.split('?')[0].replace(/\/$/, '') || '/';
-      const isActive = cleanHref === '/' ? cleanCurrent === '/' : cleanCurrent.startsWith(cleanHref);
+      const inMobileTabBar = Boolean(a.closest('nav.tab-bar'));
+
+      let isActive = false;
+      if (cleanHref === '/') {
+        isActive = cleanCurrent === '/';
+      } else if (inMobileTabBar && cleanHref === '/discover') {
+        isActive =
+          cleanCurrent === '/discover' ||
+          cleanCurrent.startsWith('/discover/') ||
+          cleanCurrent.startsWith('/genres/') ||
+          cleanCurrent === '/movies' ||
+          cleanCurrent.startsWith('/movies/');
+      } else {
+        isActive = cleanCurrent === cleanHref || cleanCurrent.startsWith(cleanHref + '/');
+      }
 
       if (isActive) {
         a.classList.add('active', 'text-white');
@@ -3104,18 +6496,39 @@
         a.classList.remove('active', 'text-white');
         a.removeAttribute('aria-current');
       }
+
+      if (inMobileTabBar) {
+        const existingPill = a.querySelector('span.kaira-tab-pill, span.absolute.inset-0');
+        if (isActive) {
+          a.classList.add('text-fg');
+          a.classList.remove('text-fg-subtle');
+          if (!existingPill) {
+            const pill = document.createElement('span');
+            pill.className = 'kaira-tab-pill absolute inset-0 rounded-[calc(1.375rem*var(--corner-scale,1))] bg-white/12';
+            a.prepend(pill);
+          }
+        } else {
+          a.classList.remove('text-fg');
+          a.classList.add('text-fg-subtle');
+          if (existingPill) existingPill.remove();
+        }
+      }
     });
   }
 
   function reinitPageFeatures() {
     try { applyLiquidChromeAttributes(); } catch (e) {}
+    try { updateActiveNavTabs(window.location.pathname); } catch (e) {}
     closeCurrentPopup();
 
     try { initHeroCarousel(); } catch (e) { console.error(e); }
     try { initRailScroll(); } catch (e) { console.error(e); }
     try { initWatchlist(); } catch (e) { console.error(e); }
+    try { renderLibraryPage(); } catch (e) { console.error(e); }
     try { initWatchPlayer(); } catch (e) { console.error(e); }
+    try { initDetailPageControls(); } catch (e) { console.error(e); }
     try { initTitleSelect(); } catch (e) { console.error(e); }
+    try { initDiscoverPage(); } catch (e) { console.error(e); }
     try { initSearchPage(); } catch (e) { console.error(e); }
     try { initAnimatedLogoHover(); } catch (e) { console.error(e); }
   }
@@ -3125,13 +6538,12 @@
     if (transitionsInitialized) return;
     transitionsInitialized = true;
 
-    // Global Link Interception
     document.addEventListener('click', (e) => {
       if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) {
         return;
       }
 
-      if (e.target.closest('button, input, select, textarea, [data-watchlist-button], .cover-add, .watch-server-btn, .watch-fs-btn, .settings-btn, .notes-bell, .hero-switch-bar, .hero-pause, .select-option, .title-select, .dl-file-btn')) {
+      if (e.target.closest('button, input, select, textarea, [data-watchlist-button], .cover-add, .watch-server-btn, .watch-fs-btn, .settings-btn, .notes-bell, .hero-switch-bar, .hero-pause, .select-option, .title-select, .select-trigger, .dl-file-btn')) {
         return;
       }
 
@@ -3158,12 +6570,10 @@
       } catch (err) {}
     }, true);
 
-    // Browser History Navigation (Back / Forward)
     window.addEventListener('popstate', () => {
       navigateTo(window.location.pathname + window.location.search, false);
     });
 
-    // Hover prefetch for instantaneous transitions
     document.addEventListener('mouseover', (e) => {
       const link = e.target.closest('a[href]');
       if (!link) return;
@@ -3183,20 +6593,40 @@
 
   // --- Bootstrap on load ---
   function bootstrap() {
+    // Restore deep links redirected via GitHub Pages 404.html
+    try {
+      const ghRedirect = sessionStorage.getItem('kaira:gh-redirect');
+      if (ghRedirect) {
+        sessionStorage.removeItem('kaira:gh-redirect');
+        if (ghRedirect !== window.location.pathname + window.location.search + window.location.hash) {
+          window.history.replaceState({ path: ghRedirect }, '', ghRedirect);
+          currentRenderedPath = window.location.pathname + window.location.search;
+        }
+      }
+    } catch {}
+
     try { injectLiquidGlassStyles(); applyLiquidChromeAttributes(); } catch (e) { console.error('Liquid glass error', e); }
+    try { updateActiveNavTabs(window.location.pathname); } catch (e) { console.error('Nav tab sync error', e); }
     try { getSettingsState(); } catch (e) { console.error('Settings init error', e); }
     try { initHeroCarousel(); } catch (e) { console.error('Hero init error', e); }
     try { initCardNavigation(); } catch (e) { console.error('Card nav error', e); }
     try { initRailScroll(); } catch (e) { console.error('Rail scroll error', e); }
     try { initWatchlist(); } catch (e) { console.error('Watchlist error', e); }
+    try { renderLibraryPage(); } catch (e) { console.error('Library error', e); }
     try { initWatchPlayer(); } catch (e) { console.error('Watch player error', e); }
+    try { initDetailPageControls(); } catch (e) { console.error('Detail controls error', e); }
     try { initTitleSelect(); } catch (e) { console.error('TitleSelect error', e); }
+    try { initDiscoverPage(); } catch (e) { console.error('Discover error', e); }
     try { initSearchPage(); } catch (e) { console.error('SearchPage error', e); }
     try { initAnimatedLogoHover(); } catch (e) { console.error('LogoHover error', e); }
     try { initPageTransitions(); } catch (e) { console.error('PageTransitions error', e); }
 
-    // Wire Settings & Notification buttons with document delegation
+    // Wire Settings & Notification header buttons (strictly excluding controls inside the modals themselves)
     document.addEventListener('click', (e) => {
+      if (e.target.closest('#flicx-settings-dialog, #flicx-settings-backdrop, .set-close, #flicx-notes-popover, .notes-close')) {
+        return;
+      }
+
       const settingBtn = e.target.closest('button[aria-label*="Setting"], button[aria-label*="setting"], .settings-btn');
       if (settingBtn) {
         e.preventDefault();

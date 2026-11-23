@@ -180,10 +180,30 @@ void main() {
 }`;
   let A={low:.35,medium:.5,high:.6},j=(e,t,r)=>Math.min(r,Math.max(t,e)),R=(e,t,r)=>{let l=e.createShader(t);return l?(e.shaderSource(l,r),e.compileShader(l),e.getShaderParameter(l,e.COMPILE_STATUS))?l:(e.deleteShader(l),null):null},M=(e,t)=>{let r=R(e,e.VERTEX_SHADER,y),l=R(e,e.FRAGMENT_SHADER,t),a=e.createProgram();if(!r||!l||!a)return null;if(e.attachShader(a,r),e.attachShader(a,l),e.bindAttribLocation(a,0,"aPosition"),e.linkProgram(a),e.deleteShader(r),e.deleteShader(l),!e.getProgramParameter(a,e.LINK_STATUS))return e.deleteProgram(a),null;let i={},n=e.getProgramParameter(a,e.ACTIVE_UNIFORMS);for(let t=0;t<n;t++){let r=e.getActiveUniform(a,t);r&&(i[r.name.replace(/\[0\]$/,"")]=e.getUniformLocation(a,r.name))}return{program:a,uniforms:i}};
 
+  let activeCleanup = null;
+  let activeCanvas = null;
+
+  window.destroyFlicxLightPillar = function() {
+    if (typeof activeCleanup === 'function') {
+      try { activeCleanup(); } catch {}
+    }
+    activeCleanup = null;
+    activeCanvas = null;
+  };
+
   window.initFlicxLightPillar = function() {
     const container = document.querySelector('.light-pillar-container');
     const canvas = document.querySelector('canvas.light-pillar-canvas');
-    if (!container || !canvas) return;
+    if (!container || !canvas) {
+      window.destroyFlicxLightPillar();
+      return;
+    }
+
+    // Prevent spawning duplicate concurrent WebGL2 loops on the same mounted canvas
+    if (activeCanvas === canvas && activeCleanup) {
+      return;
+    }
+    window.destroyFlicxLightPillar();
 
     const q = {
       current: {
@@ -208,19 +228,325 @@ void main() {
         lightMode: false,
         paused: false,
         maxPixelRatio: 2,
-        maxFps: 0
+        maxFps: 60
       }
     };
 
     try {
-      let e=document.querySelector('.light-pillar-container'), t=document.querySelector('canvas.light-pillar-canvas'),r=t?.getContext("webgl2",{alpha:!0,premultipliedAlpha:!0,antialias:!1,depth:!1,stencil:!1,powerPreference:"high-performance"});if(!e||!t||!r)return;let l=!!r.getExtension("EXT_color_buffer_float"),a=M(r,b),i=M(r,E);if(!a||!i)return;let n=e=>{e.preventDefault()},o=()=>void 0;t.addEventListener("webglcontextlost",n),t.addEventListener("webglcontextrestored",o);let s=r.createBuffer(),c=r.createVertexArray();r.bindVertexArray(c),r.bindBuffer(r.ARRAY_BUFFER,s),r.bufferData(r.ARRAY_BUFFER,new Float32Array([-1,-1,3,-1,-1,3]),r.STATIC_DRAW),r.enableVertexAttribArray(0),r.vertexAttribPointer(0,2,r.FLOAT,!1,0,0);let u=null,h=r.createFramebuffer(),m={width:0,height:0},d=document.createElement("canvas").getContext("2d",{willReadFrequently:!0}),f=new Map,p=e=>{if(f.has(e))return f.get(e);let t=[1,1,1];if(d){d.clearRect(0,0,1,1),d.fillStyle="#ffffff",d.fillStyle=e,d.fillRect(0,0,1,1);let[r,l,a]=d.getImageData(0,0,1,1).data;t=[r/255,l/255,a/255]}return f.set(e,t),t},x=window.matchMedia?.("(prefers-reduced-motion: reduce)").matches??!1,g={width:1,height:1,ratio:1},v={x:0,y:0,inside:!1},w=[],y=new Float32Array(12),A={clock:0,intro:q.current.intro&&!x?0:1,touch:0,spin:0,lean:0,shift:0,governor:1,slow:0,quick:0},R=0,F=0,L=!0,T=()=>{let e,n=q.current,o=Math.max(.25,n.scale*A.governor);((e,t)=>{if(m.width===e&&m.height===t)return;m.width=e,m.height=t,u&&r.deleteTexture(u),u=r.createTexture(),r.bindTexture(r.TEXTURE_2D,u);let a=Math.floor(Math.log2(Math.max(e,t)))+1;r.texStorage2D(r.TEXTURE_2D,a,l?r.RGBA16F:r.RGBA8,e,t),r.texParameteri(r.TEXTURE_2D,r.TEXTURE_MIN_FILTER,r.LINEAR_MIPMAP_LINEAR),r.texParameteri(r.TEXTURE_2D,r.TEXTURE_MAG_FILTER,r.LINEAR),r.texParameteri(r.TEXTURE_2D,r.TEXTURE_WRAP_S,r.CLAMP_TO_EDGE),r.texParameteri(r.TEXTURE_2D,r.TEXTURE_WRAP_T,r.CLAMP_TO_EDGE),r.bindFramebuffer(r.FRAMEBUFFER,h),r.framebufferTexture2D(r.FRAMEBUFFER,r.COLOR_ATTACHMENT0,r.TEXTURE_2D,u,0)})(Math.max(1,Math.round(g.width*o)),Math.max(1,Math.round(g.height*o)));let s=(e=A.intro)*e*e*(e*(6*e-15)+10),d=1-Math.pow(1-A.intro,3),f=(n.pillarRotation+A.lean)*Math.PI/180,x=.3*A.clock+A.spin,v=n.pillarWidth*(.3+.7*s);r.bindVertexArray(c);let b=a.uniforms;r.bindFramebuffer(r.FRAMEBUFFER,h),r.viewport(0,0,m.width,m.height),r.useProgram(a.program),r.uniform1f(b.uTime,A.clock*n.flow),r.uniform2f(b.uResolution,g.width,g.height),r.uniform2f(b.uTarget,m.width,m.height),r.uniform2f(b.uRot,Math.cos(x),Math.sin(x)),r.uniform2f(b.uPillarRot,Math.cos(f),Math.sin(f)),r.uniform2f(b.uWave,Math.sin(n.twist),Math.cos(n.twist)),r.uniform1f(b.uShift,A.shift),r.uniform1f(b.uPillarWidth,v),r.uniform1f(b.uPillarHeight,n.pillarHeight),r.uniform1i(b.uDetail,n.detail),r.uniform3fv(b.uTopColor,p(n.topColor)),r.uniform3fv(b.uBottomColor,p(n.bottomColor)),r.uniform1f(b.uGlowAmount,n.glowAmount),r.uniform1f(b.uWidthNorm,v/3),r.drawArrays(r.TRIANGLES,0,3),r.bindTexture(r.TEXTURE_2D,u),n.bloom>0&&r.generateMipmap(r.TEXTURE_2D),y.fill(0),w.forEach((e,t)=>{y.set([e.axis+1.7*e.age,Math.exp(-e.age/.63),0,0],4*t)});let E=i.uniforms;r.bindFramebuffer(r.FRAMEBUFFER,null),r.viewport(0,0,t.width,t.height),r.useProgram(i.program),r.activeTexture(r.TEXTURE0),r.bindTexture(r.TEXTURE_2D,u),r.uniform1i(E.uField,0),r.uniform2f(E.uFieldSize,m.width,m.height),r.uniform2f(E.uView,t.width,t.height),r.uniform2f(E.uAspect,g.width/g.height,1),r.uniform2f(E.uPillarRot,Math.cos(f),Math.sin(f)),r.uniform1f(E.uShift,A.shift),r.uniform1f(E.uIntensity,n.intensity*(.15+.85*d)*(1+.12*A.touch)),r.uniform1f(E.uNoiseIntensity,n.noiseIntensity),r.uniform1f(E.uLightMode,+!!n.lightMode);let R=e=>Math.max(...e)-Math.min(...e),M=Math.max(R(p(n.topColor)),R(p(n.bottomColor)));r.uniform1f(E.uNeutral,1-j((M-.08)/.12,0,1)),r.uniform1f(E.uBloom,n.bloom),r.uniform1f(E.uFade,n.fade);let F=g.width/g.height+1.2;r.uniform1f(E.uReveal,A.intro>=1?1e4:-F+d*(2*F+1.2)),r.uniform1f(E.uFlare,A.intro>=1?0:(1-d)*1.3*Math.min(1,8*A.intro)),r.uniform4fv(E.uPulses,y),r.drawArrays(r.TRIANGLES,0,3)},S=e=>{var t;if(R=0,!L||document.hidden)return;let r=q.current;if(r.maxFps>0&&F&&e-F<1e3/r.maxFps-2){R=requestAnimationFrame(S);return}let l=F?Math.min(.05,(e-F)/1e3):1/60;F&&((t=(e-F)/1e3*(r.maxFps>0?Math.min(1,r.maxFps/60):1))>.025?(A.slow+=1,A.quick=0):t<1/55&&(A.quick+=1,A.slow=0),A.slow>20?(A.governor=Math.max(.5,.85*A.governor),A.slow=0):A.quick>180&&A.governor<1&&(A.governor=Math.min(1,1.1*A.governor),A.quick=0)),F=e;let a=!r.paused&&!x&&0!==r.rotationSpeed;a&&(A.clock+=.96*l*r.rotationSpeed),!r.intro||x?A.intro=1:A.intro<1&&(A.intro=Math.min(1,A.intro+l/2.1));let i=r.interactive&&v.inside&&!x,n=i?v.x/g.width-.5:0,o=1-Math.exp(-(2.4*l));A.spin+=(1.4*n-A.spin)*o,A.lean+=(9*n-A.lean)*o,A.shift+=(.35*n*(g.width/g.height)-A.shift)*o,A.touch+=(!!i-A.touch)*(1-Math.exp(-(3*l)));for(let e=w.length-1;e>=0;e--)w[e].age+=l,w[e].age>3.08&&w.splice(e,1);T();let s=A.intro<1||w.length>0||Math.abs(1.4*n-A.spin)>5e-4||Math.abs(!!i-A.touch)>.002;a||s?R=requestAnimationFrame(S):F=0},N=()=>{R||!L||document.hidden||(R=requestAnimationFrame(S))},P=()=>{let r=Math.max(1,e.clientWidth),l=Math.max(1,e.clientHeight),a=Math.min(window.devicePixelRatio||1,q.current.maxPixelRatio);g.width=r,g.height=l,g.ratio=a,t.width=Math.max(1,Math.round(r*a)),t.height=Math.max(1,Math.round(l*a)),T(),N()},I=t=>{let r=e.getBoundingClientRect(),l=t.clientX-r.left,a=t.clientY-r.top;return{x:l,y:a,inside:l>=0&&a>=0&&l<=r.width&&a<=r.height}},U=e=>{let t=I(e);v.x=t.x,v.y=t.y,v.inside=t.inside,N()},D=e=>{var t,r;let l,a=q.current;if(!a.clickPulse||x)return;let i=I(e);if(!i.inside)return;let n=(a.pillarRotation+A.lean)*Math.PI/180;w.push({axis:(t=i.x,r=i.y,l=g.width/g.height,Math.sin(n)*((t/g.width*2-1)*l-A.shift)+Math.cos(n)*(1-r/g.height*2)),age:0}),w.length>3&&w.shift(),N()},B=()=>{v.inside=!1,N()},V=()=>{F=0,N()},$=new ResizeObserver(P);$.observe(e);let z=new IntersectionObserver(e=>{(L=e.some(e=>e.isIntersecting))&&(F=0,N())});return z.observe(e),window.addEventListener("pointermove",U,{passive:!0}),window.addEventListener("pointerdown",D,{passive:!0}),document.documentElement.addEventListener("pointerleave",B),document.addEventListener("visibilitychange",V),P(),k.current=()=>{R||T(),N()};
-} catch (err) {
+      const e = container;
+      const t = canvas;
+      const r = t.getContext("webgl2", {
+        alpha: true,
+        premultipliedAlpha: true,
+        antialias: false,
+        depth: false,
+        stencil: false,
+        powerPreference: "high-performance"
+      });
+      if (!r) return;
+
+      // Detect software WebGL renderers (SwiftShader, llvmpipe, Mesa) and throttle to avoid main-thread stalls
+      let isSoftwareGl = false;
+      try {
+        const dbg = r.getExtension("WEBGL_debug_renderer_info");
+        const rendererStr = dbg ? String(r.getParameter(dbg.UNMASKED_RENDERER_WEBGL) || '') : String(r.getParameter(r.RENDERER) || '');
+        if (/swiftshader|llvmpipe|software|mesa|microsoft basic/i.test(rendererStr)) {
+          isSoftwareGl = true;
+        }
+      } catch {}
+
+      if (isSoftwareGl) {
+        q.current.scale = 0.25;
+        q.current.detail = 2;
+        q.current.bloom = 0;
+        q.current.maxPixelRatio = 1;
+        q.current.maxFps = 12;
+        q.current.rotationSpeed = 0;
+        q.current.intro = false;
+      }
+
+      const l = !!r.getExtension("EXT_color_buffer_float");
+      const a = M(r, b);
+      const i = M(r, E);
+      if (!a || !i) return;
+
+      const onContextLost = (ev) => { ev.preventDefault(); };
+      const onContextRestored = () => {};
+      t.addEventListener("webglcontextlost", onContextLost);
+      t.addEventListener("webglcontextrestored", onContextRestored);
+
+      const s = r.createBuffer();
+      const c = r.createVertexArray();
+      r.bindVertexArray(c);
+      r.bindBuffer(r.ARRAY_BUFFER, s);
+      r.bufferData(r.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), r.STATIC_DRAW);
+      r.enableVertexAttribArray(0);
+      r.vertexAttribPointer(0, 2, r.FLOAT, false, 0, 0);
+
+      let u = null;
+      const h = r.createFramebuffer();
+      const m = { width: 0, height: 0 };
+      const d = document.createElement("canvas").getContext("2d", { willReadFrequently: true });
+      const f = new Map();
+      const p = (colorStr) => {
+        if (f.has(colorStr)) return f.get(colorStr);
+        let rgb = [1, 1, 1];
+        if (d) {
+          d.clearRect(0, 0, 1, 1);
+          d.fillStyle = "#ffffff";
+          d.fillStyle = colorStr;
+          d.fillRect(0, 0, 1, 1);
+          const [cr, cg, cb] = d.getImageData(0, 0, 1, 1).data;
+          rgb = [cr / 255, cg / 255, cb / 255];
+        }
+        f.set(colorStr, rgb);
+        return rgb;
+      };
+
+      const x = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
+      const g = { width: 1, height: 1, ratio: 1 };
+      const v = { x: 0, y: 0, inside: false };
+      const w = [];
+      const pulseArr = new Float32Array(12);
+      const st = { clock: 0, intro: q.current.intro && !x ? 0 : 1, touch: 0, spin: 0, lean: 0, shift: 0, governor: 1, slow: 0, quick: 0 };
+      let rafId = 0;
+      let lastTs = 0;
+      let isVisible = true;
+      let disposed = false;
+
+      const renderFrame = () => {
+        if (disposed) return;
+        const cfg = q.current;
+        const scale = Math.max(0.2, cfg.scale * st.governor);
+        const tw = Math.max(1, Math.round(g.width * scale));
+        const th = Math.max(1, Math.round(g.height * scale));
+        if (m.width !== tw || m.height !== th) {
+          m.width = tw;
+          m.height = th;
+          if (u) r.deleteTexture(u);
+          u = r.createTexture();
+          r.bindTexture(r.TEXTURE_2D, u);
+          const levels = Math.floor(Math.log2(Math.max(tw, th))) + 1;
+          r.texStorage2D(r.TEXTURE_2D, levels, l ? r.RGBA16F : r.RGBA8, tw, th);
+          r.texParameteri(r.TEXTURE_2D, r.TEXTURE_MIN_FILTER, r.LINEAR_MIPMAP_LINEAR);
+          r.texParameteri(r.TEXTURE_2D, r.TEXTURE_MAG_FILTER, r.LINEAR);
+          r.texParameteri(r.TEXTURE_2D, r.TEXTURE_WRAP_S, r.CLAMP_TO_EDGE);
+          r.texParameteri(r.TEXTURE_2D, r.TEXTURE_WRAP_T, r.CLAMP_TO_EDGE);
+          r.bindFramebuffer(r.FRAMEBUFFER, h);
+          r.framebufferTexture2D(r.FRAMEBUFFER, r.COLOR_ATTACHMENT0, r.TEXTURE_2D, u, 0);
+        }
+
+        const introT = st.intro;
+        const smoothIntro = introT * introT * introT * (introT * (6 * introT - 15) + 10);
+        const easeIntro = 1 - Math.pow(1 - st.intro, 3);
+        const rotRad = ((cfg.pillarRotation + st.lean) * Math.PI) / 180;
+        const spinVal = 0.3 * st.clock + st.spin;
+        const widthVal = cfg.pillarWidth * (0.3 + 0.7 * smoothIntro);
+
+        r.bindVertexArray(c);
+        const bu = a.uniforms;
+        r.bindFramebuffer(r.FRAMEBUFFER, h);
+        r.viewport(0, 0, m.width, m.height);
+        r.useProgram(a.program);
+        r.uniform1f(bu.uTime, st.clock * cfg.flow);
+        r.uniform2f(bu.uResolution, g.width, g.height);
+        r.uniform2f(bu.uTarget, m.width, m.height);
+        r.uniform2f(bu.uRot, Math.cos(spinVal), Math.sin(spinVal));
+        r.uniform2f(bu.uPillarRot, Math.cos(rotRad), Math.sin(rotRad));
+        r.uniform2f(bu.uWave, Math.sin(cfg.twist), Math.cos(cfg.twist));
+        r.uniform1f(bu.uShift, st.shift);
+        r.uniform1f(bu.uPillarWidth, widthVal);
+        r.uniform1f(bu.uPillarHeight, cfg.pillarHeight);
+        r.uniform1i(bu.uDetail, cfg.detail);
+        r.uniform3fv(bu.uTopColor, p(cfg.topColor));
+        r.uniform3fv(bu.uBottomColor, p(cfg.bottomColor));
+        r.uniform1f(bu.uGlowAmount, cfg.glowAmount);
+        r.uniform1f(bu.uWidthNorm, widthVal / 3);
+        r.drawArrays(r.TRIANGLES, 0, 3);
+
+        r.bindTexture(r.TEXTURE_2D, u);
+        if (cfg.bloom > 0) r.generateMipmap(r.TEXTURE_2D);
+
+        pulseArr.fill(0);
+        w.forEach((pulse, idx) => {
+          pulseArr.set([pulse.axis + 1.7 * pulse.age, Math.exp(-pulse.age / 0.63), 0, 0], 4 * idx);
+        });
+
+        const eu = i.uniforms;
+        r.bindFramebuffer(r.FRAMEBUFFER, null);
+        r.viewport(0, 0, t.width, t.height);
+        r.useProgram(i.program);
+        r.activeTexture(r.TEXTURE0);
+        r.bindTexture(r.TEXTURE_2D, u);
+        r.uniform1i(eu.uField, 0);
+        r.uniform2f(eu.uFieldSize, m.width, m.height);
+        r.uniform2f(eu.uView, t.width, t.height);
+        r.uniform2f(eu.uAspect, g.width / g.height, 1);
+        r.uniform2f(eu.uPillarRot, Math.cos(rotRad), Math.sin(rotRad));
+        r.uniform1f(eu.uShift, st.shift);
+        r.uniform1f(eu.uIntensity, cfg.intensity * (0.15 + 0.85 * easeIntro) * (1 + 0.12 * st.touch));
+        r.uniform1f(eu.uNoiseIntensity, cfg.noiseIntensity);
+        r.uniform1f(eu.uLightMode, +!!cfg.lightMode);
+        const chroma = (rgb) => Math.max(...rgb) - Math.min(...rgb);
+        const maxChroma = Math.max(chroma(p(cfg.topColor)), chroma(p(cfg.bottomColor)));
+        r.uniform1f(eu.uNeutral, 1 - j((maxChroma - 0.08) / 0.12, 0, 1));
+        r.uniform1f(eu.uBloom, cfg.bloom);
+        r.uniform1f(eu.uFade, cfg.fade);
+        const aspectPad = g.width / g.height + 1.2;
+        r.uniform1f(eu.uReveal, st.intro >= 1 ? 1e4 : -aspectPad + easeIntro * (2 * aspectPad + 1.2));
+        r.uniform1f(eu.uFlare, st.intro >= 1 ? 0 : (1 - easeIntro) * 1.3 * Math.min(1, 8 * st.intro));
+        r.uniform4fv(eu.uPulses, pulseArr);
+        r.drawArrays(r.TRIANGLES, 0, 3);
+      };
+
+      const tick = (now) => {
+        rafId = 0;
+        if (disposed || !isVisible || document.hidden || !t.isConnected) return;
+        const cfg = q.current;
+        if (cfg.maxFps > 0 && lastTs && now - lastTs < 1000 / cfg.maxFps - 2) {
+          rafId = requestAnimationFrame(tick);
+          return;
+        }
+        const dt = lastTs ? Math.min(0.05, (now - lastTs) / 1000) : 1 / 60;
+        if (lastTs) {
+          const frameCost = ((now - lastTs) / 1000) * (cfg.maxFps > 0 ? Math.min(1, cfg.maxFps / 60) : 1);
+          if (frameCost > 0.025) { st.slow += 1; st.quick = 0; }
+          else if (frameCost < 1 / 55) { st.quick += 1; st.slow = 0; }
+          if (st.slow > 20) { st.governor = Math.max(0.5, 0.85 * st.governor); st.slow = 0; }
+          else if (st.quick > 180 && st.governor < 1) { st.governor = Math.min(1, 1.1 * st.governor); st.quick = 0; }
+        }
+        lastTs = now;
+
+        const isAnimated = !cfg.paused && !x && cfg.rotationSpeed !== 0;
+        if (isAnimated) st.clock += 0.96 * dt * cfg.rotationSpeed;
+        if (!cfg.intro || x) st.intro = 1;
+        else if (st.intro < 1) st.intro = Math.min(1, st.intro + dt / 2.1);
+
+        const interactive = cfg.interactive && v.inside && !x && !isSoftwareGl;
+        const normX = interactive ? v.x / g.width - 0.5 : 0;
+        const lerp = 1 - Math.exp(-(2.4 * dt));
+        st.spin += (1.4 * normX - st.spin) * lerp;
+        st.lean += (9 * normX - st.lean) * lerp;
+        st.shift += (0.35 * normX * (g.width / g.height) - st.shift) * lerp;
+        st.touch += ((interactive ? 1 : 0) - st.touch) * (1 - Math.exp(-(3 * dt)));
+
+        for (let idx = w.length - 1; idx >= 0; idx--) {
+          w[idx].age += dt;
+          if (w[idx].age > 3.08) w.splice(idx, 1);
+        }
+
+        renderFrame();
+
+        const needsMore =
+          st.intro < 1 ||
+          w.length > 0 ||
+          Math.abs(1.4 * normX - st.spin) > 5e-4 ||
+          Math.abs((interactive ? 1 : 0) - st.touch) > 0.002;
+        if (isAnimated || needsMore) {
+          rafId = requestAnimationFrame(tick);
+        } else {
+          lastTs = 0;
+        }
+      };
+
+      const schedule = () => {
+        if (disposed || rafId || !isVisible || document.hidden || !t.isConnected) return;
+        rafId = requestAnimationFrame(tick);
+      };
+
+      const resize = () => {
+        if (disposed) return;
+        const cw = Math.max(1, e.clientWidth);
+        const ch = Math.max(1, e.clientHeight);
+        const pr = Math.min(window.devicePixelRatio || 1, q.current.maxPixelRatio);
+        g.width = cw;
+        g.height = ch;
+        g.ratio = pr;
+        t.width = Math.max(1, Math.round(cw * pr));
+        t.height = Math.max(1, Math.round(ch * pr));
+        renderFrame();
+        schedule();
+      };
+
+      const toLocal = (ev) => {
+        const rect = e.getBoundingClientRect();
+        const lx = ev.clientX - rect.left;
+        const ly = ev.clientY - rect.top;
+        return { x: lx, y: ly, inside: lx >= 0 && ly >= 0 && lx <= rect.width && ly <= rect.height };
+      };
+
+      const onMove = (ev) => {
+        if (isSoftwareGl) return;
+        const loc = toLocal(ev);
+        v.x = loc.x;
+        v.y = loc.y;
+        v.inside = loc.inside;
+        schedule();
+      };
+
+      const onDown = (ev) => {
+        const cfg = q.current;
+        if (!cfg.clickPulse || x || isSoftwareGl) return;
+        const loc = toLocal(ev);
+        if (!loc.inside) return;
+        const rad = ((cfg.pillarRotation + st.lean) * Math.PI) / 180;
+        const aspect = g.width / g.height;
+        const axis = Math.sin(rad) * (((loc.x / g.width) * 2 - 1) * aspect - st.shift) + Math.cos(rad) * (1 - (loc.y / g.height) * 2);
+        w.push({ axis, age: 0 });
+        if (w.length > 3) w.shift();
+        schedule();
+      };
+
+      const onLeave = () => { v.inside = false; schedule(); };
+      const onVis = () => { lastTs = 0; schedule(); };
+
+      const ro = new ResizeObserver(resize);
+      ro.observe(e);
+      const io = new IntersectionObserver((entries) => {
+        isVisible = entries.some((entry) => entry.isIntersecting);
+        if (isVisible) {
+          lastTs = 0;
+          schedule();
+        }
+      });
+      io.observe(e);
+
+      window.addEventListener("pointermove", onMove, { passive: true });
+      window.addEventListener("pointerdown", onDown, { passive: true });
+      document.documentElement.addEventListener("pointerleave", onLeave);
+      document.addEventListener("visibilitychange", onVis);
+
+      resize();
+
+      activeCanvas = t;
+      activeCleanup = () => {
+        disposed = true;
+        if (rafId) cancelAnimationFrame(rafId);
+        rafId = 0;
+        ro.disconnect();
+        io.disconnect();
+        window.removeEventListener("pointermove", onMove);
+        window.removeEventListener("pointerdown", onDown);
+        document.documentElement.removeEventListener("pointerleave", onLeave);
+        document.removeEventListener("visibilitychange", onVis);
+        t.removeEventListener("webglcontextlost", onContextLost);
+        t.removeEventListener("webglcontextrestored", onContextRestored);
+        try {
+          if (u) r.deleteTexture(u);
+          if (h) r.deleteFramebuffer(h);
+          if (s) r.deleteBuffer(s);
+          if (c) r.deleteVertexArray(c);
+          if (a?.program) r.deleteProgram(a.program);
+          if (i?.program) r.deleteProgram(i.program);
+        } catch {}
+      };
+    } catch (err) {
       console.warn('WebGL2 light pillar init notice:', err);
     }
   };
 
   if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', window.initFlicxLightPillar);
+    document.addEventListener('DOMContentLoaded', window.initFlicxLightPillar, { once: true });
   } else {
     window.initFlicxLightPillar();
   }
