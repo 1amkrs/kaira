@@ -1,0 +1,247 @@
+.flicx-player-wrap {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100vh;
+  background: #000000;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  user-select: none;
+}
+
+.flicx-video-element {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  background: #000000;
+}
+
+.flicx-player-hud {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  background: linear-gradient(
+    to bottom,
+    rgba(0, 0, 0, 0.7) 0%,
+    transparent 20%,
+    transparent 70%,
+    rgba(0, 0, 0, 0.85) 100%
+  );
+  opacity: 0;
+  transition: opacity 0.25s ease;
+  pointer-events: none;
+}
+
+.flicx-player-wrap:hover .flicx-player-hud,
+.flicx-player-wrap.hud-visible .flicx-player-hud {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* Top Bar */
+.flicx-player-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 24px 32px;
+}
+
+.flicx-player-title-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.flicx-player-title {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: #ffffff;
+}
+
+.flicx-player-subtitle {
+  font-size: 0.88rem;
+  color: var(--color-fg-muted);
+}
+
+/* Center Controls */
+.flicx-player-center {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 32px;
+}
+
+.flicx-center-btn {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.12);
+  backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #ffffff;
+  transition: transform 0.2s, background 0.2s;
+}
+
+.flicx-center-btn:hover {
+  transform: scale(1.1);
+  background: rgba(255, 255, 255, 0.24);
+}
+
+/* Bottom Controls */
+.flicx-player-bottom {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 0 32px 28px;
+}
+
+/* Timeline */
+.flicx-timeline-track {
+  width: 100%;
+  height: 6px;
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 3px;
+  position: relative;
+  cursor: pointer;
+  transition: height 0.15s ease;
+}
+
+.flicx-timeline-track:hover {
+  height: 10px;
+}
+
+.flicx-timeline-buffered {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  background: rgba(255, 255, 255, 0.35);
+  border-radius: 3px;
+}
+
+.flicx-timeline-progress {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  background: var(--brand);
+  border-radius: 3px;
+}
+
+.flicx-timeline-thumb {
+  position: absolute;
+  right: -6px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #ffffff;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.5);
+}
+
+/* Bottom Action Row */
+.flicx-bottom-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.flicx-bottom-left, .flicx-bottom-right {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.flicx-time-display {
+  font-size: 0.85rem;
+  color: var(--color-fg-muted);
+  font-feature-settings: 'tnum';
+  font-variant-numeric: tabular-nums;
+}
+
+.flicx-ctrl-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  transition: var(--transition-smooth);
+}
+
+.flicx-ctrl-btn:hover {
+  background: rgba(255, 255, 255, 0.18);
+  border-color: rgba(255, 255, 255, 0.25);
+}
+
+/* Server Selector Modal */
+.flicx-menu-modal {
+  position: absolute;
+  bottom: 84px;
+  right: 32px;
+  width: 320px;
+  background: rgba(18, 18, 22, 0.95);
+  backdrop-filter: blur(28px);
+  border: 1px solid var(--color-line-strong);
+  border-radius: 16px;
+  padding: 16px;
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.7);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  z-index: 1000;
+}
+
+.flicx-menu-header {
+  font-size: 0.82rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--color-fg-faint);
+  border-bottom: 1px solid var(--color-line);
+  padding-bottom: 8px;
+}
+
+.flicx-menu-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 280px;
+  overflow-y: auto;
+}
+
+.flicx-menu-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.04);
+  font-size: 0.88rem;
+  font-weight: 500;
+  color: var(--color-fg);
+  transition: var(--transition-smooth);
+}
+
+.flicx-menu-item:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.flicx-menu-item.active {
+  background: var(--brand-subtle);
+  color: var(--brand-lit);
+  border: 1px solid var(--brand-glow);
+}

@@ -1,6 +1,25 @@
-export type NavigationTab = 'for-you' | 'movies' | 'shows' | 'music' | 'games' | 'library';
+export type NavigationTab =
+  | 'home'
+  | 'discover'
+  | 'movies'
+  | 'shows'
+  | 'anime'
+  | 'collections'
+  | 'genres'
+  | '4k'
+  | 'awards'
+  | 'library'
+  | 'for-you'
+  | 'music'
+  | 'games';
 
-export type ScreenId = NavigationTab | 'search' | 'settings' | 'movie-details' | 'show-details' | 'album-details' | 'video-player' | 'music-player' | 'games';
+export type ScreenId =
+  | NavigationTab
+  | 'search'
+  | 'settings'
+  | 'movie-details'
+  | 'show-details'
+  | 'video-player';
 
 export * from './media';
 export * from './profile';

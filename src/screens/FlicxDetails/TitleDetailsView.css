@@ -1,0 +1,192 @@
+.flicx-details-page {
+  width: 100%;
+  min-height: 100vh;
+  background-color: var(--color-canvas);
+  color: var(--color-fg);
+  position: relative;
+  overflow-x: hidden;
+  padding-bottom: 80px;
+}
+
+/* Hero Section */
+.flicx-hero-banner {
+  position: relative;
+  width: 100%;
+  height: 60vh;
+  min-height: 480px;
+  overflow: hidden;
+}
+
+.flicx-hero-backdrop {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center 25%;
+  filter: brightness(0.75);
+}
+
+.flicx-hero-gradient {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    to bottom,
+    rgba(0, 0, 0, 0.3) 0%,
+    rgba(0, 0, 0, 0.4) 40%,
+    rgba(0, 0, 0, 0.85) 80%,
+    #000000 100%
+  );
+}
+
+.flicx-hero-content {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  max-width: var(--content-max-width);
+  margin: 0 auto;
+  padding: 0 40px 32px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.flicx-title-name {
+  font-family: var(--font-heading);
+  font-size: 3rem;
+  font-weight: 800;
+  line-height: 1.1;
+  color: #ffffff;
+  letter-spacing: -0.02em;
+}
+
+.flicx-title-meta-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  font-size: 0.95rem;
+  color: var(--color-fg-muted);
+}
+
+.flicx-meta-dot {
+  opacity: 0.4;
+}
+
+.flicx-action-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 8px;
+}
+
+/* Content Body */
+.flicx-details-body {
+  max-width: var(--content-max-width);
+  margin: 0 auto;
+  padding: 0 40px;
+  display: flex;
+  flex-direction: column;
+  gap: 40px;
+}
+
+.flicx-story-box {
+  max-width: 800px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.flicx-story-text {
+  font-size: 1.05rem;
+  line-height: 1.65;
+  color: var(--color-fg-muted);
+}
+
+/* Cast Row */
+.flicx-cast-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  overflow-x: auto;
+  padding-bottom: 12px;
+}
+
+.flicx-cast-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--color-line);
+  border-radius: 12px;
+  padding: 8px 14px 8px 8px;
+  flex-shrink: 0;
+}
+
+.flicx-cast-avatar {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  object-fit: cover;
+  background: var(--color-surface-2);
+}
+
+.flicx-cast-info {
+  display: flex;
+  flex-direction: column;
+}
+
+.flicx-cast-name {
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: #ffffff;
+}
+
+.flicx-cast-role {
+  font-size: 0.75rem;
+  color: var(--color-fg-faint);
+}
+
+/* TV Season Pills */
+.flicx-season-tabs {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+  margin-bottom: 16px;
+  overflow-x: auto;
+}
+
+.flicx-season-tab {
+  padding: 6px 14px;
+  border-radius: var(--pill-radius);
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--color-line);
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--color-fg-muted);
+  cursor: pointer;
+  transition: var(--transition-smooth);
+}
+
+.flicx-season-tab:hover {
+  background: rgba(255, 255, 255, 0.12);
+  color: #ffffff;
+}
+
+.flicx-season-tab.active {
+  background: #ffffff;
+  color: #000000;
+  border-color: #ffffff;
+}
+
+@media (max-width: 768px) {
+  .flicx-hero-content {
+    padding: 0 20px 24px;
+  }
+  .flicx-title-name {
+    font-size: 2rem;
+  }
+  .flicx-details-body {
+    padding: 0 20px;
+  }
+}

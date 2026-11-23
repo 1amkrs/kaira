@@ -1,444 +1,112 @@
-/* ==========================================================================
-   Kaira Navigation Bar — Material Design 3 for Android TV, Tablet & Mobile
-   ========================================================================== */
-
-.tv-topnav-container {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 24px;
-  height: var(--top-nav-height);
-  padding: 0 var(--screen-padding-x);
-  position: absolute;
+.flicx-navbar {
+  position: sticky;
   top: 0;
   left: 0;
   right: 0;
-  z-index: 100;
-  background: linear-gradient(
-    180deg,
-    rgba(0, 0, 0, 0.9) 0%,
-    rgba(0, 0, 0, 0.48) 58%,
-    rgba(0, 0, 0, 0) 100%
-  );
-  pointer-events: none;
-}
-
-/* --------------------------------------------------------------------------
-   Zone 1: Profile Trigger (No Double Outer Ring)
-   -------------------------------------------------------------------------- */
-.tv-gtv-brand-zone {
+  height: var(--nav-height);
+  background: var(--chrome-nav-bg);
+  backdrop-filter: var(--chrome-nav-filter);
+  -webkit-backdrop-filter: var(--chrome-nav-filter);
+  border-bottom: 1px solid var(--color-line);
   display: flex;
   align-items: center;
-  gap: 12px;
-  flex-shrink: 0;
-  pointer-events: auto;
+  justify-content: space-between;
+  padding: 0 32px;
+  z-index: 1000;
+  user-select: none;
 }
 
-.tv-gtv-profile-focusable {
-  border-radius: 50%;
-  outline: none;
-}
-
-.tv-gtv-avatar-btn {
-  position: relative;
-  width: 40px;
-  height: 40px;
-  border-radius: 50%;
+.flicx-nav-left {
   display: flex;
   align-items: center;
-  justify-content: center;
+  gap: 32px;
+}
+
+.flicx-brand-logo {
+  display: flex;
+  align-items: center;
+  gap: 10px;
   cursor: pointer;
-  border: 2px solid transparent;
-  transition:
-    border-color var(--duration-base) var(--easing-standard),
-    box-shadow var(--duration-base) var(--easing-standard);
+  color: #ffffff;
 }
 
-.tv-gtv-avatar-fallback {
-  width: 100%;
-  height: 100%;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+.flicx-brand-logo svg {
+  width: 24px;
+  height: 24px;
+  color: #ffffff;
 }
 
-.tv-gtv-avatar-lock {
-  position: absolute;
-  bottom: -2px;
-  right: -2px;
-  width: 15px;
-  height: 15px;
-  border-radius: 50%;
-  background-color: var(--md-sys-color-surface-container-highest);
-  border: 1.5px solid var(--md-sys-color-background);
-  display: flex;
-  align-items: center;
-  justify-content: center;
+.flicx-brand-text {
+  font-family: var(--font-heading);
+  font-size: 1.25rem;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  color: #ffffff;
 }
 
-.tv-gtv-avatar-btn.focused {
-  border-color: var(--md-sys-color-focus-ring);
-  box-shadow: 0 0 0 2px var(--md-sys-color-focus-ring);
-}
-
-/* --------------------------------------------------------------------------
-   Zone 2: Clean Typographic / Tonal Tab Strip (No Outer Capsule Cage)
-   -------------------------------------------------------------------------- */
-.tv-gtv-nav-strip {
+.flicx-nav-links {
   display: flex;
   align-items: center;
   gap: 6px;
-  pointer-events: auto;
-  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
 }
 
-.tv-gtv-tab-focusable {
-  border-radius: var(--radius-pill);
-  outline: none;
-  flex-shrink: 0;
+.flicx-nav-links::-webkit-scrollbar {
+  display: none;
 }
 
-.tv-gtv-tab-pill {
-  padding: 9px 18px;
-  min-height: 40px;
-  border-radius: var(--radius-pill);
-  font-size: 15px;
+.flicx-nav-link {
+  padding: 6px 14px;
+  border-radius: var(--pill-radius);
+  font-size: 0.9rem;
   font-weight: 500;
-  color: var(--md-sys-color-on-surface-variant);
-  letter-spacing: 0.15px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border: 1px solid transparent;
-  transition:
-    background-color var(--duration-base) var(--easing-standard),
-    color var(--duration-base) var(--easing-standard),
-    border-color var(--duration-base) var(--easing-standard),
-    box-shadow var(--duration-base) var(--easing-standard);
-  cursor: pointer;
-  user-select: none;
+  color: var(--color-fg-muted);
+  transition: var(--transition-smooth);
   white-space: nowrap;
 }
 
-.tv-gtv-tab-pill.active {
-  background-color: var(--md-sys-color-secondary-container);
-  color: var(--md-sys-color-on-secondary-container);
+.flicx-nav-link:hover {
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.flicx-nav-link.active {
+  color: #000000;
+  background: #ffffff;
   font-weight: 600;
 }
 
-.tv-gtv-tab-pill.focused:not(.active) {
-  background-color: var(--md-sys-color-surface-container-highest);
-  color: var(--md-sys-color-on-surface);
-  border-color: var(--md-sys-color-focus-ring);
-  box-shadow: 0 0 0 2px var(--md-sys-color-focus-ring);
-}
-
-.tv-gtv-tab-pill.active.focused {
-  background-color: var(--md-sys-color-primary);
-  color: var(--md-sys-color-on-primary);
-  border-color: var(--md-sys-color-focus-ring);
-  box-shadow: 0 0 0 2px var(--md-sys-color-focus-ring);
-}
-
-/* --------------------------------------------------------------------------
-   Zone 3: Utility Icon Buttons & Clock (No Capsule Box)
-   -------------------------------------------------------------------------- */
-.tv-gtv-right-cluster {
+.flicx-nav-right {
   display: flex;
   align-items: center;
-  gap: 6px;
-  flex-shrink: 0;
-  pointer-events: auto;
+  gap: 12px;
 }
 
-.tv-gtv-action-focusable {
-  border-radius: 50%;
-  outline: none;
-  flex-shrink: 0;
-}
-
-.tv-gtv-action-btn {
-  width: 40px;
-  height: 40px;
+.flicx-nav-btn {
+  width: 38px;
+  height: 38px;
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
-  color: var(--md-sys-color-on-surface-variant);
-  background-color: transparent;
-  border: 1px solid transparent;
-  transition:
-    background-color var(--duration-base) var(--easing-standard),
-    color var(--duration-base) var(--easing-standard),
-    border-color var(--duration-base) var(--easing-standard),
-    box-shadow var(--duration-base) var(--easing-standard);
-  cursor: pointer;
+  color: var(--color-fg-muted);
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--color-line);
+  transition: var(--transition-smooth);
 }
 
-.tv-gtv-action-btn.connected {
-  color: var(--accent-green);
+.flicx-nav-btn:hover {
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.12);
+  border-color: var(--color-line-strong);
 }
 
-.tv-gtv-action-btn.focused {
-  background-color: var(--md-sys-color-surface-container-highest);
-  color: var(--md-sys-color-on-surface);
-  border-color: var(--md-sys-color-focus-ring);
-  box-shadow: 0 0 0 2px var(--md-sys-color-focus-ring);
-}
-
-.tv-gtv-time {
-  margin-left: 10px;
-  padding-left: 14px;
-  border-left: 1px solid var(--md-sys-color-outline-variant);
-  color: var(--md-sys-color-on-surface-variant);
-  font-size: 14.5px;
-  font-weight: 500;
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-}
-
-/* ==========================================================================
-   Tablet & Compact Desktop (769px – 1100px)
-   ========================================================================== */
-@media (min-width: 769px) and (max-width: 1100px) {
-  .tv-topnav-container {
-    gap: 14px;
+@media (max-width: 1024px) {
+  .flicx-navbar {
+    padding: 0 16px;
   }
-
-  .tv-gtv-avatar-btn {
-    width: 38px;
-    height: 38px;
-  }
-
-  .tv-gtv-nav-strip {
-    gap: 2px;
-  }
-
-  .tv-gtv-tab-pill {
-    padding: 8px 14px;
-    font-size: 13.5px;
-  }
-
-  .tv-gtv-action-btn {
-    width: 38px;
-    height: 38px;
-  }
-
-  .tv-gtv-time {
-    margin-left: 6px;
-    padding-left: 10px;
-    font-size: 13px;
-  }
-}
-
-/* ==========================================================================
-   Mobile Responsive Navigation (<= 768px down to 350px)
-   ========================================================================== */
-.tv-mobile-top-bar {
-  display: none;
-}
-
-.tv-mobile-bottom-bar {
-  display: none;
-}
-
-@media (max-width: 768px) {
-  .tv-desktop-nav {
-    display: none !important;
-  }
-
-  /* Compact Mobile Top Bar */
-  .tv-mobile-top-bar {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    height: calc(52px + env(safe-area-inset-top, 0px));
-    padding: env(safe-area-inset-top, 0px) 12px 0 12px;
-    background: linear-gradient(
-      180deg,
-      rgba(0, 0, 0, 0.92) 0%,
-      rgba(0, 0, 0, 0.54) 70%,
-      rgba(0, 0, 0, 0) 100%
-    );
-    z-index: 990;
-    box-sizing: border-box;
-    pointer-events: none;
-  }
-
-  .tv-mobile-top-left {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    pointer-events: auto;
-    min-width: 0;
-  }
-
-  .tv-mobile-avatar-btn {
-    position: relative;
-    width: 44px;
-    height: 44px;
-    background: transparent;
-    border: none;
-    padding: 0;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    flex-shrink: 0;
-  }
-
-  .tv-mobile-avatar-fallback {
-    width: 32px;
-    height: 32px;
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-  }
-
-  .tv-mobile-avatar-lock {
-    position: absolute;
-    bottom: 5px;
-    right: 5px;
-    width: 14px;
-    height: 14px;
-    background: var(--md-sys-color-surface-container-highest);
-    border: 1.5px solid var(--md-sys-color-background);
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-  }
-
-  .tv-mobile-profile-name {
-    font-size: 13.5px;
-    font-weight: 600;
-    color: var(--text-primary);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    max-width: min(54vw, 220px);
-  }
-
-  .tv-mobile-top-right {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    pointer-events: auto;
-  }
-
-  .tv-mobile-icon-btn {
-    width: 44px;
-    height: 44px;
-    border-radius: 50%;
-    background-color: rgba(29, 33, 43, 0.72);
-    border: 1px solid var(--md-sys-color-outline-variant);
-    color: var(--text-primary);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    cursor: pointer;
-    padding: 0;
-    transition: background-color 140ms ease;
-  }
-
-  .tv-mobile-icon-btn.connected {
-    color: var(--accent-green);
-    border-color: rgba(129, 201, 149, 0.45);
-  }
-
-  .tv-mobile-icon-btn:active {
-    background-color: var(--md-sys-color-surface-container-highest);
-  }
-
-  /* Docked M3 Bottom Navigation Bar */
-  .tv-mobile-bottom-bar {
-    display: flex;
-    align-items: center;
-    justify-content: space-around;
-    position: fixed;
-    bottom: 0;
-    left: 0;
-    right: 0;
-    height: calc(60px + env(safe-area-inset-bottom, 0px));
-    padding: 4px 8px env(safe-area-inset-bottom, 4px) 8px;
-    background-color: var(--md-sys-color-surface-container);
-    border-top: 1px solid var(--md-sys-color-outline-variant);
-    z-index: 1000;
-    box-sizing: border-box;
-  }
-
-  .tv-mobile-tab-btn {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 3px;
-    background: transparent;
-    border: none;
-    color: var(--md-sys-color-on-surface-variant);
-    cursor: pointer;
-    padding: 2px 0;
-    flex: 1;
-    min-width: 0;
-    min-height: 48px;
-    transition: color 140ms ease;
-  }
-
-  .tv-mobile-tab-indicator {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 56px;
-    height: 28px;
-    border-radius: var(--radius-pill);
-    transition: background-color 140ms ease, color 140ms ease;
-  }
-
-  .tv-mobile-tab-btn.active .tv-mobile-tab-indicator {
-    background-color: var(--md-sys-color-secondary-container);
-    color: var(--md-sys-color-on-secondary-container);
-  }
-
-  .tv-mobile-tab-label {
-    font-size: 11px;
-    font-weight: 500;
-    letter-spacing: 0.1px;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    max-width: 100%;
-    color: inherit;
-  }
-
-  .tv-mobile-tab-btn.active {
-    color: var(--md-sys-color-on-surface);
-  }
-
-  .tv-mobile-tab-btn.active .tv-mobile-tab-label {
-    font-weight: 600;
-  }
-}
-
-@media (max-width: 380px) {
-  .tv-mobile-top-bar {
-    padding: env(safe-area-inset-top, 0px) 8px 0 8px;
-  }
-
-  .tv-mobile-profile-name {
-    display: none;
-  }
-
-  .tv-mobile-tab-indicator {
-    width: 48px;
-  }
-
-  .tv-mobile-tab-label {
-    font-size: 10px;
+  .flicx-nav-left {
+    gap: 16px;
   }
 }
