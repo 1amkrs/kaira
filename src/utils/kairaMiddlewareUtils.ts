@@ -199,10 +199,12 @@ export function prepareServedHtml(html: string): string {
   let out = html;
   // Remove unused preloaded Next.js chunk link tag that causes console warnings on every page
   out = out.replace(/<link[^>]*rel=["']preload["'][^>]*href=["']\/_next\/static\/chunks\/3bep5nso12chb\.js["'][^>]*\/?>/gi, '');
-  // Normalize leftover visible Flicx branding text to Kaira without breaking data/script paths
+  // Normalize leftover visible Flicx branding text and social preview assets to Kaira
   out = out.replace(/Popular on Flicx/g, 'Popular on Kaira');
   out = out.replace(/On Flicx since/g, 'On Kaira since');
   out = out.replace(/Watch on Flicx/g, 'Watch on Kaira');
+  out = out.replace(/https:\/\/fli\.cx\/opengraph-image(?:\?[^"'\s<>\\]*)?/gi, '/brand/og-image.png');
+  out = out.replace(/<link[^>]*rel=["']alternate["'][^>]*href=["']https:\/\/fli\.cx\/feed\.xml["'][^>]*\/?>/gi, '');
   if (!out.includes('flicx-interactive.js')) {
     out = out.replace('</body>', '<script src="/flicx-interactive.js"></script></body>');
   }

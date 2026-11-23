@@ -901,7 +901,7 @@
 
             <!-- Video Stage -->
             <div class="fx-video-wrap" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:#000;">
-              <video id="flicx-video" class="fx-video" playsinline crossorigin="anonymous" x-webkit-airplay="allow" style="width:100%;height:100%;object-fit:contain;background:#000;display:block;"></video>
+              <video id="flicx-video" class="fx-video" playsinline webkit-playsinline="true" preload="auto"${posterUrl ? ` poster="${escapeAttr(posterUrl)}"` : ''} crossorigin="anonymous" x-webkit-airplay="allow" style="width:100%;height:100%;object-fit:contain;background:#000;display:block;"></video>
               <div id="flicx-buffering" class="fx-buffering" style="position:absolute;display:none;pointer-events:none;">
                 <div class="fx-spinner" style="width:2.85rem;height:2.85rem;border:3px solid rgba(255,255,255,0.22);border-top-color:#ffffff;border-radius:50%;animation:spin 0.8s linear infinite;"></div>
               </div>
@@ -1431,8 +1431,111 @@
         cards.forEach((c, i) => c.classList.toggle('atv-chapter-active', i === activeIdx));
       }
 
-      function attachStream(source) {
+      const uaStr = typeof navigator !== 'undefined' ? (navigator.userAgent || '') : '';
+      const isAppleMobile = /iP(hone|ad|od)/i.test(uaStr) || (typeof navigator !== 'undefined' && navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+      const isTouchMobile = isAppleMobile || /Android|Mobile|Silk/i.test(uaStr) || (typeof window !== 'undefined' && window.innerWidth <= 900);
+      const triedServerIndices = new Set([currentServerIndex]);
+      let streamLoadTimer = null;
+      let nativeErrorHandler = null;
+      let nativeMetadataHandler = null;
+      let nativeCanPlayHandler = null;
+      let activeStreamToken = 0;
+
+      function syncServerMenuUI(idx) {
+        const srv = servers[idx];
+        if (!srv) return;
+        if (serverName) serverName.textContent = srv.name;
+        const qualityEl = watchRoot.querySelector('#fx-active-quality');
+        if (qualityEl) qualityEl.textContent = srv.quality || 'HD';
+        if (serverMenu) {
+          serverMenu.querySelectorAll('.fx-menu-item').forEach(it => {
+            const itIdx = parseInt(it.getAttribute('data-idx'), 10);
+            it.setAttribute('aria-checked', String(itIdx === idx));
+            const chk = it.querySelector('.atv-pop-check');
+            if (chk) chk.innerHTML = itIdx === idx ? CHECK_SVG : '';
+          });
+        }
+      }
+
+      function showPausedCenterPlay(statusHint) {
         if (isDestroyed) return;
+        iconPlay.style.display = 'block';
+        iconPause.style.display = 'none';
+        if (centerPlayBtn) {
+          centerPlayBtn.classList.add('atv-visible');
+          centerPlayBtn.setAttribute('aria-hidden', 'false');
+        }
+        wakeControls();
+        if (statusHint) showPlayerStatus(statusHint);
+      }
+
+      function attemptPlay(fromUserGesture) {
+        if (isDestroyed || !videoEl.isConnected) return;
+        const playPromise = videoEl.play();
+        if (playPromise && typeof playPromise.then === 'function') {
+          playPromise.then(() => {
+            if (isDestroyed) return;
+            bufferingEl.style.display = 'none';
+          }).catch((err) => {
+            if (isDestroyed) return;
+            bufferingEl.style.display = 'none';
+            if (err && err.name === 'NotAllowedError') {
+              showPausedCenterPlay('Tap Play to start');
+            } else if (fromUserGesture) {
+              try {
+                if (currentHls) currentHls.startLoad();
+                else if (videoEl.readyState === 0) videoEl.load();
+              } catch {}
+              showPausedCenterPlay('Tap Play to retry');
+            } else {
+              showPausedCenterPlay();
+            }
+          });
+        }
+      }
+
+      function clearNativeStreamListeners() {
+        if (nativeErrorHandler) {
+          videoEl.removeEventListener('error', nativeErrorHandler);
+          nativeErrorHandler = null;
+        }
+        if (nativeMetadataHandler) {
+          videoEl.removeEventListener('loadedmetadata', nativeMetadataHandler);
+          nativeMetadataHandler = null;
+        }
+        if (nativeCanPlayHandler) {
+          videoEl.removeEventListener('canplay', nativeCanPlayHandler);
+          nativeCanPlayHandler = null;
+        }
+      }
+
+      function fallbackToNextServer(reason) {
+        if (isDestroyed) return false;
+        const nextIdx = servers.findIndex((_, idx) => !triedServerIndices.has(idx));
+        if (nextIdx === -1) {
+          bufferingEl.style.display = 'none';
+          showPausedCenterPlay(reason || 'Stream unavailable — try another server');
+          return false;
+        }
+        triedServerIndices.add(nextIdx);
+        currentServerIndex = nextIdx;
+        currentServer = servers[nextIdx];
+        syncServerMenuUI(nextIdx);
+        showPlayerStatus(`Switching to ${currentServer.name}…`);
+        attachStream(currentServer, { preserveTried: true });
+        return true;
+      }
+
+      function attachStream(source, opts = {}) {
+        if (isDestroyed) return;
+        activeStreamToken += 1;
+        const token = activeStreamToken;
+        if (!opts.preserveTried) {
+          triedServerIndices.clear();
+          triedServerIndices.add(currentServerIndex);
+        }
+        clearTimeout(streamLoadTimer);
+        clearNativeStreamListeners();
         if (currentHls) {
           try { currentHls.destroy(); } catch {}
           currentHls = null;
@@ -1441,13 +1544,76 @@
         const streamUrl = source.src;
         bufferingEl.style.display = 'block';
 
+        // Stall guard: if stream does not load metadata within 14s, fail over cleanly
+        streamLoadTimer = setTimeout(() => {
+          if (isDestroyed || token !== activeStreamToken) return;
+          if (videoEl.readyState < 1) {
+            fallbackToNextServer('Server timed out — switching…');
+          }
+        }, 14000);
+
+        const canPlayNativeHls = Boolean(
+          videoEl.canPlayType('application/vnd.apple.mpegurl') ||
+          videoEl.canPlayType('application/x-mpegURL')
+        );
+
+        function attachNativeHls(retryWithoutCors) {
+          if (isDestroyed || token !== activeStreamToken || !videoEl.isConnected) return;
+          clearNativeStreamListeners();
+          if (retryWithoutCors) {
+            videoEl.removeAttribute('crossorigin');
+          } else {
+            videoEl.setAttribute('crossorigin', 'anonymous');
+          }
+
+          let started = false;
+          const onReady = () => {
+            if (isDestroyed || token !== activeStreamToken || started) return;
+            started = true;
+            clearTimeout(streamLoadTimer);
+            bufferingEl.style.display = 'none';
+            attemptPlay(false);
+          };
+
+          nativeMetadataHandler = onReady;
+          nativeCanPlayHandler = onReady;
+          nativeErrorHandler = () => {
+            if (isDestroyed || token !== activeStreamToken) return;
+            clearTimeout(streamLoadTimer);
+            if (!retryWithoutCors && videoEl.hasAttribute('crossorigin')) {
+              attachNativeHls(true);
+              return;
+            }
+            fallbackToNextServer('Playback failed on this server');
+          };
+
+          videoEl.addEventListener('loadedmetadata', nativeMetadataHandler, { once: true });
+          videoEl.addEventListener('canplay', nativeCanPlayHandler, { once: true });
+          videoEl.addEventListener('error', nativeErrorHandler, { once: true });
+
+          const nativeUrl = streamUrl && streamUrl.startsWith('http') && !streamUrl.includes('fx=cors')
+            ? streamUrl + (streamUrl.includes('?') ? '&' : '?') + 'fx=cors'
+            : streamUrl;
+          videoEl.src = nativeUrl;
+          videoEl.load();
+        }
+
+        // On iPhone/iPad Safari, Apple's native HLS engine is far more reliable and supports AirPlay/hardware decode
+        if (isAppleMobile && canPlayNativeHls) {
+          attachNativeHls(false);
+          return;
+        }
+
         ensureHlsLoaded(() => {
-          if (isDestroyed || !videoEl.isConnected) return;
+          if (isDestroyed || token !== activeStreamToken || !videoEl.isConnected) return;
           if (window.Hls && window.Hls.isSupported()) {
+            videoEl.setAttribute('crossorigin', 'anonymous');
             const hls = new window.Hls({
-              capLevelToPlayerSize: false,
-              maxBufferLength: 30,
-              backBufferLength: 45,
+              capLevelToPlayerSize: isTouchMobile,
+              enableWorker: true,
+              maxBufferLength: isTouchMobile ? 20 : 30,
+              maxMaxBufferLength: isTouchMobile ? 45 : 60,
+              backBufferLength: isTouchMobile ? 20 : 45,
               xhrSetup: (xhr, url) => {
                 if (url && !url.includes('fx=cors')) {
                   xhr.open('GET', url + (url.includes('?') ? '&' : '?') + 'fx=cors', true);
@@ -1455,30 +1621,41 @@
               }
             });
             currentHls = hls;
+            let networkRetries = 0;
+            let mediaRetries = 0;
+
             hls.loadSource(streamUrl);
             hls.attachMedia(videoEl);
 
             hls.on(window.Hls.Events.MANIFEST_PARSED, () => {
-              if (isDestroyed) return;
+              if (isDestroyed || token !== activeStreamToken) return;
+              clearTimeout(streamLoadTimer);
               bufferingEl.style.display = 'none';
-              videoEl.play().catch(() => {});
+              attemptPlay(false);
             });
 
             hls.on(window.Hls.Events.ERROR, (event, data) => {
-              if (data.fatal && !isDestroyed) {
-                console.warn('HLS stream error on', source.name, data);
-                bufferingEl.style.display = 'none';
+              if (!data || !data.fatal || isDestroyed || token !== activeStreamToken) return;
+              console.warn('HLS stream error on', source.name, data);
+              if (data.type === window.Hls.ErrorTypes.NETWORK_ERROR && networkRetries < 1) {
+                networkRetries += 1;
+                hls.startLoad();
+                return;
               }
+              if (data.type === window.Hls.ErrorTypes.MEDIA_ERROR && mediaRetries < 1) {
+                mediaRetries += 1;
+                hls.recoverMediaError();
+                return;
+              }
+              clearTimeout(streamLoadTimer);
+              fallbackToNextServer('Server error — switching…');
             });
-          } else if (videoEl.canPlayType('application/vnd.apple.mpegurl')) {
-            videoEl.src = streamUrl;
-            videoEl.addEventListener('loadedmetadata', () => {
-              if (isDestroyed) return;
-              bufferingEl.style.display = 'none';
-              videoEl.play().catch(() => {});
-            }, { once: true });
+          } else if (canPlayNativeHls) {
+            attachNativeHls(false);
           } else {
+            clearTimeout(streamLoadTimer);
             bufferingEl.style.display = 'none';
+            showPausedCenterPlay('HLS playback not supported in this browser');
           }
         });
       }
@@ -1486,8 +1663,11 @@
       attachStream(currentServer);
 
       function togglePlay() {
-        if (videoEl.paused) videoEl.play().catch(() => {});
-        else videoEl.pause();
+        if (videoEl.paused) {
+          attemptPlay(true);
+        } else {
+          videoEl.pause();
+        }
         wakeControls();
       }
 
@@ -1508,9 +1688,14 @@
           closeAllPopovers();
           closeAllDrawers();
           wakeControls();
-        } else {
-          togglePlay();
+          return;
         }
+        // On touch devices, first tap while playing reveals hidden controls instead of abruptly pausing
+        if (isTouchMobile && !videoEl.paused && !uiEl.hasAttribute('data-chrome')) {
+          wakeControls();
+          return;
+        }
+        togglePlay();
       };
 
       videoEl.onplay = () => {
@@ -1523,17 +1708,14 @@
         wakeControls();
       };
       videoEl.onpause = () => {
-        iconPlay.style.display = 'block';
-        iconPause.style.display = 'none';
-        if (centerPlayBtn) {
-          centerPlayBtn.classList.add('atv-visible');
-          centerPlayBtn.setAttribute('aria-hidden', 'false');
-        }
-        wakeControls();
+        showPausedCenterPlay();
       };
       videoEl.onwaiting = () => { bufferingEl.style.display = 'block'; };
       videoEl.onplaying = () => {
+        clearTimeout(streamLoadTimer);
         bufferingEl.style.display = 'none';
+        iconPlay.style.display = 'none';
+        iconPause.style.display = 'block';
         if (centerPlayBtn) {
           centerPlayBtn.classList.remove('atv-visible');
           centerPlayBtn.setAttribute('aria-hidden', 'true');
@@ -1827,13 +2009,21 @@
       }
 
       function toggleFullscreen() {
-        if (!document.fullscreenElement) {
-          if (playerStage.requestFullscreen) playerStage.requestFullscreen();
-          else if (playerStage.webkitRequestFullscreen) playerStage.webkitRequestFullscreen();
+        if (!document.fullscreenElement && !document.webkitFullscreenElement) {
+          if (playerStage.requestFullscreen) {
+            playerStage.requestFullscreen().catch(() => {});
+          } else if (playerStage.webkitRequestFullscreen) {
+            playerStage.webkitRequestFullscreen();
+          } else if (typeof videoEl.webkitEnterFullscreen === 'function') {
+            videoEl.webkitEnterFullscreen();
+          }
           playerEl.setAttribute('data-fullscreen', '');
         } else {
-          if (document.exitFullscreen) document.exitFullscreen();
-          else if (document.webkitExitFullscreen) document.webkitExitFullscreen();
+          if (document.exitFullscreen) {
+            document.exitFullscreen().catch(() => {});
+          } else if (document.webkitExitFullscreen) {
+            document.webkitExitFullscreen();
+          }
           playerEl.removeAttribute('data-fullscreen');
         }
       }
@@ -1969,6 +2159,8 @@
         isDestroyed = true;
         clearTimeout(hideTimeout);
         clearTimeout(statusTimeout);
+        clearTimeout(streamLoadTimer);
+        clearNativeStreamListeners();
         if (currentHls) {
           try { currentHls.destroy(); } catch {}
           currentHls = null;
@@ -5104,6 +5296,20 @@
         max-width: min(440px, calc(100vw - 24px)) !important;
         margin-inline: auto !important;
       }
+      nav.tab-bar a {
+        color: rgba(255, 255, 255, 0.58) !important;
+        transition: color 0.2s ease, transform 0.2s ease !important;
+      }
+      nav.tab-bar a[aria-current="page"] {
+        color: #ffffff !important;
+      }
+      nav.tab-bar .kaira-tab-pill {
+        position: absolute !important;
+        inset: 0 !important;
+        border-radius: calc(1.375rem * var(--corner-scale, 1)) !important;
+        background: rgba(255, 255, 255, 0.14) !important;
+        pointer-events: none !important;
+      }
       /* Hide navigation dock, header, and footer while playing a movie/show */
       body.kaira-watching nav.tab-bar,
       body.kaira-watching .site-header,
@@ -6452,6 +6658,23 @@
         document.body.appendChild(newTabBar);
       } else if (currentTabBar) {
         currentTabBar.style.display = '';
+        // Sync filled vs outlined tab icons from the newly fetched page's tab bar
+        if (newTabBar) {
+          const newIconsByHref = new Map();
+          newTabBar.querySelectorAll('a[href]').forEach(link => {
+            const norm = normalizeRoutePath(link.getAttribute('href'));
+            const svg = link.querySelector('svg');
+            if (norm && svg) newIconsByHref.set(norm, svg.outerHTML);
+          });
+          currentTabBar.querySelectorAll('a[href]').forEach(link => {
+            const norm = normalizeRoutePath(link.getAttribute('href'));
+            const nextSvgHtml = newIconsByHref.get(norm);
+            const curSvg = link.querySelector('svg');
+            if (nextSvgHtml && curSvg) {
+              curSvg.outerHTML = nextSvgHtml;
+            }
+          });
+        }
       }
     }
 
@@ -6465,14 +6688,29 @@
     reinitPageFeatures();
   }
 
+  function normalizeRoutePath(rawPath) {
+    let p = String(rawPath || '/').split('?')[0].split('#')[0];
+    const base = typeof window.__KAIRA_BASE_PATH__ === 'string' ? window.__KAIRA_BASE_PATH__ : '/';
+    if (base && base !== '/') {
+      const cleanBase = base.replace(/\/$/, '');
+      if (p === cleanBase || p === cleanBase + '/') {
+        p = '/';
+      } else if (p.startsWith(cleanBase + '/')) {
+        p = p.slice(cleanBase.length);
+      }
+    }
+    p = p.replace(/\/$/, '') || '/';
+    return p;
+  }
+
   function updateActiveNavTabs(currentPath) {
-    const cleanCurrent = (currentPath || window.location.pathname || '/').split('?')[0].replace(/\/$/, '') || '/';
-    document.querySelectorAll('.top-tabs a, .top-nav a, nav[aria-label="Primary"] a, .site-header a').forEach(a => {
+    const cleanCurrent = normalizeRoutePath(currentPath || window.location.pathname || '/');
+    document.querySelectorAll('.top-tabs a, .top-nav a, nav[aria-label="Primary"] a, nav.tab-bar a, .site-header a').forEach(a => {
       const href = a.getAttribute('href');
       if (!href || href.startsWith('#')) return;
       if (a.classList.contains('flicx-logo-link') || a.getAttribute('aria-label') === 'Kaira home') return;
 
-      const cleanHref = href.split('?')[0].replace(/\/$/, '') || '/';
+      const cleanHref = normalizeRoutePath(href);
       const inMobileTabBar = Boolean(a.closest('nav.tab-bar'));
 
       let isActive = false;
@@ -6498,19 +6736,22 @@
       }
 
       if (inMobileTabBar) {
-        const existingPill = a.querySelector('span.kaira-tab-pill, span.absolute.inset-0');
+        const existingPills = a.querySelectorAll('span.kaira-tab-pill, span.absolute.inset-0');
         if (isActive) {
           a.classList.add('text-fg');
           a.classList.remove('text-fg-subtle');
-          if (!existingPill) {
+          if (existingPills.length === 0) {
             const pill = document.createElement('span');
             pill.className = 'kaira-tab-pill absolute inset-0 rounded-[calc(1.375rem*var(--corner-scale,1))] bg-white/12';
             a.prepend(pill);
+          } else {
+            existingPills[0].classList.add('kaira-tab-pill');
+            for (let i = 1; i < existingPills.length; i++) existingPills[i].remove();
           }
         } else {
           a.classList.remove('text-fg');
           a.classList.add('text-fg-subtle');
-          if (existingPill) existingPill.remove();
+          existingPills.forEach(p => p.remove());
         }
       }
     });
@@ -6572,6 +6813,10 @@
 
     window.addEventListener('popstate', () => {
       navigateTo(window.location.pathname + window.location.search, false);
+    });
+
+    window.addEventListener('pageshow', () => {
+      updateActiveNavTabs(window.location.pathname);
     });
 
     document.addEventListener('mouseover', (e) => {

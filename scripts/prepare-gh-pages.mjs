@@ -61,10 +61,12 @@ function prepareStaticHtml(html, base) {
     /<link[^>]*rel=["']preload["'][^>]*href=["']\/_next\/static\/chunks\/3bep5nso12chb\.js["'][^>]*\/?>/gi,
     ''
   );
-  // Normalize visible branding copy
+  // Normalize visible branding copy & social preview assets
   out = out.replace(/Popular on Flicx/g, 'Popular on Kaira');
   out = out.replace(/On Flicx since/g, 'On Kaira since');
   out = out.replace(/Watch on Flicx/g, 'Watch on Kaira');
+  out = out.replace(/https:\/\/fli\.cx\/opengraph-image(?:\?[^"'\s<>\\]*)?/gi, '/brand/og-image.png');
+  out = out.replace(/<link[^>]*rel=["']alternate["'][^>]*href=["']https:\/\/fli\.cx\/feed\.xml["'][^>]*\/?>/gi, '');
   // Ensure interactive runtime script is injected
   if (!out.includes('flicx-interactive.js')) {
     out = out.replace('</body>', '<script src="/flicx-interactive.js"></script></body>');
