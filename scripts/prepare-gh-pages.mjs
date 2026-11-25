@@ -16,20 +16,23 @@ const basePath = normalizeBasePath(process.env.VITE_BASE_PATH || process.env.BAS
 
 /**
  * Decodes Next.js image proxy URLs (/_next/image?url=...) directly to their upstream HTTPS URLs
- * so images load natively on static GitHub Pages without a Node proxy server.
+ * so hero logos, backdrops, and posters load natively on Firebase Hosting and GitHub Pages without a Node proxy.
  */
 function rewriteNextImageUrls(html) {
-  return html.replace(/\/_next\/image\?url=([^&"'\s]+)(?:&amp;|&)[^"'\s)]*/g, (_match, encoded) => {
-    try {
-      const decoded = decodeURIComponent(encoded);
-      if (/^https:\/\/(s\.fli\.cx|fli\.cx|image\.tmdb\.org|i\.ytimg\.com|img\.youtube\.com|m\.media-amazon\.com)\//i.test(decoded)) {
-        return decoded;
+  return html.replace(
+    /\/_next\/image\?url=([^&"'\s\\]+)(?:(?:&amp;|&|\\u0026)[^"'\s,)\\]*)*/g,
+    (_match, encoded) => {
+      try {
+        const decoded = decodeURIComponent(encoded);
+        if (/^https:\/\/(s\.fli\.cx|fli\.cx|image\.tmdb\.org|i\.ytimg\.com|img\.youtube\.com|m\.media-amazon\.com)\//i.test(decoded)) {
+          return decoded;
+        }
+      } catch {
+        // Keep original URL if decoding fails
       }
-    } catch {
-      // Keep original URL if decoding fails
+      return _match;
     }
-    return _match;
-  });
+  );
 }
 
 function applyBasePath(html, base) {

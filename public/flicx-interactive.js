@@ -61,6 +61,43 @@
       .trim();
   }
 
+  function decodeNextProxyImageUrl(rawUrl) {
+    if (!rawUrl || typeof rawUrl !== 'string' || !rawUrl.includes('/_next/image')) return rawUrl;
+    return rawUrl.replace(
+      /\/_next\/image\?url=([^&"'\s\\]+)(?:(?:&amp;|&|\\u0026)[^"'\s,)\\]*)*/g,
+      (match, encoded) => {
+        try {
+          const decoded = decodeURIComponent(encoded);
+          if (/^https:\/\/(s\.fli\.cx|fli\.cx|image\.tmdb\.org|i\.ytimg\.com|img\.youtube\.com|m\.media-amazon\.com)\//i.test(decoded)) {
+            return decoded;
+          }
+        } catch {}
+        return match;
+      }
+    );
+  }
+
+  function rewriteProxyImagesInDom(root) {
+    const scope = root || document;
+    if (!scope || !scope.querySelectorAll) return;
+    scope.querySelectorAll('img[src*="/_next/image"], img[srcset*="/_next/image"]').forEach((img) => {
+      const src = img.getAttribute('src') || '';
+      const srcset = img.getAttribute('srcset') || '';
+      const nextSrc = decodeNextProxyImageUrl(src);
+      const nextSrcset = decodeNextProxyImageUrl(srcset);
+      if (nextSrc && nextSrc !== src) img.setAttribute('src', nextSrc);
+      if (nextSrcset && nextSrcset !== srcset) img.setAttribute('srcset', nextSrcset);
+      if (img.hasAttribute('data-failed')) {
+        img.removeAttribute('data-failed');
+      }
+    });
+    scope.querySelectorAll('source[srcset*="/_next/image"]').forEach((source) => {
+      const srcset = source.getAttribute('srcset') || '';
+      const nextSrcset = decodeNextProxyImageUrl(srcset);
+      if (nextSrcset && nextSrcset !== srcset) source.setAttribute('srcset', nextSrcset);
+    });
+  }
+
   // --- 0b. Subtitle Parser (WebVTT + SRT) & Static / GitHub Pages Resolvers ---
   function parseSubtitleTimestamp(raw) {
     const cleaned = String(raw || '').trim().replace(',', '.');
@@ -8598,6 +8635,7 @@
   }
 
   function swapPageDom(newDoc, targetPath, pushState) {
+    try { rewriteProxyImagesInDom(newDoc); } catch {}
     const prevPath = currentRenderedPath;
     currentRenderedPath = targetPath;
 
@@ -8821,6 +8859,7 @@
   }
 
   function reinitPageFeatures() {
+    try { rewriteProxyImagesInDom(document); } catch (e) {}
     try { applyLiquidChromeAttributes(); } catch (e) {}
     try { updateActiveNavTabs(window.location.pathname); } catch (e) {}
     closeCurrentPopup();
@@ -8922,6 +8961,7 @@
       }
     } catch {}
 
+    try { rewriteProxyImagesInDom(document); } catch (e) {}
     try { injectLiquidGlassStyles(); applyLiquidChromeAttributes(); } catch (e) { console.error('Liquid glass error', e); }
     try { updateActiveNavTabs(window.location.pathname); } catch (e) { console.error('Nav tab sync error', e); }
     try { getSettingsState(); } catch (e) { console.error('Settings init error', e); }

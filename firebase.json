@@ -2,12 +2,28 @@
   "hosting": {
     "public": "dist",
     "cleanUrls": true,
+    "trailingSlash": false,
     "ignore": [
       "firebase.json",
       "**/.*",
       "**/node_modules/**"
     ],
+    "headers": [
+      {
+        "source": "/@(sw|registerSW).js",
+        "headers": [
+          {
+            "key": "Cache-Control",
+            "value": "no-cache, no-store, must-revalidate"
+          }
+        ]
+      }
+    ],
     "rewrites": [
+      {
+        "source": "/watch/**",
+        "destination": "/watch/heart-of-the-beast-2026/index.html"
+      },
       {
         "source": "**",
         "destination": "/index.html"
