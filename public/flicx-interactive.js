@@ -1104,9 +1104,11 @@
 
   function isItemTvShow(item, defaultIsTv) {
     if (!item) return !!defaultIsTv;
-    if (item.kind === 'show' || item.kind === 'tv') return true;
+    if (item.kind === 'show' || item.kind === 'tv' || item.kind === 'series') return true;
     if (item.kind === 'movie' || item.kind === 'film') return false;
     const rt = Number(item.runtime);
+    // Upstream movie objects omit `kind` and have feature runtimes (>= 75m)
+    if (Number.isFinite(rt) && rt >= 75) return false;
     if (defaultIsTv) return true;
     if (Number.isFinite(rt) && rt > 0 && rt < 65) return true;
     return false;
@@ -1137,7 +1139,7 @@
     }
 
     try {
-      const endpoint = isTv ? '/api/trending?kind=tv' : '/api/trending?kind=movie';
+      const endpoint = isTv ? '/api/trending?kind=show' : '/api/trending?kind=movie';
       const browseEndpoint = isTv ? '/api/browse?kind=show&sort=release_date' : '/api/browse?kind=movie&sort=release_date';
 
       const [trendingRes, browseRes] = await Promise.all([
@@ -1150,7 +1152,8 @@
 
       const addCandidate = (item) => {
         if (!item || !item.slug || seen.has(item.slug)) return;
-        const itemIsShow = isItemTvShow(item, isTv);
+        const explicitShow = item.kind === 'show' || item.kind === 'tv' || item.kind === 'series';
+        const itemIsShow = isTv ? explicitShow : isItemTvShow(item, false);
         // Keep Movies hero strictly movies and TV hero strictly shows
         if (isTv && !itemIsShow) return;
         if (!isTv && itemIsShow) return;
@@ -6816,7 +6819,7 @@
         'all-time': 'all'
       };
       const key = timeKeyMap[selectedOpt.value] || 'week';
-      const kindParam = isTv ? 'tv' : 'movie';
+      const kindParam = isTv ? 'show' : 'movie';
       fetchPromise = fetch(`/api/trending?kind=${kindParam}`)
         .then(r => (r.ok ? r.json() : Promise.reject(new Error('HTTP ' + r.status))))
         .then(data => data?.lists?.[key] || data?.lists?.week || [])
@@ -7028,7 +7031,7 @@
     railTrack.style.opacity = '0.35';
     railTrack.style.transition = 'opacity 0.2s ease-out';
 
-    fetch(`/api/trending?kind=${isTv ? 'tv' : 'movie'}`)
+    fetch(`/api/trending?kind=${isTv ? 'show' : 'movie'}`)
       .then(res => (res.ok ? res.json() : Promise.reject(new Error('HTTP ' + res.status))))
       .then(data => {
         railTrack.style.opacity = '1';
@@ -7055,6 +7058,7 @@
 
     document.querySelectorAll('button.title-select, [role="combobox"].title-select, .title-select').forEach(el => {
       const triggerBtn = el.tagName === 'BUTTON' ? el : (el.querySelector('button') || el);
+      if (triggerBtn.hasAttribute('data-dyn-season-select')) return;
       if (triggerBtn.__selectBound) return;
       triggerBtn.__selectBound = true;
 
@@ -7165,6 +7169,10 @@
           </div>
         `;
       }).join('');
+      railTrack.querySelectorAll('img[data-fade]').forEach(img => {
+        if (img.complete && img.naturalWidth > 0) img.setAttribute('data-loaded', '');
+        else img.addEventListener('load', () => img.setAttribute('data-loaded', ''), { once: true });
+      });
       try { initRailScroll(); } catch (e) {}
     }
 
@@ -10544,98 +10552,6 @@
         border-color: rgba(255, 255, 255, 0.24);
         transform: translateY(-1px);
       }
-      .kaira-dyn-season-tabs {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 0.5rem;
-        margin-bottom: 1.25rem;
-      }
-      .kaira-dyn-season-btn {
-        padding: 0.45rem 1rem;
-        border-radius: 9999px;
-        background: rgba(255, 255, 255, 0.08);
-        border: 1px solid rgba(255, 255, 255, 0.12);
-        color: rgba(255, 255, 255, 0.78);
-        font-size: 0.875rem;
-        font-weight: 600;
-        cursor: pointer;
-        transition: background 0.18s ease, color 0.18s ease, border-color 0.18s ease;
-      }
-      .kaira-dyn-season-btn:hover {
-        background: rgba(255, 255, 255, 0.14);
-        color: #fff;
-      }
-      .kaira-dyn-season-btn[aria-selected="true"] {
-        background: #fff;
-        color: #0b0b0c;
-        border-color: #fff;
-      }
-      .kaira-dyn-ep-grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
-        gap: 1.15rem;
-      }
-      .kaira-dyn-ep-card {
-        display: flex;
-        flex-direction: column;
-        border-radius: 1rem;
-        overflow: hidden;
-        background: rgba(255, 255, 255, 0.05);
-        border: 1px solid rgba(255, 255, 255, 0.1);
-        text-decoration: none;
-        color: inherit;
-        transition: transform 0.2s cubic-bezier(0.22, 1, 0.36, 1), border-color 0.2s ease, background 0.2s ease;
-      }
-      .kaira-dyn-ep-card:hover {
-        transform: translateY(-3px);
-        background: rgba(255, 255, 255, 0.08);
-        border-color: rgba(255, 255, 255, 0.22);
-      }
-      .kaira-dyn-ep-thumb {
-        position: relative;
-        aspect-ratio: 16 / 9;
-        background: rgba(255, 255, 255, 0.06);
-        overflow: hidden;
-      }
-      .kaira-dyn-ep-thumb img {
-        width: 100%;
-        height: 100%;
-        object-fit: cover;
-        display: block;
-      }
-      .kaira-dyn-ep-badge {
-        position: absolute;
-        left: 0.65rem;
-        bottom: 0.55rem;
-        padding: 0.18rem 0.55rem;
-        border-radius: 9999px;
-        background: rgba(0, 0, 0, 0.72);
-        backdrop-filter: blur(8px);
-        color: #fff;
-        font-size: 0.72rem;
-        font-weight: 700;
-        letter-spacing: 0.03em;
-      }
-      .kaira-dyn-ep-body {
-        padding: 0.85rem 0.95rem 1rem;
-      }
-      .kaira-dyn-ep-title {
-        font-size: 0.95rem;
-        font-weight: 600;
-        color: #fff;
-        line-height: 1.3;
-        margin: 0 0 0.35rem;
-      }
-      .kaira-dyn-ep-desc {
-        font-size: 0.82rem;
-        line-height: 1.45;
-        color: rgba(255, 255, 255, 0.66);
-        margin: 0;
-        display: -webkit-box;
-        -webkit-line-clamp: 2;
-        -webkit-box-orient: vertical;
-        overflow: hidden;
-      }
     `;
     document.head.appendChild(style);
   }
@@ -10808,12 +10724,21 @@
         </div>
       </section>
       <section class="section" data-dyn-episodes-section hidden>
-        <div class="shell gutter">
-          <header class="relative z-[1] mb-4 flex justify-between md:mb-5 items-baseline gap-6">
-            <h2 class="section-title min-w-0 max-w-full text-section font-semibold">Episodes</h2>
-          </header>
-          <div class="kaira-dyn-season-tabs" role="tablist" aria-label="Seasons" data-dyn-season-tabs></div>
-          <div class="kaira-dyn-ep-grid" data-dyn-ep-grid></div>
+        <header class="shell gutter relative z-[1] mb-4 flex justify-between md:mb-5 items-baseline gap-6">
+          <div class="flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-1">
+            <h2 class="section-title min-w-0 max-w-full text-section font-semibold">
+              <span class="title-row">Episodes<button type="button" tabindex="0" role="combobox" aria-expanded="false" aria-haspopup="listbox" class="title-select" data-dyn-season-select hidden><span class="title-select-text">Season 1</span><span aria-hidden="true" class="title-select-caret"><svg xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" fill="currentColor" viewBox="0 0 256 256"><path d="M216.49,104.49l-80,80a12,12,0,0,1-17,0l-80-80a12,12,0,0,1,17-17L128,159l71.51-71.52a12,12,0,0,1,17,17Z"></path></svg></span></button></span>
+            </h2>
+          </div>
+        </header>
+        <div class="shell">
+          <div class="contents">
+            <div class="rail">
+              <div role="list" aria-label="${escapeHtml(title)}, Season 1" class="rail-track [--cols:1.25] sm:[--cols:2.2] md:[--cols:2.6] lg:[--cols:3] xl:[--cols:4]" data-dyn-ep-grid></div>
+              <button type="button" class="rail-arrow" data-dir="prev" tabindex="-1" aria-hidden="true" disabled=""><span><svg xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" fill="currentColor" viewBox="0 0 256 256" class="size-4"><path d="M168.49,199.51a12,12,0,0,1-17,17l-80-80a12,12,0,0,1,0-17l80-80a12,12,0,0,1,17,17L97,128Z"></path></svg></span></button>
+              <button type="button" class="rail-arrow" data-dir="next" tabindex="-1" aria-hidden="true"><span><svg xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" fill="currentColor" viewBox="0 0 256 256" class="size-4"><path d="M184.49,136.49l-80,80a12,12,0,0,1-17-17L159,128,87.51,56.49a12,12,0,1,1,17-17l80,80A12,12,0,0,1,184.49,136.49Z"></path></svg></span></button>
+            </div>
+          </div>
         </div>
       </section>
       <section class="section" aria-label="Details and credits">
@@ -11068,23 +10993,29 @@
       )).join('');
     }
 
-    // 7. TV Show Seasons & Episodes
+    // 7. TV Show Seasons & Episodes (native Kaira horizontal rail + Season dropdown)
     const epSection = article.querySelector('[data-dyn-episodes-section]');
-    const seasonTabs = article.querySelector('[data-dyn-season-tabs]');
+    const seasonSelectBtn = article.querySelector('[data-dyn-season-select]');
     const epGrid = article.querySelector('[data-dyn-ep-grid]');
-    if (finalKind === 'show' && epSection && seasonTabs && epGrid && Array.isArray(meta?.videos) && meta.videos.length) {
+    if (finalKind === 'show' && epSection && epGrid && Array.isArray(meta?.videos) && meta.videos.length) {
       const seasonsMap = new Map();
+      const defaultEpRuntime = finalRuntime ? String(finalRuntime).replace(/min/i, 'm').replace(/\s+/g, '') : '';
       for (const v of meta.videos) {
         const sNum = Number(v.season);
         const eNum = Number(v.episode || v.number);
         if (!Number.isFinite(sNum) || sNum <= 0 || !Number.isFinite(eNum) || eNum <= 0) continue;
         if (!seasonsMap.has(sNum)) seasonsMap.set(sNum, []);
+        const rawRt = v.runtime || defaultEpRuntime;
+        const rtLabel = rawRt ? (/^\d+$/.test(String(rawRt)) ? `${rawRt}m` : String(rawRt)) : '';
+        const epScore = v.rating || v.imdbRating ? Number(v.rating || v.imdbRating).toFixed(1) : '';
         seasonsMap.get(sNum).push({
           season: sNum,
           episode: eNum,
           title: v.name || v.title || `Episode ${eNum}`,
           overview: v.overview || v.description || '',
-          thumbnail: v.thumbnail || backdropUrl || ''
+          thumbnail: v.thumbnail || backdropUrl || '',
+          runtime: rtLabel,
+          rating: epScore && epScore !== 'NaN' && Number(epScore) > 0 ? epScore : ''
         });
       }
       const seasonNums = Array.from(seasonsMap.keys()).sort((a, b) => a - b);
@@ -11092,28 +11023,61 @@
         epSection.hidden = false;
         const renderSeason = (activeSeason) => {
           const eps = (seasonsMap.get(activeSeason) || []).slice().sort((a, b) => a.episode - b.episode);
-          seasonTabs.querySelectorAll('.kaira-dyn-season-btn').forEach(btn => {
-            btn.setAttribute('aria-selected', String(Number(btn.dataset.season) === activeSeason));
-          });
+          if (seasonSelectBtn) {
+            const labelSpan = seasonSelectBtn.querySelector('.title-select-text') || seasonSelectBtn;
+            labelSpan.textContent = `Season ${activeSeason}`;
+          }
+          epGrid.setAttribute('aria-label', `${finalTitle}, Season ${activeSeason}`);
           epGrid.innerHTML = eps.map(ep => `
-            <a class="kaira-dyn-ep-card" href="${withBasePath(`/watch/${encodeURIComponent(slug)}/s${ep.season}e${ep.episode}`)}">
-              <div class="kaira-dyn-ep-thumb">
-                ${ep.thumbnail ? `<img src="${escapeHtml(ep.thumbnail)}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer"/>` : ''}
-                <span class="kaira-dyn-ep-badge">S${ep.season} · E${ep.episode}</span>
-              </div>
-              <div class="kaira-dyn-ep-body">
-                <h3 class="kaira-dyn-ep-title">${escapeHtml(ep.title)}</h3>
-                ${ep.overview ? `<p class="kaira-dyn-ep-desc">${escapeHtml(ep.overview)}</p>` : ''}
-              </div>
-            </a>
+            <div role="listitem" data-episode="${ep.episode}">
+              <a class="card episode" data-rail-focus="true" aria-label="Episode ${ep.episode}: ${escapeAttr(ep.title)}" href="${withBasePath(`/watch/${encodeURIComponent(slug)}/s${ep.season}e${ep.episode}`)}">
+                <span class="card-art card-still">
+                  <span class="card-pic">
+                    ${ep.thumbnail ? `<img data-fade="true" src="${escapeHtml(ep.thumbnail)}" alt="" width="780" height="439" loading="lazy" decoding="async" draggable="false" referrerpolicy="no-referrer"/>` : ''}
+                  </span>
+                </span>
+                <span class="episode-text">
+                  <span class="episode-meta">
+                    <span>Episode ${ep.episode}${ep.runtime ? ` · ${escapeHtml(ep.runtime)}` : ''}</span>
+                    ${ep.rating ? `<span class="episode-score"><svg xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" fill="currentColor" viewBox="0 0 256 256" aria-hidden="true"><path d="M234.29,114.85l-45,38.83L203,211.75a16.4,16.4,0,0,1-24.5,17.82L128,198.49,77.47,229.57A16.4,16.4,0,0,1,53,211.75l13.76-58.07-45-38.83A16.46,16.46,0,0,1,31.08,86l59-4.76,22.76-55.08a16.36,16.36,0,0,1,30.27,0l22.75,55.08,59,4.76a16.46,16.46,0,0,1,9.37,28.86Z"></path></svg>${escapeHtml(ep.rating)}<span class="sr-only"> out of 10</span></span>` : ''}
+                  </span>
+                  <span class="episode-title">${escapeHtml(ep.title)}</span>
+                  ${ep.overview ? `<span class="episode-story">${escapeHtml(ep.overview)}</span>` : ''}
+                </span>
+              </a>
+            </div>
           `).join('');
+          epGrid.querySelectorAll('img[data-fade]').forEach(img => {
+            if (img.complete && img.naturalWidth > 0) img.setAttribute('data-loaded', '');
+            else img.addEventListener('load', () => img.setAttribute('data-loaded', ''), { once: true });
+          });
+          epGrid.scrollLeft = 0;
+          try { initRailScroll(); } catch {}
         };
-        seasonTabs.innerHTML = seasonNums.map((sNum, idx) => (
-          `<button type="button" role="tab" class="kaira-dyn-season-btn" data-season="${sNum}" aria-selected="${idx === 0 ? 'true' : 'false'}">Season ${sNum}</button>`
-        )).join('');
-        seasonTabs.querySelectorAll('.kaira-dyn-season-btn').forEach(btn => {
-          btn.addEventListener('click', () => renderSeason(Number(btn.dataset.season)));
-        });
+
+        if (seasonSelectBtn) {
+          const seasonOptions = seasonNums.map(sNum => {
+            const count = (seasonsMap.get(sNum) || []).length;
+            return {
+              n: sNum,
+              label: `Season ${sNum}`,
+              subtitle: `${count} ${count === 1 ? 'episode' : 'episodes'}`
+            };
+          });
+          seasonSelectBtn.hidden = false;
+          seasonSelectBtn.onclick = (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            if (activeTriggerBtn === seasonSelectBtn) {
+              closeCurrentPopup();
+              return;
+            }
+            const curLabel = (seasonSelectBtn.querySelector('.title-select-text') || seasonSelectBtn).textContent.trim();
+            openDropdownPopup(seasonSelectBtn, seasonOptions, curLabel, (selectedOpt) => {
+              renderSeason(selectedOpt.n);
+            });
+          };
+        }
         renderSeason(seasonNums[0]);
       }
     }
@@ -11121,6 +11085,7 @@
     try { syncDetailContinueWatchingButton(); } catch {}
     try { initWatchlist(); } catch {}
     try { initDetailPageControls(); } catch {}
+    try { initRailScroll(); } catch {}
   }
 
   function canonicalizeAliasRoute(rawPath) {
@@ -11250,11 +11215,19 @@
         </div>
       </section>
       <section class="section" data-dyn-episodes-section hidden>
-        <div class="shell gutter">
-          <header class="relative z-[1] mb-4 flex justify-between md:mb-5 items-baseline gap-6">
+        <header class="shell gutter relative z-[1] mb-4 flex justify-between md:mb-5 items-baseline gap-6">
+          <div class="flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-1">
             <h2 class="section-title min-w-0 max-w-full text-section font-semibold">Episodes</h2>
-          </header>
-          <div class="kaira-dyn-ep-grid" data-dyn-ep-grid></div>
+          </div>
+        </header>
+        <div class="shell">
+          <div class="contents">
+            <div class="rail">
+              <div role="list" aria-label="${escapeHtml(title)} episodes" class="rail-track [--cols:1.25] sm:[--cols:2.2] md:[--cols:2.6] lg:[--cols:3] xl:[--cols:4]" data-dyn-ep-grid></div>
+              <button type="button" class="rail-arrow" data-dir="prev" tabindex="-1" aria-hidden="true" disabled=""><span><svg xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" fill="currentColor" viewBox="0 0 256 256" class="size-4"><path d="M168.49,199.51a12,12,0,0,1-17,17l-80-80a12,12,0,0,1,0-17l80-80a12,12,0,0,1,17,17L97,128Z"></path></svg></span></button>
+              <button type="button" class="rail-arrow" data-dir="next" tabindex="-1" aria-hidden="true"><span><svg xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" fill="currentColor" viewBox="0 0 256 256" class="size-4"><path d="M184.49,136.49l-80,80a12,12,0,0,1-17-17L159,128,87.51,56.49a12,12,0,1,1,17-17l80,80A12,12,0,0,1,184.49,136.49Z"></path></svg></span></button>
+            </div>
+          </div>
         </div>
       </section>
     </article></div></main></body></html>`;
@@ -11386,21 +11359,34 @@
     const epGrid = article.querySelector('[data-dyn-ep-grid]');
     if (epSection && epGrid) {
       epSection.hidden = false;
+      const epRuntime = runtime ? String(runtime).replace(/min/i, 'm').replace(/\s+/g, '') : '';
       const cards = [];
       for (let ep = 1; ep <= epCount; ep++) {
         cards.push(`
-          <a class="kaira-dyn-ep-card" href="${withBasePath(`/watch/anime/${encodeURIComponent(animeId)}/${ep}`)}">
-            <div class="kaira-dyn-ep-thumb">
-              ${thumbImg ? `<img src="${escapeHtml(thumbImg)}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer"/>` : ''}
-              <span class="kaira-dyn-ep-badge">Episode ${ep}</span>
-            </div>
-            <div class="kaira-dyn-ep-body">
-              <h3 class="kaira-dyn-ep-title">${escapeHtml(title)} · Episode ${ep}</h3>
-            </div>
-          </a>
+          <div role="listitem" data-episode="${ep}">
+            <a class="card episode" data-rail-focus="true" aria-label="Episode ${ep}: ${escapeAttr(title)}" href="${withBasePath(`/watch/anime/${encodeURIComponent(animeId)}/${ep}`)}">
+              <span class="card-art card-still">
+                <span class="card-pic">
+                  ${thumbImg ? `<img data-fade="true" src="${escapeHtml(thumbImg)}" alt="" width="780" height="439" loading="lazy" decoding="async" draggable="false" referrerpolicy="no-referrer"/>` : ''}
+                </span>
+              </span>
+              <span class="episode-text">
+                <span class="episode-meta">
+                  <span>Episode ${ep}${epRuntime ? ` · ${escapeHtml(epRuntime)}` : ''}</span>
+                </span>
+                <span class="episode-title">${escapeHtml(title)} · Episode ${ep}</span>
+              </span>
+            </a>
+          </div>
         `);
       }
       epGrid.innerHTML = cards.join('');
+      epGrid.querySelectorAll('img[data-fade]').forEach(img => {
+        if (img.complete && img.naturalWidth > 0) img.setAttribute('data-loaded', '');
+        else img.addEventListener('load', () => img.setAttribute('data-loaded', ''), { once: true });
+      });
+      epGrid.scrollLeft = 0;
+      try { initRailScroll(); } catch {}
     }
   }
 
