@@ -83,12 +83,136 @@ function walkHtmlFiles(dir, files = []) {
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
     const full = path.join(dir, entry.name);
     if (entry.isDirectory()) {
+      // Never run HTML rewrites on cached JSON files under dist/api/
+      if (path.basename(full) === 'api' && path.dirname(full) === distDir) {
+        continue;
+      }
       walkHtmlFiles(full, files);
     } else if (entry.isFile() && entry.name.endsWith('.html')) {
       files.push(full);
     }
   }
   return files;
+}
+
+function extractTitleMetaFromDetailHtml(html, slug, kind) {
+  const idMatch = html.match(/id="rate-(tt\d+)"/) || html.match(/\/(tt\d+)\/img/) || html.match(/"imdbId":"(tt\d+)"/);
+  const imdbId = idMatch ? idMatch[1] : null;
+  let title = slug.replace(/-\d{4}$/, '').split('-').filter(Boolean).map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+  let year = (slug.match(/-(\d{4})$/) || [])[1] || '';
+  let description = '';
+  let poster = imdbId ? `https://s.fli.cx/a/poster/medium/${imdbId}/img` : '';
+  let rating = '';
+  let genres = [];
+
+  const ldMatches = html.match(/<script[^>]*type="application\/ld\+json"[^>]*>([\s\S]*?)<\/script>/gi) || [];
+  for (const block of ldMatches) {
+    const inner = block.replace(/^<script[^>]*>|<\/script>$/gi, '').trim();
+    try {
+      const data = JSON.parse(inner);
+      const node = Array.isArray(data) ? data.find(n => n && (n['@type'] === 'Movie' || n['@type'] === 'TVSeries')) : data;
+      if (node && (node['@type'] === 'Movie' || node['@type'] === 'TVSeries')) {
+        if (node.name) title = String(node.name);
+        if (node.datePublished) year = String(node.datePublished).slice(0, 4);
+        if (node.description) description = String(node.description);
+        if (typeof node.image === 'string') poster = node.image;
+        if (node.aggregateRating && node.aggregateRating.ratingValue) {
+          rating = String(node.aggregateRating.ratingValue);
+        }
+        if (Array.isArray(node.genre)) genres = node.genre.map(String);
+        else if (typeof node.genre === 'string') genres = [node.genre];
+        break;
+      }
+    } catch {
+      // Ignore malformed JSON-LD blocks
+    }
+  }
+
+  const trailerIds = Array.from(new Set(
+    Array.from(html.matchAll(/\/y\/vi\/([A-Za-z0-9_-]{6,20})\//g)).map(m => m[1])
+  ));
+
+  return {
+    slug,
+    id: imdbId,
+    imdbId,
+    title,
+    year,
+    kind,
+    poster,
+    description,
+    rating,
+    genres,
+    trailerId: trailerIds[0] || null,
+    trailers: trailerIds
+  };
+}
+
+function buildCatalogIndex() {
+  const titles = {};
+  const sources = {};
+
+  for (const [folder, kind] of [['movie', 'movie'], ['tv', 'show']]) {
+    const baseFolder = path.join(distDir, folder);
+    if (!fs.existsSync(baseFolder)) continue;
+    for (const entry of fs.readdirSync(baseFolder, { withFileTypes: true })) {
+      if (!entry.isDirectory()) continue;
+      const htmlPath = path.join(baseFolder, entry.name, 'index.html');
+      if (!fs.existsSync(htmlPath)) continue;
+      try {
+        const html = fs.readFileSync(htmlPath, 'utf-8');
+        const meta = extractTitleMetaFromDetailHtml(html, entry.name, kind);
+        if (meta.imdbId) {
+          const existing = titles[entry.name];
+          if (!existing || (!existing.imdbId && meta.imdbId) || (existing.kind !== 'movie' && kind === 'movie')) {
+            titles[entry.name] = meta;
+          }
+        }
+      } catch {
+        // Skip unreadable detail file
+      }
+    }
+  }
+
+  // Index any cached CORS-safe direct HTTPS HLS sources (e.g. https://s.fli.cx/s/*.m3u8)
+  const sourcesRoot = path.join(distDir, 'api', 'sources');
+  if (fs.existsSync(sourcesRoot)) {
+    for (const entry of fs.readdirSync(sourcesRoot, { withFileTypes: true })) {
+      if (!entry.isDirectory()) continue;
+      const jsonPath = path.join(sourcesRoot, entry.name, 'index.html');
+      if (!fs.existsSync(jsonPath)) continue;
+      try {
+        const parsed = JSON.parse(fs.readFileSync(jsonPath, 'utf-8'));
+        const directSources = (Array.isArray(parsed?.sources) ? parsed.sources : [])
+          .filter(s => s && s.name && typeof s.src === 'string' && /^https:\/\//i.test(s.src))
+          .map(s => ({
+            name: s.name === 'Flicx' ? 'Kaira' : s.name,
+            kind: s.kind || 'hls',
+            src: s.src,
+            quality: s.quality || '4K',
+            group: s.group || 'external'
+          }));
+        if (directSources.length > 0) {
+          sources[entry.name] = directSources;
+        }
+      } catch {
+        // Ignore invalid JSON
+      }
+    }
+  }
+
+  const indexPayload = {
+    generatedAt: new Date().toISOString(),
+    titles,
+    sources
+  };
+  const serializedIndex = JSON.stringify(indexPayload);
+  fs.writeFileSync(path.join(distDir, 'catalog-index.json'), serializedIndex, 'utf-8');
+  const publicDir = path.resolve(rootDir, 'public');
+  if (fs.existsSync(publicDir)) {
+    fs.writeFileSync(path.join(publicDir, 'catalog-index.json'), serializedIndex, 'utf-8');
+  }
+  return { titleCount: Object.keys(titles).length, sourceCount: Object.keys(sources).length };
 }
 
 function run() {
@@ -100,7 +224,7 @@ function run() {
   // 1. Add .nojekyll so GitHub Pages serves _next/ static CSS & font directories
   fs.writeFileSync(path.join(distDir, '.nojekyll'), '', 'utf-8');
 
-  // 2. Process all HTML files in dist/
+  // 2. Process all HTML files in dist/ (excluding dist/api/ JSON payloads)
   const htmlFiles = walkHtmlFiles(distDir);
   for (const filePath of htmlFiles) {
     const raw = fs.readFileSync(filePath, 'utf-8');
@@ -108,7 +232,10 @@ function run() {
     fs.writeFileSync(filePath, processed, 'utf-8');
   }
 
-  // 3. Create 404.html SPA fallback for GitHub Pages deep links (/watch/..., /movie/..., /tv/...)
+  // 3. Build static catalog-index.json for GitHub Pages zero-backend resolution
+  const indexStats = buildCatalogIndex();
+
+  // 4. Create 404.html SPA fallback for GitHub Pages deep links (/watch/..., /movie/..., /tv/...)
   const rootIndex = path.join(distDir, 'index.html');
   const watchTemplate = path.join(distDir, 'watch', 'heart-of-the-beast-2026', 'index.html');
   const fallbackHtml = `<!DOCTYPE html>
@@ -140,7 +267,7 @@ function run() {
     fs.writeFileSync(path.join(distDir, '404.html'), fallbackHtml, 'utf-8');
   }
 
-  console.log(`[prepare-gh-pages] Prepared ${htmlFiles.length} HTML files, .nojekyll, and 404.html (base="${basePath}")`);
+  console.log(`[prepare-gh-pages] Prepared ${htmlFiles.length} HTML files, catalog-index.json (${indexStats.titleCount} titles, ${indexStats.sourceCount} cached stream sets), .nojekyll, and 404.html (base="${basePath}")`);
 }
 
 run();

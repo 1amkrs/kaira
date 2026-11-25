@@ -30,14 +30,423 @@
     return fallback || '#5d341e';
   }
 
+  function getBasePrefix() {
+    if (typeof window.__KAIRA_BASE_PATH__ === 'string' && window.__KAIRA_BASE_PATH__ !== '/') {
+      return window.__KAIRA_BASE_PATH__.replace(/\/$/, '');
+    }
+    return '';
+  }
+
+  function withBasePath(rawPath) {
+    const p = String(rawPath || '/');
+    if (/^(https?:|mailto:|tel:|#|javascript:)/i.test(p)) return p;
+    const prefix = getBasePrefix();
+    const normalized = p.startsWith('/') ? p : '/' + p;
+    if (!prefix) return normalized;
+    if (normalized === prefix || normalized.startsWith(prefix + '/')) return normalized;
+    return prefix + normalized;
+  }
+
   function normalizeWatchSlug(raw) {
     if (!raw || typeof raw !== 'string') return '';
-    return raw
-      .split('?')[0]
+    const prefix = getBasePrefix();
+    let cleaned = raw.split('?')[0].split('#')[0];
+    if (prefix && cleaned.startsWith(prefix + '/')) {
+      cleaned = cleaned.slice(prefix.length);
+    }
+    return cleaned
       .replace(/^\/(movie|tv|watch)\//, '')
       .replace(/\/s\d+e\d+.*$/i, '')
       .replace(/\/$/, '')
       .trim();
+  }
+
+  // --- 0b. Subtitle Parser (WebVTT + SRT) & Static / GitHub Pages Resolvers ---
+  function parseSubtitleTimestamp(raw) {
+    const cleaned = String(raw || '').trim().replace(',', '.');
+    const match = cleaned.match(/^(?:(\d{1,3}):)?(\d{1,2}):(\d{1,2})(?:\.(\d{1,3}))?$/);
+    if (!match) return NaN;
+    const hours = match[1] ? parseInt(match[1], 10) : 0;
+    const minutes = parseInt(match[2], 10);
+    const seconds = parseInt(match[3], 10);
+    const msStr = (match[4] || '0').padEnd(3, '0').slice(0, 3);
+    const ms = parseInt(msStr, 10);
+    if (!Number.isFinite(hours) || !Number.isFinite(minutes) || !Number.isFinite(seconds) || !Number.isFinite(ms)) return NaN;
+    return hours * 3600 + minutes * 60 + seconds + ms / 1000;
+  }
+
+  function cleanCueText(rawText) {
+    return String(rawText || '')
+      .replace(/\{\\[^}]+\}/g, '')
+      .replace(/<br\s*\/?>/gi, '\n')
+      .replace(/<\/?[^>]+>/g, '')
+      .replace(/&amp;/gi, '&')
+      .replace(/&lt;/gi, '<')
+      .replace(/&gt;/gi, '>')
+      .replace(/&quot;/gi, '"')
+      .replace(/&#39;|&apos;/gi, "'")
+      .replace(/&nbsp;/gi, ' ')
+      .split('\n')
+      .map(line => line.trim())
+      .filter(Boolean)
+      .join('\n')
+      .trim();
+  }
+
+  function parseSubtitleText(raw) {
+    if (!raw || typeof raw !== 'string') return [];
+    const normalized = raw.replace(/^\uFEFF/, '').replace(/\r\n?/g, '\n');
+    const blocks = normalized.split(/\n{2,}/);
+    const cues = [];
+    for (let i = 0; i < blocks.length; i++) {
+      const lines = blocks[i].split('\n').map(l => l.trimEnd()).filter(l => l.trim().length > 0);
+      if (lines.length === 0) continue;
+      const firstTrimmed = lines[0].trim();
+      if (/^(WEBVTT|NOTE|STYLE|REGION)\b/i.test(firstTrimmed)) continue;
+      const timingIdx = lines.findIndex(line => line.includes('-->'));
+      if (timingIdx === -1) continue;
+      const parts = lines[timingIdx].trim().split('-->');
+      if (parts.length < 2) continue;
+      const start = parseSubtitleTimestamp(parts[0].trim().split(/\s+/)[0]);
+      const end = parseSubtitleTimestamp(parts[1].trim().split(/\s+/)[0]);
+      if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) continue;
+      const text = cleanCueText(lines.slice(timingIdx + 1).join('\n'));
+      if (!text) continue;
+      cues.push({ start, end, text });
+    }
+    cues.sort((a, b) => a.start - b.start || a.end - b.end);
+    return cues;
+  }
+
+  function getActiveSubtitleText(cues, currentTime) {
+    if (!Array.isArray(cues) || cues.length === 0 || !Number.isFinite(currentTime) || currentTime < 0) return '';
+    const active = [];
+    for (let i = 0; i < cues.length; i++) {
+      const cue = cues[i];
+      if (cue.start > currentTime) break;
+      if (currentTime >= cue.start && currentTime <= cue.end) active.push(cue.text);
+    }
+    return active.join('\n');
+  }
+
+  function buildEmbedFallbackServers(imdbId, isShow, seasonNum, episodeNum) {
+    const cleanImdb = String(imdbId || '').trim();
+    if (!/^tt\d+$/i.test(cleanImdb)) return [];
+    const s = Math.max(1, Number(seasonNum) || 1);
+    const e = Math.max(1, Number(episodeNum) || 1);
+    if (isShow) {
+      return [
+        { name: 'VidSrc', kind: 'embed', src: `https://vidsrc.me/embed/tv?imdb=${encodeURIComponent(cleanImdb)}&season=${s}&episode=${e}`, quality: 'HD', group: 'embed' },
+        { name: 'VidSrc Pro', kind: 'embed', src: `https://vidsrc.to/embed/tv/${encodeURIComponent(cleanImdb)}/${s}/${e}`, quality: 'HD', group: 'embed' },
+        { name: 'VidFast', kind: 'embed', src: `https://vidfast.pro/tv/${encodeURIComponent(cleanImdb)}/${s}/${e}`, quality: 'HD', group: 'embed' },
+        { name: 'VidPrime', kind: 'embed', src: `https://vidprime.top/tv/${encodeURIComponent(cleanImdb)}/${s}/${e}`, quality: 'HD', group: 'embed' },
+        { name: '2Embed', kind: 'embed', src: `https://www.2embed.cc/embedtv/${encodeURIComponent(cleanImdb)}&s=${s}&e=${e}`, quality: 'HD', group: 'embed' }
+      ];
+    }
+    return [
+      { name: 'VidSrc', kind: 'embed', src: `https://vidsrc.me/embed/movie?imdb=${encodeURIComponent(cleanImdb)}`, quality: 'HD', group: 'embed' },
+      { name: 'VidSrc Pro', kind: 'embed', src: `https://vidsrc.to/embed/movie/${encodeURIComponent(cleanImdb)}`, quality: 'HD', group: 'embed' },
+      { name: 'VidFast', kind: 'embed', src: `https://vidfast.pro/movie/${encodeURIComponent(cleanImdb)}`, quality: 'HD', group: 'embed' },
+      { name: 'VidPrime', kind: 'embed', src: `https://vidprime.top/movie/${encodeURIComponent(cleanImdb)}`, quality: 'HD', group: 'embed' },
+      { name: '2Embed', kind: 'embed', src: `https://www.2embed.cc/embed/${encodeURIComponent(cleanImdb)}`, quality: 'HD', group: 'embed' }
+    ];
+  }
+
+  let staticCatalogIndexPromise = null;
+  function fetchStaticCatalogIndex() {
+    if (!staticCatalogIndexPromise) {
+      staticCatalogIndexPromise = fetch(withBasePath('/catalog-index.json'))
+        .then(r => (r.ok ? r.json() : null))
+        .catch(() => null);
+    }
+    return staticCatalogIndexPromise;
+  }
+
+  function parseDetailHtmlMetadata(html, slug, kind) {
+    if (!html || typeof html !== 'string') return null;
+    const idMatch = html.match(/id="rate-(tt\d+)"/) || html.match(/\/(tt\d+)\/img/) || html.match(/"imdbId":"(tt\d+)"/);
+    const imdbId = idMatch ? idMatch[1] : null;
+    let title = slug.replace(/-\d{4}$/, '').split('-').filter(Boolean).map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+    let year = (slug.match(/-(\d{4})$/) || [])[1] || '';
+    let description = '';
+    let poster = imdbId ? `https://s.fli.cx/a/poster/medium/${imdbId}/img` : '';
+    let rating = '';
+    let genres = [];
+
+    const ldMatches = html.match(/<script[^>]*type="application\/ld\+json"[^>]*>([\s\S]*?)<\/script>/gi) || [];
+    for (const block of ldMatches) {
+      const inner = block.replace(/^<script[^>]*>|<\/script>$/gi, '').trim();
+      try {
+        const data = JSON.parse(inner);
+        const node = Array.isArray(data) ? data.find(n => n && (n['@type'] === 'Movie' || n['@type'] === 'TVSeries')) : data;
+        if (node && (node['@type'] === 'Movie' || node['@type'] === 'TVSeries')) {
+          if (node.name) title = String(node.name);
+          if (node.datePublished) year = String(node.datePublished).slice(0, 4);
+          if (node.description) description = String(node.description);
+          if (typeof node.image === 'string') poster = node.image;
+          if (node.aggregateRating && node.aggregateRating.ratingValue) rating = String(node.aggregateRating.ratingValue);
+          if (Array.isArray(node.genre)) genres = node.genre.map(String);
+          else if (typeof node.genre === 'string') genres = [node.genre];
+          break;
+        }
+      } catch {}
+    }
+
+    const trailerIds = Array.from(new Set(Array.from(html.matchAll(/\/y\/vi\/([A-Za-z0-9_-]{6,20})\//g)).map(m => m[1])));
+    if (!imdbId && !description && trailerIds.length === 0) return null;
+    return {
+      slug,
+      id: imdbId,
+      imdbId,
+      title,
+      year,
+      kind,
+      poster,
+      description,
+      rating,
+      genres,
+      trailerId: trailerIds[0] || null,
+      trailers: trailerIds
+    };
+  }
+
+  function makeSlugFromTitleYear(name, year) {
+    const base = String(name || '')
+      .toLowerCase()
+      .replace(/['’]/g, '')
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '');
+    const cleanYear = String(year || '').match(/\d{4}/)?.[0] || '';
+    return cleanYear ? `${base}-${cleanYear}` : base;
+  }
+
+  async function resolveTitleMeta(slug, preferredKind) {
+    const cleanSlug = normalizeWatchSlug(slug);
+    if (!cleanSlug) return null;
+    const kindHint = preferredKind === 'show' || preferredKind === 'tv' ? 'show' : (preferredKind === 'movie' ? 'movie' : '');
+
+    // 1. Try local Vite backend API first (returns rich metadata when hosted locally)
+    try {
+      const apiRes = await fetch(`/api/title?slug=${encodeURIComponent(cleanSlug)}${kindHint ? `&kind=${encodeURIComponent(kindHint)}` : ''}`);
+      if (apiRes.ok) {
+        const ct = apiRes.headers.get('content-type') || '';
+        if (ct.includes('json')) {
+          const data = await apiRes.json().catch(() => null);
+          if (data && (data.imdbId || data.id || data.title)) return data;
+        }
+      }
+    } catch {}
+
+    // 2. Try static build-time catalog-index.json (instant on GitHub Pages)
+    const idx = await fetchStaticCatalogIndex();
+    if (idx && idx.titles && idx.titles[cleanSlug] && (idx.titles[cleanSlug].imdbId || idx.titles[cleanSlug].id)) {
+      return idx.titles[cleanSlug];
+    }
+
+    // 3. Try fetching & parsing the static detail HTML page directly
+    const tryFolders = kindHint === 'show' ? [['tv', 'show'], ['movie', 'movie']] : [['movie', 'movie'], ['tv', 'show']];
+    for (const [folder, kind] of tryFolders) {
+      try {
+        const res = await fetch(withBasePath(`/${folder}/${encodeURIComponent(cleanSlug)}/`));
+        if (res.ok) {
+          const html = await res.text();
+          const parsed = parseDetailHtmlMetadata(html, cleanSlug, kind);
+          if (parsed && (parsed.imdbId || parsed.id)) return parsed;
+        }
+      } catch {}
+    }
+
+    // 4. Live CORS fallback via Cinemeta Stremio API (resolves ANY movie/series IMDb ID on GitHub Pages)
+    try {
+      const yearMatch = cleanSlug.match(/-(\d{4})$/);
+      const targetYear = yearMatch ? yearMatch[1] : '';
+      const queryTitle = cleanSlug.replace(/-\d{4}$/, '').replace(/-/g, ' ').trim();
+      if (!queryTitle) return null;
+
+      // Direct IMDb ID slug support (e.g. /watch/tt33764258)
+      if (/^tt\d+$/i.test(cleanSlug)) {
+        const types = kindHint === 'show' ? ['series', 'movie'] : ['movie', 'series'];
+        for (const t of types) {
+          const r = await fetch(`https://v3-cinemeta.strem.io/meta/${t}/${encodeURIComponent(cleanSlug)}.json`).catch(() => null);
+          const d = r && r.ok ? await r.json().catch(() => null) : null;
+          if (d && d.meta && d.meta.imdb_id) {
+            const m = d.meta;
+            return {
+              slug: cleanSlug,
+              id: m.imdb_id,
+              imdbId: m.imdb_id,
+              title: m.name || cleanSlug,
+              year: String(m.releaseInfo || m.year || '').slice(0, 4),
+              kind: t === 'series' ? 'show' : 'movie',
+              poster: m.poster || '',
+              description: m.description || '',
+              rating: m.imdbRating ? String(m.imdbRating) : '',
+              genres: Array.isArray(m.genres) ? m.genres : [],
+              trailerId: m.trailers && m.trailers[0] ? m.trailers[0].source : null
+            };
+          }
+        }
+      }
+
+      const catalogTypes = kindHint === 'show' ? ['series', 'movie'] : ['movie', 'series'];
+      const results = await Promise.all(
+        catalogTypes.map(t =>
+          fetch(`https://v3-cinemeta.strem.io/catalog/${t}/top/search=${encodeURIComponent(queryTitle)}.json`)
+            .then(r => (r.ok ? r.json() : null))
+            .then(d => ({ type: t, metas: Array.isArray(d?.metas) ? d.metas : [] }))
+            .catch(() => ({ type: t, metas: [] }))
+        )
+      );
+
+      let best = null;
+      let bestScore = -1;
+      const normQuery = queryTitle.toLowerCase();
+      for (const group of results) {
+        for (const m of group.metas) {
+          const id = m.imdb_id || m.id;
+          if (!id || !/^tt\d+$/i.test(id)) continue;
+          const name = String(m.name || '').trim();
+          const mYear = String(m.releaseInfo || m.year || '').match(/\d{4}/)?.[0] || '';
+          let score = 0;
+          if (name.toLowerCase() === normQuery) score += 100;
+          else if (name.toLowerCase().includes(normQuery)) score += 45;
+          if (targetYear && mYear === targetYear) score += 60;
+          if (group.type === catalogTypes[0]) score += 10;
+          if (score > bestScore) {
+            bestScore = score;
+            best = { meta: m, type: group.type };
+          }
+        }
+      }
+      if (best) {
+        const m = best.meta;
+        const imdbId = m.imdb_id || m.id;
+        return {
+          slug: cleanSlug,
+          id: imdbId,
+          imdbId,
+          title: m.name || queryTitle,
+          year: String(m.releaseInfo || m.year || targetYear || '').slice(0, 4),
+          kind: best.type === 'series' ? 'show' : 'movie',
+          poster: m.poster || '',
+          description: m.description || '',
+          rating: m.imdbRating ? String(m.imdbRating) : '',
+          genres: Array.isArray(m.genres) ? m.genres : [],
+          trailerId: m.trailers && m.trailers[0] ? m.trailers[0].source : null
+        };
+      }
+    } catch {}
+
+    return null;
+  }
+
+  async function resolveStreamSources(imdbId, isShow, seasonNum, episodeNum) {
+    const serverList = [];
+    const seenNames = new Set();
+    const pushServer = (srv) => {
+      if (!srv || !srv.name || !srv.src) return;
+      const normalized = { ...srv, name: srv.name === 'Flicx' ? 'Kaira' : srv.name };
+      const key = `${normalized.name.toLowerCase()}:${normalized.kind || 'hls'}`;
+      if (seenNames.has(key)) return;
+      seenNames.add(key);
+      serverList.push(normalized);
+    };
+
+    // 1. Try local Vite /api/sources proxy first (serves direct 4K HLS streams locally)
+    let gotLiveApi = false;
+    try {
+      const apiUrl = `/api/sources/${encodeURIComponent(imdbId)}${isShow ? `?s=${seasonNum}&e=${episodeNum}` : ''}`;
+      const res = await fetch(apiUrl);
+      if (res.ok) {
+        const ct = (res.headers.get('content-type') || '').toLowerCase();
+        const text = await res.text();
+        // Verify genuine JSON (not a static HTML 404 shell)
+        if (text.trim().startsWith('{')) {
+          const parsed = JSON.parse(text);
+          const rawSources = Array.isArray(parsed?.sources) ? parsed.sources : [];
+          // If served as text/html on static Pages (/api/sources/tt.../index.html), skip relative /api/s/... proxy paths!
+          const isStaticJsonFile = ct.includes('text/html');
+          for (const s of rawSources) {
+            if (!s || !s.src) continue;
+            if (isStaticJsonFile && String(s.src).startsWith('/api/')) continue;
+            pushServer(s);
+          }
+          if (serverList.length > 0) gotLiveApi = true;
+        }
+      }
+    } catch {}
+
+    // 2. Check build-time static catalog-index.json for cached direct HTTPS HLS streams (e.g. s.fli.cx)
+    if (!gotLiveApi && !isShow) {
+      const idx = await fetchStaticCatalogIndex();
+      const cached = idx && idx.sources && Array.isArray(idx.sources[imdbId]) ? idx.sources[imdbId] : [];
+      for (const s of cached) {
+        if (s && typeof s.src === 'string' && /^https:\/\//i.test(s.src)) {
+          pushServer(s);
+        }
+      }
+    }
+
+    // 3. Always append CORS/iframe-safe universal embed servers so GitHub Pages ALWAYS plays on PC & mobile
+    const embedFallbacks = buildEmbedFallbackServers(imdbId, isShow, seasonNum, episodeNum);
+    for (const srv of embedFallbacks) {
+      pushServer(srv);
+    }
+
+    return serverList;
+  }
+
+  async function resolveSubtitlesForImdb(imdbId, isShow, seasonNum, episodeNum) {
+    // 1. Try local Vite /api/subtitles endpoint first
+    try {
+      const subUrl = `/api/subtitles/${encodeURIComponent(imdbId)}${isShow ? `?s=${seasonNum}&e=${episodeNum}` : ''}`;
+      const res = await fetch(subUrl);
+      if (res.ok) {
+        const ct = (res.headers.get('content-type') || '').toLowerCase();
+        if (ct.includes('json')) {
+          const data = await res.json().catch(() => null);
+          if (data && Array.isArray(data.tracks) && data.tracks.length > 0) {
+            return data.tracks;
+          }
+        }
+      }
+    } catch {}
+
+    // 2. Live CORS fallback: OpenSubtitles Stremio v3 (Access-Control-Allow-Origin: * on both index & .srt files!)
+    if (/^tt\d+$/i.test(String(imdbId || ''))) {
+      try {
+        const osUrl = isShow
+          ? `https://opensubtitles-v3.strem.io/subtitles/series/${encodeURIComponent(imdbId)}:${seasonNum}:${episodeNum}.json`
+          : `https://opensubtitles-v3.strem.io/subtitles/movie/${encodeURIComponent(imdbId)}.json`;
+        const res = await fetch(osUrl);
+        if (res.ok) {
+          const data = await res.json().catch(() => null);
+          const subs = Array.isArray(data?.subtitles) ? data.subtitles : [];
+          const ISO3_TO_2 = {
+            eng: 'en', spa: 'es', fre: 'fr', fra: 'fr', ger: 'de', deu: 'de', ita: 'it',
+            por: 'pt', pob: 'pt-BR', rus: 'ru', jpn: 'ja', kor: 'ko', chi: 'zh', zho: 'zh',
+            ara: 'ar', hin: 'hi', dut: 'nl', nld: 'nl', pol: 'pl', tur: 'tr', swe: 'sv',
+            nor: 'no', dan: 'da', fin: 'fi', cze: 'cs', ces: 'cs', gre: 'el', ell: 'el',
+            heb: 'he', hun: 'hu', ind: 'id', rum: 'ro', ron: 'ro', tha: 'th', ukr: 'uk',
+            vie: 'vi', bul: 'bg', hrv: 'hr', srp: 'sr', slk: 'sk', per: 'fa', fas: 'fa',
+            may: 'ms', msa: 'ms', ben: 'bn', mal: 'ml'
+          };
+          return subs
+            .filter(s => s && s.url && s.lang)
+            .map(s => {
+              const rawLang = String(s.lang).toLowerCase();
+              const code = ISO3_TO_2[rawLang] || rawLang.slice(0, 2);
+              return {
+                language: code,
+                src: s.url,
+                sdh: Boolean(s.SubHearingImpaired === '1' || /sdh|cc|hi/i.test(String(s.id || '')))
+              };
+            });
+        }
+      } catch {}
+    }
+
+    return [];
   }
 
   let toastTimer = null;
@@ -244,8 +653,7 @@
   }
 
   async function initHeroCarousel() {
-    const path = window.location.pathname;
-    const cleanPath = path.split('?')[0].replace(/\/$/, '') || '/';
+    const cleanPath = normalizeRoutePath(window.location.pathname);
     const isTvBrowse = cleanPath === '/tv';
     const isHome = cleanPath === '/' || cleanPath === '/index.html';
     if (!isHome && !isTvBrowse) {
@@ -268,7 +676,7 @@
 
     const dynamicReleases = await fetchDynamicHeroReleases(isTv);
     // Abort if user navigated away while fetching
-    const currentClean = window.location.pathname.split('?')[0].replace(/\/$/, '') || '/';
+    const currentClean = normalizeRoutePath(window.location.pathname);
     if (currentClean !== cleanPath || !heroEl.isConnected) return;
 
     const slides = dynamicReleases && dynamicReleases.length > 0 ? dynamicReleases : [
@@ -625,7 +1033,7 @@
   }
 
   function initWatchPlayer() {
-    const path = window.location.pathname;
+    const path = normalizeRoutePath(window.location.pathname);
     if (!path.startsWith('/watch/')) {
       cleanupWatchPlayer();
       return;
@@ -637,17 +1045,17 @@
     }
     const sessionId = activeWatchSessionId;
 
-    // 1. Ensure player stylesheets are loaded
+    // 1. Ensure player stylesheets are loaded (base-path safe for GitHub Pages)
     if (!document.querySelector('link[href*="0svyhf-62ag72.css"]')) {
       const link = document.createElement('link');
       link.rel = 'stylesheet';
-      link.href = '/_next/static/chunks/0svyhf-62ag72.css';
+      link.href = withBasePath('/_next/static/chunks/0svyhf-62ag72.css');
       document.head.appendChild(link);
     }
     if (!document.querySelector('link[href*="0u-qimbv7y_v5.css"]')) {
       const link2 = document.createElement('link');
       link2.rel = 'stylesheet';
-      link2.href = '/_next/static/chunks/0u-qimbv7y_v5.css';
+      link2.href = withBasePath('/_next/static/chunks/0u-qimbv7y_v5.css');
       document.head.appendChild(link2);
     }
 
@@ -705,7 +1113,7 @@
       `;
     }
 
-    // 4. Resolve real title metadata & stream sources
+    // 4. Resolve real title metadata & stream sources (works locally AND on static GitHub Pages)
     async function loadAndRender() {
       try {
         if (isAnimeRoute) {
@@ -722,7 +1130,7 @@
             renderPlayerError(
               `Anime Episode ${episode}`,
               'No playback sources are currently available for this anime episode.',
-              '/anime'
+              withBasePath('/anime')
             );
             return;
           }
@@ -734,48 +1142,36 @@
             1,
             episode,
             animeId,
-            '/anime'
+            withBasePath('/anime')
           );
           return;
         }
 
-        // Standard movie or TV episode: resolve exact IMDb ID via /api/title
-        const titleRes = await fetch(`/api/title?slug=${encodeURIComponent(titleSlug)}${hasEpisodeSegment ? '&kind=show' : ''}`);
+        // Standard movie or TV episode: resolve exact IMDb ID via local API -> catalog-index -> detail HTML -> Cinemeta CORS
+        const titleInfo = await resolveTitleMeta(titleSlug, hasEpisodeSegment ? 'show' : '');
         if (sessionId !== activeWatchSessionId) return;
 
-        if (!titleRes.ok) {
+        if (!titleInfo) {
           const cleanFallback = titleSlug.replace(/-\d{4}$/, '').split('-').filter(Boolean).map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ') || 'Title';
           renderPlayerError(
             cleanFallback,
             'Could not find metadata or playback sources for this title.',
-            hasEpisodeSegment ? `/tv/${titleSlug}` : `/movie/${titleSlug}`
+            withBasePath(hasEpisodeSegment ? `/tv/${titleSlug}` : `/movie/${titleSlug}`)
           );
           return;
         }
 
-        const titleInfo = await titleRes.json();
-        if (sessionId !== activeWatchSessionId) return;
-
         const imdbId = titleInfo.imdbId || titleInfo.id;
         const isShow = hasEpisodeSegment || titleInfo.kind === 'show';
-        const backUrl = isShow ? `/tv/${titleSlug}` : `/movie/${titleSlug}`;
+        const backUrl = withBasePath(isShow ? `/tv/${titleSlug}` : `/movie/${titleSlug}`);
 
         if (!imdbId) {
           renderPlayerError(titleInfo.title || titleSlug, 'No stream identifier found for this title.', backUrl);
           return;
         }
 
-        const sourcesUrl = `/api/sources/${encodeURIComponent(imdbId)}${isShow ? `?s=${season}&e=${episode}` : ''}`;
-        const sourcesRes = await fetch(sourcesUrl).catch(() => null);
-        const sourcesData = sourcesRes && sourcesRes.ok ? await sourcesRes.json().catch(() => null) : null;
+        const serverList = await resolveStreamSources(imdbId, isShow, season, episode);
         if (sessionId !== activeWatchSessionId) return;
-
-        let serverList = [];
-        if (sourcesData && Array.isArray(sourcesData.sources) && sourcesData.sources.length > 0) {
-          serverList = sourcesData.sources
-            .filter(s => s && s.name && s.src)
-            .map(s => ({ ...s, name: s.name === 'Flicx' ? 'Kaira' : s.name }));
-        }
 
         if (serverList.length === 0) {
           renderPlayerError(
@@ -789,7 +1185,7 @@
         renderPlayer(titleInfo, serverList, isShow, season, episode, imdbId, backUrl);
       } catch (err) {
         if (sessionId !== activeWatchSessionId) return;
-        renderPlayerError('Playback error', 'Something went wrong while loading this stream.', '/');
+        renderPlayerError('Playback error', 'Something went wrong while loading this stream.', withBasePath('/'));
       }
     }
 
@@ -902,7 +1298,9 @@
             <!-- Video Stage -->
             <div class="fx-video-wrap" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:#000;">
               <video id="flicx-video" class="fx-video" playsinline webkit-playsinline="true" preload="auto"${posterUrl ? ` poster="${escapeAttr(posterUrl)}"` : ''} crossorigin="anonymous" x-webkit-airplay="allow" style="width:100%;height:100%;object-fit:contain;background:#000;display:block;"></video>
-              <div id="flicx-buffering" class="fx-buffering" style="position:absolute;display:none;pointer-events:none;">
+              <iframe id="flicx-embed-frame" class="atv-embed-frame" title="${escapeAttr(cleanTitle)}" allow="autoplay; fullscreen; encrypted-media; picture-in-picture" referrerpolicy="origin" style="display:none;position:absolute;inset:0;width:100%;height:100%;border:0;background:#000;z-index:2;"></iframe>
+              <div id="atv-subtitle-cue" class="atv-subtitle-cue" aria-live="polite" aria-hidden="true"></div>
+              <div id="flicx-buffering" class="fx-buffering" style="position:absolute;display:none;pointer-events:none;z-index:4;">
                 <div class="fx-spinner" style="width:2.85rem;height:2.85rem;border:3px solid rgba(255,255,255,0.22);border-top-color:#ffffff;border-radius:50%;animation:spin 0.8s linear infinite;"></div>
               </div>
               <div id="atv-status-pill" class="atv-status-pill" role="status" aria-live="polite" aria-hidden="true"></div>
@@ -1151,6 +1549,8 @@
       const playerStage = watchRoot.querySelector('.watch-stage');
       const playerEl = watchRoot.querySelector('.fx-player');
       const videoEl = watchRoot.querySelector('#flicx-video');
+      const embedFrameEl = watchRoot.querySelector('#flicx-embed-frame');
+      const subtitleCueEl = watchRoot.querySelector('#atv-subtitle-cue');
       const bufferingEl = watchRoot.querySelector('#flicx-buffering');
       const statusPillEl = watchRoot.querySelector('#atv-status-pill');
       const uiEl = watchRoot.querySelector('.fx-ui');
@@ -1208,7 +1608,10 @@
         { id: 'off', language: 'off', label: 'Off', src: null },
         { id: 'auto', language: 'en', label: 'Auto', src: null }
       ];
-      let selectedSubtitleId = 'auto';
+      let selectedSubtitleId = 'off';
+      let activeSubtitleCues = [];
+      let subtitleFetchToken = 0;
+      let isEmbedMode = false;
       let renderedChaptersDuration = 0;
 
       const CHECK_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><polyline points="20 6 9 17 4 12"/></svg>';
@@ -1321,33 +1724,77 @@
         wakeControls();
       }
 
-      function applySubtitleSelection(option) {
+      function renderActiveSubtitleCue() {
+        if (!subtitleCueEl) return;
+        if (isEmbedMode || selectedSubtitleId === 'off' || activeSubtitleCues.length === 0) {
+          subtitleCueEl.textContent = '';
+          subtitleCueEl.classList.remove('atv-cue-visible');
+          subtitleCueEl.setAttribute('aria-hidden', 'true');
+          return;
+        }
+        const cur = videoEl.currentTime || 0;
+        const cueText = getActiveSubtitleText(activeSubtitleCues, cur);
+        if (cueText) {
+          subtitleCueEl.textContent = cueText;
+          subtitleCueEl.classList.add('atv-cue-visible');
+          subtitleCueEl.setAttribute('aria-hidden', 'false');
+        } else {
+          subtitleCueEl.textContent = '';
+          subtitleCueEl.classList.remove('atv-cue-visible');
+          subtitleCueEl.setAttribute('aria-hidden', 'true');
+        }
+      }
+
+      async function applySubtitleSelection(option) {
+        subtitleFetchToken += 1;
+        const reqToken = subtitleFetchToken;
         selectedSubtitleId = option.id;
-        // Clear existing track elements
+
+        // Disable native textTracks so cues never double-render or get overridden by hls.js
         Array.from(videoEl.querySelectorAll('track[data-atv-sub="1"]')).forEach(tr => tr.remove());
         for (let i = 0; i < videoEl.textTracks.length; i++) {
-          videoEl.textTracks[i].mode = 'disabled';
+          try { videoEl.textTracks[i].mode = 'disabled'; } catch {}
         }
-        if (option.id !== 'off' && option.src) {
-          const track = document.createElement('track');
-          track.kind = 'subtitles';
-          track.label = option.label;
-          track.srclang = option.language || 'en';
-          track.src = option.src;
-          track.default = true;
-          track.setAttribute('data-atv-sub', '1');
-          videoEl.appendChild(track);
-          track.addEventListener('load', () => {
-            if (track.track) track.track.mode = 'showing';
-          });
-          setTimeout(() => {
-            if (!isDestroyed && track.track) track.track.mode = 'showing';
-          }, 80);
-          showPlayerStatus(`Subtitles: ${option.label}`);
-        } else if (option.id === 'off') {
+
+        if (option.id === 'off') {
+          activeSubtitleCues = [];
+          renderActiveSubtitleCue();
           showPlayerStatus('Subtitles: Off');
+          renderSubtitleMenu();
+          return;
         }
+
+        if (!option.src) {
+          activeSubtitleCues = [];
+          renderActiveSubtitleCue();
+          showPlayerStatus('No subtitle track available');
+          renderSubtitleMenu();
+          return;
+        }
+
         renderSubtitleMenu();
+        showPlayerStatus(`Loading ${option.label}…`);
+
+        try {
+          const res = await fetch(option.src);
+          if (isDestroyed || reqToken !== subtitleFetchToken) return;
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          const rawText = await res.text();
+          if (isDestroyed || reqToken !== subtitleFetchToken) return;
+
+          const cues = parseSubtitleText(rawText);
+          if (cues.length === 0) {
+            throw new Error('Empty subtitle track');
+          }
+          activeSubtitleCues = cues;
+          renderActiveSubtitleCue();
+          showPlayerStatus(`Subtitles: ${option.label}`);
+        } catch (err) {
+          if (isDestroyed || reqToken !== subtitleFetchToken) return;
+          activeSubtitleCues = [];
+          renderActiveSubtitleCue();
+          showPlayerStatus(`Could not load ${option.label} subtitles`);
+        }
       }
 
       function renderSubtitleMenu() {
@@ -1373,16 +1820,21 @@
         });
       }
 
-      // Fetch real subtitle tracks for this IMDb ID
+      // Fetch real subtitle tracks for this IMDb ID (local API + OpenSubtitles Stremio CORS fallback)
       (async function loadSubtitles() {
         try {
-          const subUrl = `/api/subtitles/${encodeURIComponent(imdbId)}${isShow ? `?s=${seasonNum}&e=${episodeNum}` : ''}`;
-          const res = await fetch(subUrl).catch(() => null);
+          const tracks = await resolveSubtitlesForImdb(imdbId, isShow, seasonNum, episodeNum);
           if (isDestroyed) return;
-          const data = res && res.ok ? await res.json().catch(() => null) : null;
-          if (isDestroyed) return;
-          if (data && Array.isArray(data.tracks) && data.tracks.length > 0) {
-            subtitleOptions = deduplicateSubtitles(data.tracks);
+          if (Array.isArray(tracks) && tracks.length > 0) {
+            subtitleOptions = deduplicateSubtitles(tracks);
+            // If user selected Auto while tracks were still loading, activate it immediately
+            if (selectedSubtitleId === 'auto' && activeSubtitleCues.length === 0) {
+              const autoOpt = subtitleOptions.find(o => o.id === 'auto');
+              if (autoOpt && autoOpt.src) {
+                applySubtitleSelection(autoOpt);
+                return;
+              }
+            }
           }
           renderSubtitleMenu();
         } catch {
@@ -1542,7 +1994,41 @@
         }
 
         const streamUrl = source.src;
+        if (source.kind === 'embed') {
+          isEmbedMode = true;
+          playerEl.classList.add('atv-mode-embed');
+          try {
+            videoEl.pause();
+            videoEl.removeAttribute('src');
+            videoEl.load();
+          } catch {}
+          videoEl.style.display = 'none';
+          bufferingEl.style.display = 'none';
+          if (centerPlayBtn) {
+            centerPlayBtn.classList.remove('atv-visible');
+            centerPlayBtn.setAttribute('aria-hidden', 'true');
+          }
+          closeAllDrawers();
+          renderActiveSubtitleCue();
+          if (embedFrameEl) {
+            embedFrameEl.style.display = 'block';
+            embedFrameEl.src = streamUrl;
+          }
+          uiEl.setAttribute('data-chrome', '');
+          uiEl.style.opacity = '1';
+          playerEl.classList.add('atv-chrome-visible');
+          return;
+        }
+
+        isEmbedMode = false;
+        playerEl.classList.remove('atv-mode-embed');
+        if (embedFrameEl) {
+          embedFrameEl.style.display = 'none';
+          embedFrameEl.src = 'about:blank';
+        }
+        videoEl.style.display = 'block';
         bufferingEl.style.display = 'block';
+        renderActiveSubtitleCue();
 
         // Stall guard: if stream does not load metadata within 14s, fail over cleanly
         streamLoadTimer = setTimeout(() => {
@@ -1742,9 +2228,11 @@
           const bufEnd = videoEl.buffered.end(videoEl.buffered.length - 1);
           scrubBuffered.style.width = Math.min(100, (bufEnd / dur) * 100) + '%';
         }
+        renderActiveSubtitleCue();
       }
 
       videoEl.ontimeupdate = updateTimeDisplay;
+      videoEl.onseeked = renderActiveSubtitleCue;
       videoEl.onloadedmetadata = () => {
         updateTimeDisplay();
         if (activeDrawer === 'chapters') renderChaptersIfReady();
@@ -2080,11 +2568,14 @@
         if (isDestroyed) return;
         uiEl.setAttribute('data-chrome', '');
         uiEl.style.opacity = '1';
+        playerEl.classList.add('atv-chrome-visible');
         clearTimeout(hideTimeout);
+        if (isEmbedMode) return;
         hideTimeout = setTimeout(() => {
-          if (!isDestroyed && !activePopover && !activeDrawer && !videoEl.paused && !isPointerOverControls && !isScrubbing) {
+          if (!isDestroyed && !isEmbedMode && !activePopover && !activeDrawer && !videoEl.paused && !isPointerOverControls && !isScrubbing) {
             uiEl.removeAttribute('data-chrome');
             uiEl.style.opacity = '0';
+            playerEl.classList.remove('atv-chrome-visible');
           }
         }, 3800);
       }
@@ -2157,6 +2648,8 @@
       // Register complete teardown hook so leaving /watch/* never leaks streams or listeners
       activePlayerCleanup = () => {
         isDestroyed = true;
+        subtitleFetchToken += 1;
+        activeSubtitleCues = [];
         clearTimeout(hideTimeout);
         clearTimeout(statusTimeout);
         clearTimeout(streamLoadTimer);
@@ -2164,6 +2657,9 @@
         if (currentHls) {
           try { currentHls.destroy(); } catch {}
           currentHls = null;
+        }
+        if (embedFrameEl) {
+          try { embedFrameEl.src = 'about:blank'; } catch {}
         }
         try {
           videoEl.removeEventListener('enterpictureinpicture', onEnterPiP);
@@ -2305,6 +2801,43 @@
       });
     });
 
+    // 2b. Wire TV detail page season download rows (button.dl-file: "Season 1 · 20 files")
+    document.querySelectorAll('button.dl-file').forEach((btn) => {
+      if (btn.__dlSeasonBound) return;
+      btn.__dlSeasonBound = true;
+      btn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const isExpanded = btn.getAttribute('aria-expanded') === 'true';
+        btn.setAttribute('aria-expanded', String(!isExpanded));
+
+        const titleText = btn.querySelector('.dl-file-title')?.textContent || btn.textContent || '';
+        const seasonMatch = titleText.match(/Season\s+(\d+)/i);
+        const seasonNum = seasonMatch ? parseInt(seasonMatch[1], 10) : 1;
+        const cleanPath = normalizeRoutePath(window.location.pathname);
+
+        if (cleanPath.startsWith('/tv/')) {
+          const showSlug = normalizeWatchSlug(cleanPath);
+          const seasonTrigger = document.querySelector('button.title-select, [role="combobox"].title-select');
+          if (seasonTrigger) {
+            const labelSpan = seasonTrigger.querySelector('.title-select-text') || seasonTrigger;
+            labelSpan.textContent = `Season ${seasonNum}`;
+          }
+          if (typeof loadSeasonEpisodes === 'function' && showSlug) {
+            loadSeasonEpisodes(showSlug, seasonNum);
+          }
+          const episodesSection = document.querySelector('.rail-track[role="list"]')?.closest('section, .section');
+          if (episodesSection) {
+            episodesSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          }
+          showKairaToast(`Showing Season ${seasonNum} episodes`);
+        } else {
+          const folderLink = btn.closest('.downloads-part, section, div')?.querySelector('a.dl-folder');
+          showKairaToast(folderLink ? 'Use "Open the folder" below for direct season downloads.' : `Selected ${titleText.trim()}`);
+        }
+      });
+    });
+
     // 3. Global delegated Trailer click handler (once)
     if (!detailActionsBound) {
       detailActionsBound = true;
@@ -2342,16 +2875,17 @@
             }
           }
 
+          const cleanPath = normalizeRoutePath(window.location.pathname);
           const slug =
             trailerBtn.getAttribute('data-trailer-slug') ||
-            normalizeWatchSlug(window.location.pathname) ||
+            normalizeWatchSlug(cleanPath) ||
             currentHeroSlides[currentSlideIndex]?.slug;
           const title =
             trailerBtn.getAttribute('data-trailer-title') ||
             document.querySelector('h1')?.textContent?.trim() ||
             currentHeroSlides[currentSlideIndex]?.title ||
             '';
-          const kind = trailerBtn.getAttribute('data-trailer-kind') || (window.location.pathname.startsWith('/tv/') ? 'show' : 'movie');
+          const kind = trailerBtn.getAttribute('data-trailer-kind') || (cleanPath.startsWith('/tv/') ? 'show' : 'movie');
 
           if (!slug) {
             showKairaToast('Trailer unavailable');
@@ -2360,8 +2894,7 @@
 
           showKairaToast(`Loading trailer for ${title || slug}...`);
           try {
-            const res = await fetch(`/api/title?slug=${encodeURIComponent(slug)}&kind=${encodeURIComponent(kind)}`);
-            const meta = res.ok ? await res.json() : null;
+            const meta = await resolveTitleMeta(slug, kind);
             if (meta && meta.trailerId) {
               openTrailerModal(meta.trailerId, meta.title || title);
             } else {
@@ -2389,10 +2922,11 @@
 
       const link = card.querySelector('a[href]') || card.closest('a[href]');
       const href = card.getAttribute('data-href') || (link ? link.getAttribute('href') : null);
+      const normHref = href ? normalizeRoutePath(href) : '';
 
-      if (href && (href.startsWith('/movie/') || href.startsWith('/tv/') || href.startsWith('/genres/') || href.startsWith('/watch/') || href.startsWith('/collections') || href.startsWith('/just-added') || href.startsWith('/awards') || href.startsWith('/4k') || href.startsWith('/anime') || href.startsWith('/discover') || href.startsWith('/library'))) {
+      if (href && (normHref.startsWith('/movie/') || normHref.startsWith('/tv/') || normHref.startsWith('/genres/') || normHref.startsWith('/watch/') || normHref.startsWith('/collections') || normHref.startsWith('/just-added') || normHref.startsWith('/awards') || normHref.startsWith('/4k') || normHref.startsWith('/anime') || normHref.startsWith('/discover') || normHref.startsWith('/library'))) {
         e.preventDefault();
-        navigateTo(href);
+        navigateTo(withBasePath(href));
       }
     });
   }
@@ -2671,7 +3205,7 @@
   }
 
   async function renderLibraryPage() {
-    const cleanPath = window.location.pathname.split('?')[0].replace(/\/$/, '') || '/';
+    const cleanPath = normalizeRoutePath(window.location.pathname);
     const items = getWatchlistItems();
     document.documentElement.setAttribute('data-watchlist', items.length ? 'some' : 'empty');
 
@@ -2701,9 +3235,8 @@
       items.map(async (item) => {
         if (item.id && item.title && item.poster) return item;
         try {
-          const res = await fetch(`/api/title?slug=${encodeURIComponent(item.slug)}`);
-          if (res.ok) {
-            const meta = await res.json();
+          const meta = await resolveTitleMeta(item.slug, item.kind);
+          if (meta) {
             didEnrich = true;
             return {
               ...item,
@@ -2726,7 +3259,7 @@
     }
 
     // Abort if user navigated away during fetch
-    if ((window.location.pathname.split('?')[0].replace(/\/$/, '') || '/') !== '/library') return;
+    if (normalizeRoutePath(window.location.pathname) !== '/library') return;
 
     grid.innerHTML = enriched
       .map(item => `<li>${renderPosterCardHtml(item)}</li>`)
@@ -2771,7 +3304,7 @@
       syncWatchlistButtonsForSlug(meta.slug, isNowAdded, meta.title);
       showKairaToast(isNowAdded ? `Added "${meta.title}" to your library` : `Removed "${meta.title}" from your library`);
 
-      if ((window.location.pathname.split('?')[0].replace(/\/$/, '') || '/') === '/library') {
+      if (normalizeRoutePath(window.location.pathname) === '/library') {
         renderLibraryPage();
       }
     });
@@ -3873,7 +4406,7 @@
     if (!railTrack) return;
 
     const parentRow = triggerBtn.closest('.title-row, .section, header');
-    const isTv = window.location.pathname.startsWith('/tv') || (parentRow && parentRow.textContent.includes('TV'));
+    const isTv = normalizeRoutePath(window.location.pathname).startsWith('/tv') || (parentRow && parentRow.textContent.includes('TV'));
 
     railTrack.style.transition = 'opacity 0.22s ease-out';
     railTrack.style.opacity = '0.35';
@@ -3884,14 +4417,31 @@
       const kindParam = isTv ? 'show' : 'movie';
       const sectionLink = section.querySelector('.section-link, a[href*="/genres/"]');
       if (sectionLink) {
-        sectionLink.href = `/genres/${encodeURIComponent(genreVal)}`;
+        sectionLink.href = withBasePath(`/genres/${encodeURIComponent(genreVal)}`);
         for (const n of sectionLink.childNodes) {
           if (n.nodeType === 3) { n.nodeValue = `All ${selectedOpt.label}`; break; }
         }
       }
       fetchPromise = fetch(`/api/browse?genre=${encodeURIComponent(genreVal)}&kind=${kindParam}`)
-        .then(r => r.json())
-        .then(data => data?.films || data?.results || []);
+        .then(r => (r.ok ? r.json() : Promise.reject(new Error('HTTP ' + r.status))))
+        .then(data => data?.films || data?.results || [])
+        .catch(async () => {
+          // Static GitHub Pages fallback via Cinemeta catalog by genre
+          const cmType = isTv ? 'series' : 'movie';
+          const genreName = selectedOpt.label || 'Drama';
+          const cmRes = await fetch(`https://v3-cinemeta.strem.io/catalog/${cmType}/top/genre=${encodeURIComponent(genreName)}.json`).catch(() => null);
+          const cmData = cmRes && cmRes.ok ? await cmRes.json().catch(() => null) : null;
+          return (Array.isArray(cmData?.metas) ? cmData.metas : []).slice(0, 18).map(m => ({
+            id: m.imdb_id || m.id,
+            slug: makeSlugFromTitleYear(m.name, m.releaseInfo || m.year),
+            title: m.name,
+            year: String(m.releaseInfo || m.year || '').slice(0, 4),
+            kind: isTv ? 'show' : 'movie',
+            poster: m.poster || '',
+            rating: m.imdbRating ? Number(m.imdbRating) : undefined,
+            genres: Array.isArray(m.genres) ? m.genres : [genreName]
+          }));
+        });
     } else {
       const timeKeyMap = {
         'today': 'day',
@@ -3903,8 +4453,18 @@
       const key = timeKeyMap[selectedOpt.value] || 'week';
       const kindParam = isTv ? 'tv' : 'movie';
       fetchPromise = fetch(`/api/trending?kind=${kindParam}`)
-        .then(r => r.json())
-        .then(data => data?.lists?.[key] || data?.lists?.week || []);
+        .then(r => (r.ok ? r.json() : Promise.reject(new Error('HTTP ' + r.status))))
+        .then(data => data?.lists?.[key] || data?.lists?.week || [])
+        .catch(() => {
+          // Graceful static fallback: re-order existing rail cards deterministically by chosen window
+          const existing = Array.from(railTrack.children);
+          if (existing.length > 1) {
+            const offset = { day: 1, week: 0, month: 3, year: 5, all: 7 }[key] || 0;
+            const rotated = existing.slice(offset % existing.length).concat(existing.slice(0, offset % existing.length));
+            rotated.forEach(el => railTrack.appendChild(el));
+          }
+          return [];
+        });
     }
 
     fetchPromise
@@ -4095,7 +4655,7 @@
   }
 
   function handleDynamicTrendingFilter(timeKey) {
-    const isTv = window.location.pathname.startsWith('/tv');
+    const isTv = normalizeRoutePath(window.location.pathname).startsWith('/tv');
     const railTrack = document.querySelector('.rail-track[role="list"]');
     if (!railTrack) return;
 
@@ -4103,7 +4663,7 @@
     railTrack.style.transition = 'opacity 0.2s ease-out';
 
     fetch(`/api/trending?kind=${isTv ? 'tv' : 'movie'}`)
-      .then(res => res.json())
+      .then(res => (res.ok ? res.json() : Promise.reject(new Error('HTTP ' + res.status))))
       .then(data => {
         railTrack.style.opacity = '1';
         const list = data?.lists?.[timeKey] || data?.lists?.week || [];
@@ -4123,8 +4683,9 @@
   }
 
   function initTitleSelect() {
-    const isTvDetail = window.location.pathname.startsWith('/tv/');
-    const pathSlug = window.location.pathname.replace(/^\/tv\//, '').replace(/\/$/, '').split('/')[0];
+    const cleanPath = normalizeRoutePath(window.location.pathname);
+    const isTvDetail = cleanPath.startsWith('/tv/');
+    const pathSlug = cleanPath.replace(/^\/tv\//, '').replace(/\/$/, '').split('/')[0];
 
     document.querySelectorAll('button.title-select, [role="combobox"].title-select, .title-select').forEach(el => {
       const triggerBtn = el.tagName === 'BUTTON' ? el : (el.querySelector('button') || el);
@@ -4205,52 +4766,81 @@
     const railTrack = document.querySelector('.rail-track[role="list"]');
     if (!railTrack) return;
 
+    function renderEpisodesList(episodes) {
+      if (!episodes || episodes.length === 0) return;
+      railTrack.innerHTML = episodes.map(ep => {
+        const rawStill = ep.still && ep.still.src ? ep.still.src : (ep.still && /^https?:\/\//i.test(ep.still) ? ep.still : (ep.still ? `https://s.fli.cx/t/w500/${ep.still}` : ''));
+        const stillUrl = safeImageUrl(rawStill);
+        const ratingVal = ep.rating ? (typeof ep.rating === 'number' ? ep.rating.toFixed(1) : String(ep.rating)) : '';
+        const epNum = Number(ep.n) || 1;
+        const epTitle = ep.title || `Episode ${epNum}`;
+        return `
+          <div role="listitem" data-episode="${epNum}">
+            <a class="card episode" data-rail-focus="true" aria-label="Episode ${epNum}: ${escapeAttr(epTitle)}" href="${escapeAttr(withBasePath(`/watch/${encodeURIComponent(showSlug)}/s${encodeURIComponent(seasonNum)}e${epNum}`))}">
+              <span class="card-art card-still">
+                <span class="card-pic">
+                  ${stillUrl ? `<img data-fade="true" src="${escapeAttr(stillUrl)}" alt="${escapeAttr(epTitle)}" width="780" height="439" loading="lazy" decoding="async" draggable="false" />` : ''}
+                </span>
+              </span>
+              <span class="episode-text">
+                <span class="episode-meta">
+                  <span>Episode ${epNum}${ep.runtime ? ` · ${escapeHtml(ep.runtime)}m` : ''}</span>
+                  ${ratingVal ? `
+                  <span class="episode-score">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" fill="currentColor" viewBox="0 0 256 256" aria-hidden="true">
+                      <path d="M234.29,114.85l-45,38.83L203,211.75a16.4,16.4,0,0,1-24.5,17.82L128,198.49,77.47,229.57A16.4,16.4,0,0,1,53,211.75l13.76-58.07-45-38.83A16.46,16.46,0,0,1,31.08,86l59-4.76,22.76-55.08a16.36,16.36,0,0,1,30.27,0l22.75,55.08,59,4.76a16.46,16.46,0,0,1,9.37,28.86Z"></path>
+                    </svg>${escapeHtml(ratingVal)}<span class="sr-only"> out of 10</span>
+                  </span>` : ''}
+                </span>
+                <span class="episode-title">${escapeHtml(epTitle)}</span>
+                <span class="episode-story">${escapeHtml(ep.overview || '')}</span>
+              </span>
+            </a>
+          </div>
+        `;
+      }).join('');
+      try { initRailScroll(); } catch (e) {}
+    }
+
     railTrack.style.opacity = '0.5';
     fetch(`/api/tv/season?show=${encodeURIComponent(showSlug)}&n=${encodeURIComponent(seasonNum)}`)
-      .then(res => res.json())
+      .then(res => (res.ok ? res.json() : Promise.reject(new Error('HTTP ' + res.status))))
       .then(data => {
         railTrack.style.opacity = '1';
-        if (!data || !data.episodes || data.episodes.length === 0) return;
-
-        railTrack.innerHTML = data.episodes.map(ep => {
-          const rawStill = ep.still && ep.still.src ? ep.still.src : (ep.still ? `https://s.fli.cx/t/w500/${ep.still}` : '');
-          const stillUrl = safeImageUrl(rawStill);
-          const ratingVal = ep.rating ? (typeof ep.rating === 'number' ? ep.rating.toFixed(1) : String(ep.rating)) : '';
-          const epNum = Number(ep.n) || 1;
-          const epTitle = ep.title || `Episode ${epNum}`;
-          return `
-            <div role="listitem" data-episode="${epNum}">
-              <a class="card episode" data-rail-focus="true" aria-label="Episode ${epNum}: ${escapeAttr(epTitle)}" href="/watch/${encodeURIComponent(showSlug)}/s${encodeURIComponent(seasonNum)}e${epNum}">
-                <span class="card-art card-still">
-                  <span class="card-pic">
-                    ${stillUrl ? `<img data-fade="true" src="${escapeAttr(stillUrl)}" alt="${escapeAttr(epTitle)}" width="780" height="439" loading="lazy" decoding="async" draggable="false" />` : ''}
-                  </span>
-                </span>
-                <span class="episode-text">
-                  <span class="episode-meta">
-                    <span>Episode ${epNum}${ep.runtime ? ` · ${escapeHtml(ep.runtime)}m` : ''}</span>
-                    ${ratingVal ? `
-                    <span class="episode-score">
-                      <svg xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" fill="currentColor" viewBox="0 0 256 256" aria-hidden="true">
-                        <path d="M234.29,114.85l-45,38.83L203,211.75a16.4,16.4,0,0,1-24.5,17.82L128,198.49,77.47,229.57A16.4,16.4,0,0,1,53,211.75l13.76-58.07-45-38.83A16.46,16.46,0,0,1,31.08,86l59-4.76,22.76-55.08a16.36,16.36,0,0,1,30.27,0l22.75,55.08,59,4.76a16.46,16.46,0,0,1,9.37,28.86Z"></path>
-                      </svg>${escapeHtml(ratingVal)}<span class="sr-only"> out of 10</span>
-                    </span>` : ''}
-                  </span>
-                  <span class="episode-title">${escapeHtml(epTitle)}</span>
-                  <span class="episode-story">${escapeHtml(ep.overview || '')}</span>
-                </span>
-              </a>
-            </div>
-          `;
-        }).join('');
-        try { initRailScroll(); } catch (e) {}
+        if (data && Array.isArray(data.episodes) && data.episodes.length > 0) {
+          renderEpisodesList(data.episodes);
+          return;
+        }
+        throw new Error('No episodes');
       })
-      .catch(() => {
+      .catch(async () => {
+        // Static GitHub Pages fallback: fetch episode list via Cinemeta Stremio CORS API
+        try {
+          const meta = await resolveTitleMeta(showSlug, 'show');
+          const imdbId = meta?.imdbId || meta?.id || document.querySelector('[id^="rate-tt"]')?.id?.replace(/^rate-/, '');
+          if (imdbId && /^tt\d+$/i.test(imdbId)) {
+            const cmRes = await fetch(`https://v3-cinemeta.strem.io/meta/series/${encodeURIComponent(imdbId)}.json`);
+            const cmData = cmRes.ok ? await cmRes.json().catch(() => null) : null;
+            const videos = Array.isArray(cmData?.meta?.videos) ? cmData.meta.videos : [];
+            const seasonEps = videos
+              .filter(v => Number(v.season) === Number(seasonNum))
+              .sort((a, b) => (Number(a.episode) || 0) - (Number(b.episode) || 0))
+              .map(v => ({
+                n: Number(v.episode) || 1,
+                title: v.name || v.title || `Episode ${v.episode}`,
+                overview: v.overview || v.description || '',
+                still: v.thumbnail || ''
+              }));
+            if (seasonEps.length > 0) {
+              renderEpisodesList(seasonEps);
+            }
+          }
+        } catch {}
         railTrack.style.opacity = '1';
       });
   }
 
-  // --- 10b. Discover Page Filters & Surprise Me ---
+  // --- 10b. Discover & Anime Page Filters + Surprise Me ---
   const DISCOVER_FILTER_OPTIONS = {
     source: [
       { value: 'all', label: 'All titles' },
@@ -4261,6 +4851,17 @@
       { value: 'rating', label: 'Highest rated' },
       { value: 'newest', label: 'Newest' },
       { value: 'oldest', label: 'Oldest' }
+    ],
+    animeSort: [
+      { value: 'popular', label: 'Most watched' },
+      { value: 'rating', label: 'Highest rated' },
+      { value: 'newest', label: 'Newest' },
+      { value: 'oldest', label: 'Oldest' }
+    ],
+    format: [
+      { value: '', label: 'Any format' },
+      { value: 'show', label: 'TV series' },
+      { value: 'movie', label: 'Movie' }
     ],
     type: [
       { value: '', label: 'Any type' },
@@ -4308,16 +4909,41 @@
   };
 
   function initDiscoverPage() {
-    const cleanPath = window.location.pathname.split('?')[0].replace(/\/$/, '') || '/';
-    if (cleanPath !== '/discover') return;
+    const cleanPath = normalizeRoutePath(window.location.pathname);
+    const isAnimePage = cleanPath === '/anime';
+    if (cleanPath !== '/discover' && !isAnimePage) return;
 
     const grid = document.querySelector('ul.film-grid');
     const triggers = document.querySelectorAll('button.select-trigger');
     if (!grid || !triggers.length) return;
 
+    // Snapshot initial DOM cards once so /anime AND static GitHub Pages /discover filter & sort instantaneously
+    if (!grid.__kairaInitialCards) {
+      grid.__kairaInitialCards = Array.from(grid.querySelectorAll(':scope > li')).map((li, idx) => {
+        const link = li.querySelector('a.card-link');
+        const href = link?.getAttribute('href') || '';
+        const kind = link?.getAttribute('data-kind') || (href.includes('/tv/') ? 'show' : 'movie');
+        const genre = (li.querySelector('.card-over-genre')?.textContent || '').trim().toLowerCase();
+        const year = parseInt((li.querySelector('.card-over-year')?.textContent || '').trim(), 10) || 0;
+        const rating = parseFloat((li.querySelector('.card-over-score')?.textContent || '').replace(/[^\d.]/g, '')) || 0;
+        const slug = normalizeWatchSlug(href || link?.getAttribute('data-film') || '');
+        return {
+          idx,
+          html: li.outerHTML,
+          slug,
+          kind,
+          genre,
+          year,
+          rating
+        };
+      });
+    }
+    const initialCards = grid.__kairaInitialCards;
+
     const state = {
       source: 'all',
       sort: 'popular',
+      format: '',
       type: '',
       genre: '',
       decade: '',
@@ -4326,10 +4952,76 @@
     };
     let reqId = 0;
 
+    function applyClientSideGridFilter() {
+      let filtered = [...initialCards];
+      if (state.source === 'library') {
+        const wl = new Set(getWatchlist());
+        filtered = filtered.filter(c => wl.has(c.slug));
+      }
+      const wantedKind = state.format || state.type;
+      if (wantedKind) {
+        filtered = filtered.filter(c => c.kind === wantedKind);
+      }
+      if (state.genre) {
+        const g = state.genre.toLowerCase();
+        filtered = filtered.filter(c => !c.genre || c.genre.includes(g) || (g === 'sci-fi' && c.genre.includes('sci')));
+      }
+      if (state.decade) {
+        const startYear = parseInt(state.decade, 10);
+        if (Number.isFinite(startYear)) {
+          filtered = filtered.filter(c => c.year >= startYear && c.year < startYear + 10);
+        }
+      }
+      if (state.rating) {
+        const minR = parseFloat(state.rating);
+        filtered = filtered.filter(c => !c.rating || c.rating >= minR);
+      }
+      if (state.sort === 'rating') {
+        filtered.sort((a, b) => (b.rating || 0) - (a.rating || 0));
+      } else if (state.sort === 'newest') {
+        filtered.sort((a, b) => (b.year || 0) - (a.year || 0));
+      } else if (state.sort === 'oldest') {
+        filtered.sort((a, b) => (a.year || 9999) - (b.year || 9999));
+      } else {
+        filtered.sort((a, b) => a.idx - b.idx);
+      }
+
+      if (filtered.length === 0) {
+        grid.innerHTML = `
+          <li style="grid-column:1 / -1;text-align:center;padding:4rem 1rem;color:rgba(255,255,255,0.65);">
+            <p style="font-size:1.15rem;font-weight:600;color:#fff;">No titles match these filters</p>
+            <p style="margin-top:0.4rem;font-size:0.9rem;">Try widening the format, genre, or rating filter.</p>
+          </li>
+        `;
+      } else {
+        grid.innerHTML = filtered.map(c => c.html).join('');
+      }
+      grid.setAttribute('aria-label', `${filtered.length} filtered titles`);
+      const countEl = document.querySelector('p.catalogue-count span');
+      if (countEl) {
+        if (!countEl.dataset.originalHtml) countEl.dataset.originalHtml = countEl.innerHTML;
+        const hasActiveFilter = Boolean(state.source !== 'all' || state.format || state.type || state.genre || state.decade || state.rating || state.length);
+        if (hasActiveFilter) {
+          const noun = isAnimePage ? 'anime' : 'titles';
+          countEl.innerHTML = `<b>${filtered.length.toLocaleString()}</b> ${noun}`;
+        } else {
+          countEl.innerHTML = countEl.dataset.originalHtml;
+        }
+      }
+      try { initWatchlist(); } catch {}
+    }
+
     async function fetchDiscoverResults() {
       const currentReq = ++reqId;
       grid.style.transition = 'opacity 0.2s ease';
       grid.style.opacity = '0.45';
+
+      // Anime page filters directly over the pre-rendered anime catalog cleanly on both local & GitHub Pages
+      if (isAnimePage) {
+        applyClientSideGridFilter();
+        grid.style.opacity = '1';
+        return;
+      }
 
       const params = new URLSearchParams();
       if (state.type) params.set('kind', state.type);
@@ -4342,10 +5034,15 @@
 
       try {
         const res = await fetch(`/api/browse?${params.toString()}`);
+        if (!res.ok) throw new Error('HTTP ' + res.status);
         const data = await res.json();
         if (currentReq !== reqId) return;
 
         let items = data?.films || data?.results || [];
+        if (state.source === 'library') {
+          const wl = new Set(getWatchlist());
+          items = items.filter(it => wl.has(normalizeWatchSlug(it.slug || '')));
+        }
         // Apply client-side refinement when upstream omits optional filter params
         if (state.rating) {
           const minR = parseFloat(state.rating);
@@ -4389,7 +5086,9 @@
         }
         grid.setAttribute('aria-label', `${items.length} filtered titles`);
       } catch (err) {
-        console.warn('Discover filter fetch failed:', err);
+        if (currentReq !== reqId) return;
+        // Static GitHub Pages fallback: filter & sort initial DOM cards smoothly
+        applyClientSideGridFilter();
       } finally {
         if (currentReq === reqId) {
           grid.style.opacity = '1';
@@ -4404,7 +5103,7 @@
       const labelEl = btn.querySelector('.select-label');
       const valueEl = btn.querySelector('.select-value');
       const key = (labelEl?.textContent || '').trim().toLowerCase();
-      const options = DISCOVER_FILTER_OPTIONS[key];
+      const options = (isAnimePage && key === 'sort') ? DISCOVER_FILTER_OPTIONS.animeSort : DISCOVER_FILTER_OPTIONS[key];
       if (!options) return;
 
       btn.onclick = (e) => {
@@ -4436,7 +5135,7 @@
         if (!links.length) return;
         const pick = links[Math.floor(Math.random() * links.length)];
         const href = pick.getAttribute('href');
-        if (href) navigateTo(href);
+        if (href) navigateTo(withBasePath(href));
       };
     });
   }
@@ -4496,17 +5195,17 @@
         if (e.key === '/' && !['INPUT', 'TEXTAREA', 'SELECT'].includes(activeTag) && !document.activeElement?.isContentEditable) {
           e.preventDefault();
           const liveInput = document.getElementById('search-page-input');
-          if (window.location.pathname.startsWith('/search') && liveInput) {
+          if (normalizeRoutePath(window.location.pathname).startsWith('/search') && liveInput) {
             liveInput.focus();
             liveInput.select();
           } else {
-            navigateTo('/search');
+            navigateTo(withBasePath('/search'));
           }
         }
       });
     }
 
-    const isSearchPage = window.location.pathname.startsWith('/search');
+    const isSearchPage = normalizeRoutePath(window.location.pathname).startsWith('/search');
     const searchInput = document.getElementById('search-page-input') || document.querySelector('main input[type="search"]');
     if (!isSearchPage || !searchInput || searchInput.__kairaSearchBound) return;
     searchInput.__kairaSearchBound = true;
@@ -4521,12 +5220,12 @@
     try {
       if (typeof window.initFlicxLightPillar === 'function') {
         window.initFlicxLightPillar();
-      } else if (!document.querySelector('script[src*="/flicx-pillar-engine.js"]')) {
+      } else if (!document.querySelector('script[src*="flicx-pillar-engine.js"]')) {
         const s = document.createElement('script');
-        s.src = '/flicx-pillar-engine.js';
+        s.src = withBasePath('/flicx-pillar-engine.js');
         s.async = true;
         s.onload = () => {
-          if (window.location.pathname.startsWith('/search') && typeof window.initFlicxLightPillar === 'function') {
+          if (normalizeRoutePath(window.location.pathname).startsWith('/search') && typeof window.initFlicxLightPillar === 'function') {
             window.initFlicxLightPillar();
           }
         };
@@ -4730,7 +5429,7 @@
 
       // Keep URL query synchronized
       try {
-        const nextUrl = query ? `/search?q=${encodeURIComponent(query)}` : '/search';
+        const nextUrl = withBasePath(query ? `/search?q=${encodeURIComponent(query)}` : '/search');
         if (window.location.pathname + window.location.search !== nextUrl) {
           window.history.replaceState({ path: nextUrl }, document.title, nextUrl);
           currentRenderedPath = nextUrl;
@@ -4767,7 +5466,7 @@
       }
 
       fetch(`/api/search?q=${encodeURIComponent(query)}&full=1`)
-        .then(res => res.json())
+        .then(res => (res.ok ? res.json() : Promise.reject(new Error('HTTP ' + res.status))))
         .then(data => {
           if (reqId !== searchReqId) return;
           resultsContainer.classList.remove('search-results-stale');
@@ -4786,7 +5485,36 @@
           lastPayload = { query, films, shows, people, groups };
           renderSearchPayload();
         })
-        .catch(() => {
+        .catch(async () => {
+          // Static GitHub Pages fallback: live CORS Cinemeta Stremio movie & series search
+          try {
+            const [movieRes, seriesRes] = await Promise.all([
+              fetch(`https://v3-cinemeta.strem.io/catalog/movie/top/search=${encodeURIComponent(query)}.json`).then(r => (r.ok ? r.json() : null)).catch(() => null),
+              fetch(`https://v3-cinemeta.strem.io/catalog/series/top/search=${encodeURIComponent(query)}.json`).then(r => (r.ok ? r.json() : null)).catch(() => null)
+            ]);
+            if (reqId !== searchReqId) return;
+            const mapMeta = (m, kind) => {
+              const id = m.imdb_id || m.id || '';
+              const year = String(m.releaseInfo || m.year || '').match(/\d{4}/)?.[0] || '';
+              return {
+                id,
+                slug: makeSlugFromTitleYear(m.name, year) || id,
+                title: m.name || 'Untitled',
+                year,
+                kind,
+                poster: m.poster || '',
+                rating: m.imdbRating ? Number(m.imdbRating) : undefined,
+                genres: Array.isArray(m.genres) ? m.genres : []
+              };
+            };
+            const films = (Array.isArray(movieRes?.metas) ? movieRes.metas : []).slice(0, 24).map(m => mapMeta(m, 'movie'));
+            const shows = (Array.isArray(seriesRes?.metas) ? seriesRes.metas : []).slice(0, 24).map(m => mapMeta(m, 'show'));
+            resultsContainer.classList.remove('search-results-stale');
+            lastPayload = { query, films, shows, people: [], groups: [] };
+            renderSearchPayload();
+            return;
+          } catch {}
+
           if (reqId !== searchReqId) return;
           resultsContainer.classList.remove('search-results-stale');
           if (tabsWrap) tabsWrap.style.display = 'none';
@@ -6286,6 +7014,60 @@
         transform: translate(-50%, -50%) scale(0.95);
       }
 
+      /* Apple TV Custom Subtitle Cue Overlay (VTT & SRT) */
+      .atv-subtitle-cue {
+        position: absolute;
+        left: 50%;
+        bottom: calc(2.75rem + env(safe-area-inset-bottom, 0px));
+        transform: translateX(-50%);
+        z-index: 8;
+        max-width: min(86vw, 48rem);
+        padding: 0.42rem 0.9rem;
+        border-radius: 10px;
+        background: rgba(10, 10, 14, 0.78);
+        -webkit-backdrop-filter: blur(10px);
+        backdrop-filter: blur(10px);
+        color: #ffffff;
+        font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", Roboto, sans-serif;
+        font-size: clamp(1rem, 2.2vw, 1.55rem);
+        font-weight: 600;
+        line-height: 1.38;
+        text-align: center;
+        white-space: pre-line;
+        text-shadow: 0 2px 8px rgba(0, 0, 0, 0.9);
+        pointer-events: none;
+        opacity: 0;
+        visibility: hidden;
+        transition: bottom 0.28s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.16s ease, visibility 0.16s ease;
+      }
+      .atv-subtitle-cue.atv-cue-visible {
+        opacity: 1;
+        visibility: visible;
+      }
+      .fx-player.atv-chrome-visible .atv-subtitle-cue {
+        bottom: calc(11.5rem + env(safe-area-inset-bottom, 0px));
+      }
+      @media (max-width: 600px) {
+        .fx-player.atv-chrome-visible .atv-subtitle-cue {
+          bottom: calc(13.5rem + env(safe-area-inset-bottom, 0px));
+        }
+      }
+
+      /* Embed Fallback Mode (GitHub Pages universal playback): keep top Back/Server/Fullscreen bar interactive while passing clicks through to embed player */
+      .fx-player.atv-mode-embed .fx-bottom,
+      .fx-player.atv-mode-embed .kaira-center-play,
+      .fx-player.atv-mode-embed .atv-subtitle-cue {
+        display: none !important;
+      }
+      .fx-player.atv-mode-embed .fx-ui {
+        pointer-events: none !important;
+        opacity: 1 !important;
+      }
+      .fx-player.atv-mode-embed .fx-top {
+        background: linear-gradient(180deg, rgba(0, 0, 0, 0.72) 0%, rgba(0, 0, 0, 0) 100%) !important;
+        padding-bottom: 1.75rem !important;
+      }
+
       /* Responsive Notifications Popover (Never clips off-screen on mobile) */
       #flicx-notes-popover.notes-popup {
         box-sizing: border-box !important;
@@ -6577,22 +7359,25 @@
       window.history.pushState({ path: targetPath }, newDoc.title, targetPath);
     }
 
+    const normPrev = normalizeRoutePath(prevPath);
+    const normTarget = normalizeRoutePath(targetPath);
+
     // 3. Clean up previous route timers, media players & WebGL loops
     if (heroTimer) {
       clearTimeout(heroTimer);
       heroTimer = null;
     }
-    if (prevPath.startsWith('/watch/') || !targetPath.startsWith('/watch/')) {
+    if (normPrev.startsWith('/watch/') || !normTarget.startsWith('/watch/')) {
       try { cleanupWatchPlayer(); } catch (e) {}
     }
-    if (prevPath.startsWith('/search') && !targetPath.startsWith('/search')) {
+    if (normPrev.startsWith('/search') && !normTarget.startsWith('/search')) {
       try { if (typeof window.destroyFlicxLightPillar === 'function') window.destroyFlicxLightPillar(); } catch (e) {}
     }
     closeTrailerModal();
     closeNotifications();
     closeCurrentPopup();
 
-    const isTargetWatch = targetPath.startsWith('/watch/');
+    const isTargetWatch = normTarget.startsWith('/watch/');
     const currentHeader = document.querySelector('.site-header, header');
     const newHeader = newDoc.querySelector('.site-header, header');
     const currentTabBar = document.querySelector('nav.tab-bar');
@@ -6757,6 +7542,34 @@
     });
   }
 
+  let toTopBound = false;
+  function syncToTopVisibility() {
+    const show = window.scrollY > 360;
+    document.querySelectorAll('button.to-top').forEach(btn => {
+      if (show) {
+        btn.setAttribute('data-shown', '');
+        btn.setAttribute('tabindex', '0');
+      } else {
+        btn.removeAttribute('data-shown');
+        btn.setAttribute('tabindex', '-1');
+      }
+    });
+  }
+
+  function initBackToTopButton() {
+    syncToTopVisibility();
+    if (toTopBound) return;
+    toTopBound = true;
+    window.addEventListener('scroll', syncToTopVisibility, { passive: true });
+    document.addEventListener('click', (e) => {
+      const btn = e.target.closest('button.to-top');
+      if (!btn) return;
+      e.preventDefault();
+      e.stopPropagation();
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    });
+  }
+
   function reinitPageFeatures() {
     try { applyLiquidChromeAttributes(); } catch (e) {}
     try { updateActiveNavTabs(window.location.pathname); } catch (e) {}
@@ -6772,6 +7585,7 @@
     try { initDiscoverPage(); } catch (e) { console.error(e); }
     try { initSearchPage(); } catch (e) { console.error(e); }
     try { initAnimatedLogoHover(); } catch (e) { console.error(e); }
+    try { initBackToTopButton(); } catch (e) { console.error(e); }
   }
 
   let transitionsInitialized = false;
@@ -6784,7 +7598,7 @@
         return;
       }
 
-      if (e.target.closest('button, input, select, textarea, [data-watchlist-button], .cover-add, .watch-server-btn, .watch-fs-btn, .settings-btn, .notes-bell, .hero-switch-bar, .hero-pause, .select-option, .title-select, .select-trigger, .dl-file-btn')) {
+      if (e.target.closest('button, input, select, textarea, [data-watchlist-button], .cover-add, .watch-server-btn, .watch-fs-btn, .settings-btn, .notes-bell, .hero-switch-bar, .hero-pause, .select-option, .title-select, .select-trigger, .dl-file-btn, .to-top')) {
         return;
       }
 
@@ -6864,6 +7678,7 @@
     try { initDiscoverPage(); } catch (e) { console.error('Discover error', e); }
     try { initSearchPage(); } catch (e) { console.error('SearchPage error', e); }
     try { initAnimatedLogoHover(); } catch (e) { console.error('LogoHover error', e); }
+    try { initBackToTopButton(); } catch (e) { console.error('BackToTop error', e); }
     try { initPageTransitions(); } catch (e) { console.error('PageTransitions error', e); }
 
     // Wire Settings & Notification header buttons (strictly excluding controls inside the modals themselves)
