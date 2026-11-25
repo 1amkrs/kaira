@@ -55,7 +55,7 @@
       cleaned = cleaned.slice(prefix.length);
     }
     return cleaned
-      .replace(/^\/(movie|tv|watch)\//, '')
+      .replace(/^\/(movie|tv|watch|anime)\//, '')
       .replace(/\/s\d+e\d+.*$/i, '')
       .replace(/\/$/, '')
       .trim();
@@ -327,6 +327,9 @@
 
   function parseDetailHtmlMetadata(html, slug, kind) {
     if (!html || typeof html !== 'string') return null;
+    if (html.includes('id="__next_error__"') || html.includes('hero-switch') || !/<article[\s>]/i.test(html)) {
+      return null;
+    }
     const idMatch = html.match(/id="rate-(tt\d+)"/) || html.match(/\/(tt\d+)\/img/) || html.match(/"imdbId":"(tt\d+)"/);
     const imdbId = idMatch ? idMatch[1] : null;
     let title = slug.replace(/-\d{4}$/, '').split('-').filter(Boolean).map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
@@ -442,9 +445,18 @@
               year: String(m.releaseInfo || m.year || '').slice(0, 4),
               kind: t === 'series' ? 'show' : 'movie',
               poster: m.poster || '',
+              still: m.background || '',
+              logo: m.logo || '',
+              runtime: m.runtime || '',
               description: m.description || '',
               rating: m.imdbRating ? String(m.imdbRating) : '',
               genres: Array.isArray(m.genres) ? m.genres : [],
+              cast: Array.isArray(m.cast) ? m.cast : [],
+              director: Array.isArray(m.director) ? m.director : [],
+              writer: Array.isArray(m.writer) ? m.writer : [],
+              awards: m.awards || '',
+              country: m.country || '',
+              videos: Array.isArray(m.videos) ? m.videos : [],
               trailerId: m.trailers && m.trailers[0] ? m.trailers[0].source : null
             };
           }
@@ -492,9 +504,18 @@
           year: String(m.releaseInfo || m.year || targetYear || '').slice(0, 4),
           kind: best.type === 'series' ? 'show' : 'movie',
           poster: m.poster || '',
+          still: m.background || '',
+          logo: m.logo || '',
+          runtime: m.runtime || '',
           description: m.description || '',
           rating: m.imdbRating ? String(m.imdbRating) : '',
           genres: Array.isArray(m.genres) ? m.genres : [],
+          cast: Array.isArray(m.cast) ? m.cast : [],
+          director: Array.isArray(m.director) ? m.director : [],
+          writer: Array.isArray(m.writer) ? m.writer : [],
+          awards: m.awards || '',
+          country: m.country || '',
+          videos: Array.isArray(m.videos) ? m.videos : [],
           trailerId: m.trailers && m.trailers[0] ? m.trailers[0].source : null
         };
       }
@@ -769,11 +790,19 @@
       document.body.appendChild(toast);
     }
     toast.textContent = message;
+    void toast.offsetHeight;
     toast.classList.add('kaira-toast-visible');
     clearTimeout(toastTimer);
     toastTimer = setTimeout(() => {
       toast.classList.remove('kaira-toast-visible');
     }, 2600);
+  }
+
+  function prefersReducedMotion() {
+    return (
+      document.documentElement.getAttribute('data-motion') === 'reduce' ||
+      (typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches)
+    );
   }
 
   // Global safe image fallback handler (replaces inline onerror attributes)
@@ -822,8 +851,256 @@
     'the-lord-of-the-rings-the-rings-of-power-2022': "Beginning in a time of relative peace, an ensemble cast of characters confront the re-emergence of evil in Middle-earth.",
     'avatar-seven-havens-2026': "In a newly awakened era of elemental balance, heroes across the Seven Havens unite to protect an ancient power from total collapse.",
     'visionquest-2026': "White Vision explores the truth of his identity and newfound humanity while confronting adversaries determined to weaponize his core.",
-    'campus-drivers-2026': "A spirited ensemble drama following four university students navigating love, speed, rivalries, and life on and off the campus track."
+    'campus-drivers-2026': "A spirited ensemble drama following four university students navigating love, speed, rivalries, and life on and off the campus track.",
+    'dexter-2006': "By day, mild-mannered Dexter is a blood-spatter analyst for the Miami police. By night, he hunts killers who slipped through the cracks of justice."
   };
+
+  // Curated 6-slide hero fallbacks so Home (/), Movies (/movies), and TV (/tv) always render a full multi-slide carousel even on static hosts
+  const FALLBACK_MOVIE_HERO_SLIDES = [
+    {
+      slug: "the-odyssey-2026",
+      kind: "movie",
+      title: "The Odyssey",
+      id: "tt33764258",
+      still: "https://s.fli.cx/t/original/dZI4Ek4qc2Fib2G1zFkGhKKuc6j.jpg",
+      logo: "https://s.fli.cx/a/logo/medium/tt33764258/img",
+      logoAspect: 8.8988,
+      logoMeta: { w: 800, h: 310, mono: true, box: [0, 0.355, 1, 0.645] },
+      tag: "New release 2026",
+      rating: "8.4",
+      year: 2026,
+      runtime: "2h 53m",
+      genres: ["Action", "Adventure", "Drama"],
+      overview: OVERVIEWS["the-odyssey-2026"],
+      watchUrl: "/watch/the-odyssey-2026",
+      detailUrl: "/movie/the-odyssey-2026",
+      backdropTone: "#1f2933",
+      tone: "#5d341e"
+    },
+    {
+      slug: "spider-man-brand-new-day-2026",
+      kind: "movie",
+      title: "Spider-Man: Brand New Day",
+      id: "tt22084616",
+      still: "https://s.fli.cx/t/original/r08LxMJCbf1SiJIWeyH9aJmdqwC.jpg",
+      logo: "https://s.fli.cx/a/logo/medium/tt22084616/img",
+      logoAspect: 3.8968,
+      logoMeta: { w: 800, h: 310, mono: false, box: [0.01, 0.162, 0.99, 0.811] },
+      tag: "New release 2026",
+      rating: "8.0",
+      year: 2026,
+      runtime: "2h 25m",
+      genres: ["Action", "Adventure"],
+      overview: OVERVIEWS["spider-man-brand-new-day-2026"],
+      watchUrl: "/watch/spider-man-brand-new-day-2026",
+      detailUrl: "/movie/spider-man-brand-new-day-2026",
+      backdropTone: "#797068",
+      tone: "#5f3a3d"
+    },
+    {
+      slug: "resident-evil-2026",
+      kind: "movie",
+      title: "Resident Evil",
+      id: "tt35538033",
+      still: "https://s.fli.cx/t/original/3icyRAqgakNcQn6aDVz9libFmBA.jpg",
+      logo: "https://s.fli.cx/a/logo/medium/tt35538033/img",
+      logoAspect: 3.9788,
+      logoMeta: { w: 800, h: 310, mono: false, box: [0.031, 0.189, 0.99, 0.811] },
+      tag: "New release 2026",
+      rating: "7.6",
+      year: 2026,
+      runtime: "1h 34m",
+      genres: ["Action", "Horror", "Sci-Fi"],
+      overview: OVERVIEWS["resident-evil-2026"],
+      watchUrl: "/watch/resident-evil-2026",
+      detailUrl: "/movie/resident-evil-2026",
+      backdropTone: "#231f24",
+      tone: "#4c4547"
+    },
+    {
+      slug: "heart-of-the-beast-2026",
+      kind: "movie",
+      title: "Heart of the Beast",
+      id: "tt7526136",
+      still: "https://s.fli.cx/t/original/yE766yhgg98tKwTKd8CyNvAtmn6.jpg",
+      logo: "https://s.fli.cx/a/logo/medium/tt7526136/img",
+      logoAspect: 1.4241,
+      logoMeta: { w: 779, h: 547, mono: false, box: [0, 0, 1, 1] },
+      tag: "New release 2026",
+      rating: "7.1",
+      year: 2026,
+      runtime: "1h 41m",
+      genres: ["Action", "Adventure", "Drama"],
+      overview: OVERVIEWS["heart-of-the-beast-2026"],
+      watchUrl: "/watch/heart-of-the-beast-2026",
+      detailUrl: "/movie/heart-of-the-beast-2026",
+      backdropTone: "#818672",
+      tone: "#575444"
+    },
+    {
+      slug: "obsession-2026",
+      kind: "movie",
+      title: "Obsession",
+      id: "tt37287335",
+      still: "https://s.fli.cx/t/original/5lTZyuBTNOfawsfPT8Q0cIg6qAF.jpg",
+      logo: "https://s.fli.cx/a/logo/medium/tt37287335/img",
+      logoAspect: 4.9203,
+      logoMeta: { w: 800, h: 310, mono: false, box: [0.01, 0.243, 0.99, 0.757] },
+      tag: "New release 2026",
+      rating: "7.8",
+      year: 2026,
+      runtime: "1h 49m",
+      genres: ["Horror", "Thriller"],
+      overview: OVERVIEWS["obsession-2026"],
+      watchUrl: "/watch/obsession-2026",
+      detailUrl: "/movie/obsession-2026",
+      backdropTone: "#603f37",
+      tone: "#444140"
+    },
+    {
+      slug: "mutiny-2026",
+      kind: "movie",
+      title: "Mutiny",
+      id: "tt32338669",
+      still: "https://s.fli.cx/t/original/qDa0fqDqIBCovRp975RvtGPcuN3.jpg",
+      logo: "https://s.fli.cx/a/logo/medium/tt32338669/img",
+      logoAspect: 2.8352,
+      logoMeta: { w: 800, h: 310, mono: false, box: [0.01, 0.054, 0.99, 0.946] },
+      tag: "New release 2026",
+      rating: "5.7",
+      year: 2026,
+      runtime: "1h 36m",
+      genres: ["Action", "Crime", "Thriller"],
+      overview: OVERVIEWS["mutiny-2026"],
+      watchUrl: "/watch/mutiny-2026",
+      detailUrl: "/movie/mutiny-2026",
+      backdropTone: "#91979c",
+      tone: "#959292"
+    }
+  ];
+
+  const FALLBACK_TV_HERO_SLIDES = [
+    {
+      slug: "avatar-seven-havens-2026",
+      kind: "show",
+      title: "Avatar: Seven Havens",
+      id: "tt35854736",
+      still: "https://s.fli.cx/t/original/z0Y4vjd0WhMdWYEySd6wooVQQaH.jpg",
+      logo: "https://s.fli.cx/a/logo/medium/tt35854736/img",
+      logoAspect: 2.6,
+      logoMeta: null,
+      tag: "New release 2026",
+      rating: "8.9",
+      year: 2026,
+      runtime: "23m / ep",
+      genres: ["Animation", "Action & Adventure", "Sci-Fi & Fantasy"],
+      overview: OVERVIEWS["avatar-seven-havens-2026"],
+      watchUrl: "/watch/avatar-seven-havens-2026/s1e1",
+      detailUrl: "/tv/avatar-seven-havens-2026",
+      backdropTone: "#4a6a6d",
+      tone: "#596161"
+    },
+    {
+      slug: "visionquest-2026",
+      kind: "show",
+      title: "VisionQuest",
+      id: "tt23112594",
+      still: "https://s.fli.cx/t/original/uoXXbN2PrOxH6UKyP7kYwmGpAAP.jpg",
+      logo: "https://s.fli.cx/a/logo/medium/tt23112594/img",
+      logoAspect: 3.1,
+      logoMeta: null,
+      tag: "New release 2026",
+      rating: "8.2",
+      year: 2026,
+      runtime: "56m / ep",
+      genres: ["Sci-Fi & Fantasy", "Drama"],
+      overview: OVERVIEWS["visionquest-2026"],
+      watchUrl: "/watch/visionquest-2026/s1e1",
+      detailUrl: "/tv/visionquest-2026",
+      backdropTone: "#3f2a1a",
+      tone: "#594229"
+    },
+    {
+      slug: "dexter-resurrection-2025",
+      kind: "show",
+      title: "Dexter: Resurrection",
+      id: "tt33043892",
+      still: "https://s.fli.cx/t/original/vcpj6rRDS93ImHCLPY8bwBuFGjR.jpg",
+      logo: "https://s.fli.cx/a/logo/medium/tt33043892/img",
+      logoAspect: 2.8,
+      logoMeta: null,
+      tag: "Trending series",
+      rating: "8.5",
+      year: 2025,
+      runtime: "52m / ep",
+      genres: ["Crime", "Drama", "Mystery"],
+      overview: OVERVIEWS["dexter-resurrection-2025"],
+      watchUrl: "/watch/dexter-resurrection-2025/s1e1",
+      detailUrl: "/tv/dexter-resurrection-2025",
+      backdropTone: "#629bd2",
+      tone: "#615854"
+    },
+    {
+      slug: "campus-drivers-2026",
+      kind: "show",
+      title: "Campus Drivers",
+      id: "tt39943756",
+      still: "https://s.fli.cx/t/original/yQHskBQhYsnxcoRsYHESSOUaRja.jpg",
+      logo: "https://s.fli.cx/a/logo/medium/tt39943756/img",
+      logoAspect: 2.7,
+      logoMeta: null,
+      tag: "New release 2026",
+      rating: "7.7",
+      year: 2026,
+      runtime: "46m / ep",
+      genres: ["Drama"],
+      overview: OVERVIEWS["campus-drivers-2026"],
+      watchUrl: "/watch/campus-drivers-2026/s1e1",
+      detailUrl: "/tv/campus-drivers-2026",
+      backdropTone: "#434047",
+      tone: "#938a8a"
+    },
+    {
+      slug: "the-mentalist-2008",
+      kind: "show",
+      title: "The Mentalist",
+      id: "tt1196946",
+      still: "https://s.fli.cx/t/original/dwMZ8BW1tUp69baogSrcTAumKuR.jpg",
+      logo: "https://s.fli.cx/a/logo/medium/tt1196946/img",
+      logoAspect: 3.0,
+      logoMeta: null,
+      tag: "Trending series",
+      rating: "8.4",
+      year: 2008,
+      runtime: "45m / ep",
+      genres: ["Crime", "Drama", "Mystery"],
+      overview: OVERVIEWS["the-mentalist-2008"],
+      watchUrl: "/watch/the-mentalist-2008/s1e1",
+      detailUrl: "/tv/the-mentalist-2008",
+      backdropTone: "#585956",
+      tone: "#95968d"
+    },
+    {
+      slug: "dexter-2006",
+      kind: "show",
+      title: "Dexter",
+      id: "tt0773262",
+      still: "https://s.fli.cx/t/original/nS5ZSmrX92lu1GYAlXZye1mkDfd.jpg",
+      logo: "https://s.fli.cx/a/logo/medium/tt0773262/img",
+      logoAspect: 2.6,
+      logoMeta: null,
+      tag: "Trending series",
+      rating: "8.2",
+      year: 2006,
+      runtime: "60m / ep",
+      genres: ["Crime", "Drama", "Mystery"],
+      overview: OVERVIEWS["dexter-2006"],
+      watchUrl: "/watch/dexter-2006/s1e1",
+      detailUrl: "/tv/dexter-2006",
+      backdropTone: "#9d8e93",
+      tone: "#ad9d96"
+    }
+  ];
 
   function isItemTvShow(item, defaultIsTv) {
     if (!item) return !!defaultIsTv;
@@ -963,8 +1240,9 @@
   async function initHeroCarousel() {
     const cleanPath = normalizeRoutePath(window.location.pathname);
     const isTvBrowse = cleanPath === '/tv';
+    const isMoviesBrowse = cleanPath === '/movies';
     const isHome = cleanPath === '/' || cleanPath === '/index.html';
-    if (!isHome && !isTvBrowse) {
+    if (!isHome && !isMoviesBrowse && !isTvBrowse) {
       if (heroTimer) {
         clearTimeout(heroTimer);
         heroTimer = null;
@@ -987,28 +1265,23 @@
     const currentClean = normalizeRoutePath(window.location.pathname);
     if (currentClean !== cleanPath || !heroEl.isConnected) return;
 
-    const slides = dynamicReleases && dynamicReleases.length > 0 ? dynamicReleases : [
-      {
-        slug: "the-odyssey-2026",
-        kind: "movie",
-        title: "The Odyssey",
-        id: "tt33764258",
-        still: "https://s.fli.cx/t/original/dZI4Ek4qc2Fib2G1zFkGhKKuc6j.jpg",
-        logo: "https://s.fli.cx/a/logo/medium/tt33764258/img",
-        logoAspect: 8.8988,
-        logoMeta: { w: 800, h: 310, mono: true, box: [0, 0.355, 1, 0.645] },
-        tag: "New release 2026",
-        rating: "8.4",
-        year: 2026,
-        runtime: "2h 53m",
-        genres: ["Action", "Adventure", "Drama"],
-        overview: OVERVIEWS["the-odyssey-2026"],
-        watchUrl: "/watch/the-odyssey-2026",
-        detailUrl: "/movie/the-odyssey-2026",
-        backdropTone: "#1f2933",
-        tone: "#5d341e"
+    const curatedFallback = isTv ? FALLBACK_TV_HERO_SLIDES : FALLBACK_MOVIE_HERO_SLIDES;
+    const mergedSlides = [];
+    const seenSlugs = new Set();
+    for (const item of (Array.isArray(dynamicReleases) ? dynamicReleases : [])) {
+      if (item && item.slug && !seenSlugs.has(item.slug)) {
+        seenSlugs.add(item.slug);
+        mergedSlides.push(item);
       }
-    ];
+    }
+    for (const item of curatedFallback) {
+      if (mergedSlides.length >= 6) break;
+      if (item && item.slug && !seenSlugs.has(item.slug)) {
+        seenSlugs.add(item.slug);
+        mergedSlides.push(item);
+      }
+    }
+    const slides = mergedSlides.slice(0, 6);
 
     currentHeroSlides = slides;
     currentSlideIndex = 0;
@@ -1024,6 +1297,10 @@
     }
 
     // 3. Populate .hero-switch-bars with dynamic buttons (both desktop and mobile)
+    const switchShells = stage.querySelectorAll('.hero-switch');
+    switchShells.forEach(shell => {
+      shell.style.display = slides.length > 1 ? '' : 'none';
+    });
     const switchBarsContainers = stage.querySelectorAll('.hero-switch-bars');
     switchBarsContainers.forEach(container => {
       container.innerHTML = slides.map((s, idx) => `
@@ -1351,6 +1628,10 @@
     if (document.body) {
       document.body.classList.add('kaira-watching');
     }
+    // Ensure homepage chrome is hidden even on direct reloads / static-host rewrites to /watch/*
+    document.querySelectorAll('.site-header, header, nav.tab-bar, footer, main').forEach((el) => {
+      if (!el.closest('.watch-root')) el.style.display = 'none';
+    });
     const sessionId = activeWatchSessionId;
 
     // 1. Ensure player stylesheets are loaded (base-path safe for GitHub Pages)
@@ -1438,7 +1719,7 @@
             renderPlayerError(
               `Anime Episode ${episode}`,
               'No playback sources are currently available for this anime episode.',
-              withBasePath('/anime')
+              withBasePath(`/anime/${encodeURIComponent(animeId)}`)
             );
             return;
           }
@@ -1450,7 +1731,7 @@
             1,
             episode,
             animeId,
-            withBasePath('/anime')
+            withBasePath(`/anime/${encodeURIComponent(animeId)}`)
           );
           return;
         }
@@ -2052,7 +2333,7 @@
           ? `/watch/${encodeURIComponent(titleSlug)}/s${seasonNum}e${episodeNum}`
           : `/watch/${encodeURIComponent(titleSlug)}`;
       const canonicalDetailUrl = isAnimeRoute
-        ? '/anime'
+        ? `/anime/${encodeURIComponent(animeId)}`
         : isShow
           ? `/tv/${encodeURIComponent(titleSlug)}`
           : `/movie/${encodeURIComponent(titleSlug)}`;
@@ -4144,6 +4425,7 @@
   }
 
   // --- 3. Trailer Modal & Detail Page Controls (Trailers, Ratings, Downloads) ---
+  let trailerCloseTimer = null;
   function openTrailerModal(trailerId, title) {
     if (!trailerId || !/^[A-Za-z0-9_-]{6,20}$/.test(trailerId)) {
       showKairaToast(`Trailer unavailable${title ? ' for ' + title : ''}`);
@@ -4153,14 +4435,16 @@
     if (!modal) {
       modal = document.createElement('div');
       modal.id = 'flicx-trailer-modal';
+      modal.className = 'kaira-trailer-modal';
       modal.setAttribute('role', 'dialog');
       modal.setAttribute('aria-modal', 'true');
       modal.setAttribute('aria-label', 'Trailer');
-      modal.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.85);-webkit-backdrop-filter:blur(16px);backdrop-filter:blur(16px);display:flex;align-items:center;justify-content:center;padding:1.5rem;';
+      modal.setAttribute('aria-hidden', 'true');
+      modal.style.display = 'none';
       modal.innerHTML = `
-        <div style="position:relative;width:100%;max-width:960px;aspect-ratio:16/9;background:#000;border-radius:1rem;overflow:hidden;box-shadow:0 25px 50px -12px rgba(0,0,0,0.8),0 0 0 1px rgba(255,255,255,0.1);">
-          <button type="button" id="close-trailer-modal" aria-label="Close trailer" style="position:absolute;top:1rem;right:1rem;z-index:10;width:2.5rem;height:2.5rem;border-radius:50%;border:none;background:rgba(0,0,0,0.65);color:#fff;cursor:pointer;display:grid;place-items:center;font-size:1.5rem;line-height:1;">&times;</button>
-          <iframe id="trailer-iframe" title="Trailer" style="width:100%;height:100%;border:none;" allow="autoplay; fullscreen; encrypted-media; picture-in-picture"></iframe>
+        <div class="kaira-trailer-box">
+          <button type="button" id="close-trailer-modal" class="kaira-trailer-close" aria-label="Close trailer">&times;</button>
+          <iframe id="trailer-iframe" class="kaira-trailer-iframe" title="Trailer" allow="autoplay; fullscreen; encrypted-media; picture-in-picture"></iframe>
         </div>
       `;
       document.body.appendChild(modal);
@@ -4173,10 +4457,15 @@
         if (e.target === modal) closeTrailerModal();
       };
       document.addEventListener('keydown', (e) => {
-        if (e.key === 'Escape' && modal.style.display !== 'none') {
+        if (e.key === 'Escape' && modal.classList.contains('kaira-modal-open')) {
           closeTrailerModal();
         }
       });
+    }
+
+    if (trailerCloseTimer) {
+      clearTimeout(trailerCloseTimer);
+      trailerCloseTimer = null;
     }
 
     const iframe = modal.querySelector('#trailer-iframe');
@@ -4184,15 +4473,34 @@
     iframe.title = title ? `Trailer: ${title}` : 'Trailer';
     iframe.src = `https://www.youtube-nocookie.com/embed/${encodeURIComponent(trailerId)}?autoplay=1&rel=0${muteParam}`;
     modal.style.display = 'flex';
+    modal.setAttribute('aria-hidden', 'false');
+    void modal.offsetHeight;
+    modal.classList.add('kaira-modal-open');
   }
 
-  function closeTrailerModal() {
+  function closeTrailerModal(immediate = false) {
     const modal = document.getElementById('flicx-trailer-modal');
-    if (modal) {
-      const iframe = modal.querySelector('#trailer-iframe');
+    if (!modal) return;
+    if (trailerCloseTimer) {
+      clearTimeout(trailerCloseTimer);
+      trailerCloseTimer = null;
+    }
+    const iframe = modal.querySelector('#trailer-iframe');
+    modal.classList.remove('kaira-modal-open');
+    modal.setAttribute('aria-hidden', 'true');
+    const delay = immediate || prefersReducedMotion() ? 0 : 230;
+    if (delay === 0) {
       if (iframe) iframe.src = '';
       modal.style.display = 'none';
+      return;
     }
+    trailerCloseTimer = setTimeout(() => {
+      trailerCloseTimer = null;
+      if (!modal.classList.contains('kaira-modal-open')) {
+        if (iframe) iframe.src = '';
+        modal.style.display = 'none';
+      }
+    }, delay);
   }
 
   let detailActionsBound = false;
@@ -4351,6 +4659,12 @@
             '';
           const kind = trailerBtn.getAttribute('data-trailer-kind') || (cleanPath.startsWith('/tv/') ? 'show' : 'movie');
 
+          const directTrailerId = trailerBtn.getAttribute('data-trailer-id');
+          if (directTrailerId) {
+            openTrailerModal(directTrailerId, title || slug);
+            return;
+          }
+
           if (!slug) {
             showKairaToast('Trailer unavailable');
             return;
@@ -4400,7 +4714,8 @@
       const href = card.getAttribute('data-href') || (link ? link.getAttribute('href') : null);
       const normHref = href ? normalizeRoutePath(href) : '';
 
-      if (href && (normHref.startsWith('/movie/') || normHref.startsWith('/tv/') || normHref.startsWith('/genres/') || normHref.startsWith('/watch/') || normHref.startsWith('/collections') || normHref.startsWith('/just-added') || normHref.startsWith('/awards') || normHref.startsWith('/4k') || normHref.startsWith('/anime') || normHref.startsWith('/discover') || normHref.startsWith('/library'))) {
+      if (href && (normHref.startsWith('/movie/') || normHref.startsWith('/tv/') || normHref.startsWith('/genres/') || normHref.startsWith('/watch/') || normHref.startsWith('/collection/') || normHref.startsWith('/collections') || normHref.startsWith('/studio/') || normHref.startsWith('/just-added') || normHref.startsWith('/awards') || normHref.startsWith('/4k') || normHref.startsWith('/anime') || normHref.startsWith('/discover') || normHref.startsWith('/library') || normHref === '/top-rated' || normHref === '/new')) {
+        stashCardMetaFromElement(card, normHref);
         e.preventDefault();
         navigateTo(withBasePath(href));
       }
@@ -5029,8 +5344,18 @@
         e.stopPropagation();
         const slug = removeBtn.getAttribute('data-cw-remove');
         if (slug) {
-          removeContinueWatchingBySlug(slug);
-          showKairaToast('Removed from Continue Watching');
+          const itemEl = removeBtn.closest('[role="listitem"]');
+          const delay = itemEl && !prefersReducedMotion() ? 210 : 0;
+          if (itemEl && delay > 0) {
+            itemEl.classList.add('kaira-cw-removing');
+            setTimeout(() => {
+              removeContinueWatchingBySlug(slug);
+              showKairaToast('Removed from Continue Watching');
+            }, delay);
+          } else {
+            removeContinueWatchingBySlug(slug);
+            showKairaToast('Removed from Continue Watching');
+          }
         }
         return;
       }
@@ -5038,8 +5363,18 @@
       if (clearAllBtn) {
         e.preventDefault();
         e.stopPropagation();
-        clearAllContinueWatching();
-        showKairaToast('Continue Watching cleared');
+        const sectionEl = clearAllBtn.closest('.kaira-cw-section');
+        const delay = sectionEl && !prefersReducedMotion() ? 220 : 0;
+        if (sectionEl && delay > 0) {
+          sectionEl.classList.add('kaira-cw-section-closing');
+          setTimeout(() => {
+            clearAllContinueWatching();
+            showKairaToast('Continue Watching cleared');
+          }, delay);
+        } else {
+          clearAllContinueWatching();
+          showKairaToast('Continue Watching cleared');
+        }
       }
     });
   }
@@ -5502,17 +5837,41 @@
   }
 
   let settingsEscBound = false;
-  function closeSettingsModal(e) {
-    if (e) {
+  let settingsCloseTimer = null;
+  function closeSettingsModal(e, immediate = false) {
+    if (e && typeof e.preventDefault === 'function') {
       e.preventDefault();
       e.stopPropagation();
     }
     const dialog = document.getElementById('flicx-settings-dialog');
     const backdrop = document.getElementById('flicx-settings-backdrop');
-    if (dialog) dialog.style.display = 'none';
-    if (backdrop) backdrop.style.display = 'none';
+    if (settingsCloseTimer) {
+      clearTimeout(settingsCloseTimer);
+      settingsCloseTimer = null;
+    }
+    if (dialog) {
+      dialog.classList.remove('set-open');
+      dialog.setAttribute('aria-hidden', 'true');
+    }
+    if (backdrop) {
+      backdrop.classList.remove('set-open');
+    }
     document.body.style.overflow = '';
-    activeSettingsView = 'main';
+    const delay = immediate || prefersReducedMotion() ? 0 : 240;
+    if (delay === 0) {
+      if (dialog) dialog.style.display = 'none';
+      if (backdrop) backdrop.style.display = 'none';
+      activeSettingsView = 'main';
+      return;
+    }
+    settingsCloseTimer = setTimeout(() => {
+      settingsCloseTimer = null;
+      if (dialog && !dialog.classList.contains('set-open')) {
+        dialog.style.display = 'none';
+        if (backdrop) backdrop.style.display = 'none';
+        activeSettingsView = 'main';
+      }
+    }, delay);
   }
 
   function buildSettingsModal() {
@@ -5530,6 +5889,7 @@
     dialog.setAttribute('role', 'dialog');
     dialog.setAttribute('aria-label', 'Settings');
     dialog.setAttribute('aria-modal', 'true');
+    dialog.setAttribute('aria-hidden', 'true');
     dialog.style.display = 'none';
 
     dialog.innerHTML = `
@@ -5579,7 +5939,7 @@
       document.addEventListener('keydown', (e) => {
         if (e.key === 'Escape') {
           const dlg = document.getElementById('flicx-settings-dialog');
-          if (dlg && dlg.style.display !== 'none') {
+          if (dlg && dlg.classList.contains('set-open')) {
             closeSettingsModal();
           }
         }
@@ -6204,17 +6564,26 @@
 
   function openSettingsModal() {
     getSettingsState();
-    renderSettingsView('main');
     const dialog = buildSettingsModal();
+    renderSettingsView('main');
     const backdrop = document.getElementById('flicx-settings-backdrop');
-    dialog.style.display = 'block';
-    backdrop.style.display = 'block';
+    if (settingsCloseTimer) {
+      clearTimeout(settingsCloseTimer);
+      settingsCloseTimer = null;
+    }
+    dialog.style.display = 'flex';
+    dialog.setAttribute('aria-hidden', 'false');
+    if (backdrop) backdrop.style.display = 'block';
     document.body.style.overflow = 'hidden';
+    void dialog.offsetHeight;
+    dialog.classList.add('set-open');
+    if (backdrop) backdrop.classList.add('set-open');
   }
 
   // --- 8. Notifications Popover ---
   let notifOutsideHandler = null;
   let notifResizeHandler = null;
+  let notifCloseTimer = null;
 
   function positionNotificationsPopover(popover) {
     if (!popover) return;
@@ -6243,16 +6612,26 @@
     }
   }
 
-  function closeNotifications() {
+  function closeNotifications(immediate = false) {
     const popover = document.getElementById('flicx-notes-popover');
+    if (notifCloseTimer) {
+      clearTimeout(notifCloseTimer);
+      notifCloseTimer = null;
+    }
     if (popover) {
       popover.classList.remove('notes-open');
       popover.setAttribute('aria-hidden', 'true');
-      setTimeout(() => {
-        if (!popover.classList.contains('notes-open')) {
-          popover.style.display = 'none';
-        }
-      }, 220);
+      const delay = immediate || prefersReducedMotion() ? 0 : 220;
+      if (delay === 0) {
+        popover.style.display = 'none';
+      } else {
+        notifCloseTimer = setTimeout(() => {
+          notifCloseTimer = null;
+          if (!popover.classList.contains('notes-open')) {
+            popover.style.display = 'none';
+          }
+        }, delay);
+      }
     }
     if (notifOutsideHandler) {
       document.removeEventListener('click', notifOutsideHandler);
@@ -6309,12 +6688,16 @@
       return;
     }
 
+    if (notifCloseTimer) {
+      clearTimeout(notifCloseTimer);
+      notifCloseTimer = null;
+    }
+
     positionNotificationsPopover(popover);
     popover.style.display = 'block';
     popover.setAttribute('aria-hidden', 'false');
-    requestAnimationFrame(() => {
-      popover.classList.add('notes-open');
-    });
+    void popover.offsetHeight;
+    popover.classList.add('notes-open');
 
     if (notifOutsideHandler) {
       document.removeEventListener('click', notifOutsideHandler);
@@ -6556,9 +6939,10 @@
       if (caret) caret.style.transform = '';
     }
 
+    const removeDelay = prefersReducedMotion() ? 0 : 210;
     setTimeout(() => {
       if (popup.parentNode) popup.parentNode.removeChild(popup);
-    }, 190);
+    }, removeDelay);
   }
 
   function openDropdownPopup(triggerBtn, options, currentSelectedVal, onSelect) {
@@ -6721,7 +7105,7 @@
           });
         };
       } else {
-        const isGenre = ['Drama', 'Action', 'Comedy', 'Animation', 'Horror', 'Sci-Fi', 'Romance', 'Thriller'].includes(btnText) || (parentRow && parentRow.textContent.includes('Greats'));
+        const isGenre = GENRE_FILTER_OPTIONS.some(o => o.label.toLowerCase() === btnText.toLowerCase()) || /\b(Top|Greats)\b/i.test(parentRow?.textContent || '');
         const options = isGenre ? GENRE_FILTER_OPTIONS : TIME_FILTER_OPTIONS;
 
         triggerBtn.onclick = (e) => {
@@ -7067,6 +7451,7 @@
             .join('');
         }
         grid.setAttribute('aria-label', `${items.length} filtered titles`);
+        try { initWatchlist(); } catch {}
       } catch (err) {
         if (currentReq !== reqId) return;
         // Static GitHub Pages fallback: filter & sort initial DOM cards smoothly
@@ -7078,15 +7463,45 @@
       }
     }
 
-    triggers.forEach(btn => {
-      if (btn.__discoverBound) return;
-      btn.__discoverBound = true;
+    // Hydrate initial filter state from URL query params (e.g. /discover?sort=rating&genre=drama)
+    let hasInitialQueryFilters = false;
+    try {
+      const urlQ = new URLSearchParams(window.location.search);
+      const queryMap = {
+        sort: urlQ.get('sort') || '',
+        genre: urlQ.get('genre') || '',
+        type: urlQ.get('kind') || urlQ.get('type') || '',
+        format: urlQ.get('format') || '',
+        decade: urlQ.get('decade') || '',
+        rating: urlQ.get('rating') || urlQ.get('minRating') || '',
+        length: urlQ.get('length') || '',
+        source: urlQ.get('source') || ''
+      };
+      for (const [k, v] of Object.entries(queryMap)) {
+        if (v && Object.prototype.hasOwnProperty.call(state, k) && state[k] !== v) {
+          state[k] = v;
+          hasInitialQueryFilters = true;
+        }
+      }
+    } catch {}
 
+    triggers.forEach(btn => {
       const labelEl = btn.querySelector('.select-label');
       const valueEl = btn.querySelector('.select-value');
       const key = (labelEl?.textContent || '').trim().toLowerCase();
       const options = (isAnimePage && key === 'sort') ? DISCOVER_FILTER_OPTIONS.animeSort : DISCOVER_FILTER_OPTIONS[key];
       if (!options) return;
+
+      if (state[key]) {
+        const matched = options.find(o => o.value.toLowerCase() === String(state[key]).toLowerCase());
+        if (matched && valueEl) {
+          valueEl.textContent = matched.label;
+          btn.setAttribute('aria-label', `${labelEl?.textContent || key}: ${matched.label}`);
+        }
+      }
+
+      if (btn.__discoverBound) return;
+      btn.__discoverBound = true;
 
       btn.onclick = (e) => {
         e.preventDefault();
@@ -7105,6 +7520,10 @@
       };
     });
 
+    if (hasInitialQueryFilters) {
+      fetchDiscoverResults();
+    }
+
     // Wire "Surprise me" button
     document.querySelectorAll('main button').forEach(btn => {
       if (btn.__surpriseBound) return;
@@ -7117,7 +7536,10 @@
         if (!links.length) return;
         const pick = links[Math.floor(Math.random() * links.length)];
         const href = pick.getAttribute('href');
-        if (href) navigateTo(withBasePath(href));
+        if (href) {
+          stashCardMetaFromElement(pick, href);
+          navigateTo(withBasePath(href));
+        }
       };
     });
   }
@@ -8105,7 +8527,7 @@
         opacity: 0;
         transform: scale(0.95) translateY(-8px);
         transform-origin: top left;
-        transition: opacity 0.18s cubic-bezier(0.16, 1, 0.3, 1), transform 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+        transition: opacity 0.19s cubic-bezier(0.4, 0, 1, 1), transform 0.2s cubic-bezier(0.4, 0, 1, 1);
         pointer-events: none;
         display: flex;
         flex-direction: column;
@@ -8115,6 +8537,7 @@
         opacity: 1 !important;
         transform: scale(1) translateY(0) !important;
         pointer-events: auto !important;
+        transition: opacity 0.2s cubic-bezier(0.22, 1, 0.36, 1), transform 0.22s cubic-bezier(0.16, 1, 0.3, 1);
       }
       .select-option {
         border: none;
@@ -8166,10 +8589,11 @@
 
       /* View Transitions & Page Transitions */
       ::view-transition { pointer-events: none; }
-      ::view-transition-old(.page-fade) { animation: .24s linear both vt-hold; }
+      ::view-transition-old(.page-fade) { animation: .2s ease-in both vt-fade-out; }
       ::view-transition-new(.page-fade) { animation: .24s ease-out both vt-fade-in; }
       @keyframes vt-hold { 0%, to { opacity: 1; } }
-      @keyframes vt-fade-in { 0% { opacity: 0; } }
+      @keyframes vt-fade-in { 0% { opacity: 0; } 100% { opacity: 1; } }
+      @keyframes vt-fade-out { 0% { opacity: 1; } 100% { opacity: 0; } }
 
       html:active-view-transition .site-header { view-transition-name: site-header; }
       html:active-view-transition .tab-bar { view-transition-name: tab-bar; }
@@ -8255,10 +8679,10 @@
       }
 
       main.page-transitioning-out, .watch-root.page-transitioning-out {
-        animation: 0.18s ease-out both vt-hold !important;
+        animation: 0.18s cubic-bezier(0.4, 0, 1, 1) both vt-fade-out !important;
       }
       main.page-transitioning-in, .watch-root.page-transitioning-in {
-        animation: 0.24s ease-out both vt-fade-in !important;
+        animation: 0.24s cubic-bezier(0.22, 1, 0.36, 1) both vt-fade-in !important;
       }
 
       #flicx-nav-progress {
@@ -8393,12 +8817,13 @@
         z-index: 25;
         pointer-events: none;
         white-space: nowrap;
-        transition: opacity 0.24s cubic-bezier(0.22, 1, 0.36, 1), transform 0.28s cubic-bezier(0.22, 1, 0.36, 1), visibility 0.28s;
+        transition: opacity 0.2s cubic-bezier(0.4, 0, 1, 1), transform 0.22s cubic-bezier(0.4, 0, 1, 1), visibility 0s linear 0.22s;
       }
       .atv-status-pill.atv-visible {
         opacity: 1;
         visibility: visible;
         transform: translate3d(-50%, 0, 0) scale(1);
+        transition: opacity 0.24s cubic-bezier(0.22, 1, 0.36, 1), transform 0.28s cubic-bezier(0.16, 1, 0.3, 1), visibility 0s linear 0s;
       }
       .atv-bottom {
         position: relative !important;
@@ -8514,7 +8939,7 @@
         pointer-events: none;
         transform: translate3d(0, 10px, 0) scale(0.95);
         transform-origin: bottom right;
-        transition: opacity 0.22s cubic-bezier(0.22, 1, 0.36, 1), transform 0.28s cubic-bezier(0.16, 1, 0.3, 1), visibility 0.28s;
+        transition: opacity 0.19s cubic-bezier(0.4, 0, 1, 1), transform 0.21s cubic-bezier(0.4, 0, 1, 1), visibility 0s linear 0.21s;
         will-change: opacity, transform;
       }
       .atv-glass-popover.atv-open {
@@ -8522,6 +8947,7 @@
         visibility: visible;
         pointer-events: auto;
         transform: translate3d(0, 0, 0) scale(1);
+        transition: opacity 0.24s cubic-bezier(0.22, 1, 0.36, 1), transform 0.28s cubic-bezier(0.16, 1, 0.3, 1), visibility 0s linear 0s;
       }
       .atv-popover {
         bottom: calc(100% + 14px);
@@ -8986,12 +9412,13 @@
         z-index: 26;
         pointer-events: none;
         white-space: nowrap;
-        transition: opacity 0.18s ease, transform 0.2s cubic-bezier(0.22, 1, 0.36, 1), visibility 0.2s;
+        transition: opacity 0.18s cubic-bezier(0.4, 0, 1, 1), transform 0.2s cubic-bezier(0.4, 0, 1, 1), visibility 0s linear 0.2s;
       }
       .atv-speed-boost-pill.atv-visible {
         opacity: 1;
         visibility: visible;
         transform: translate3d(-50%, 0, 0) scale(1);
+        transition: opacity 0.2s cubic-bezier(0.22, 1, 0.36, 1), transform 0.22s cubic-bezier(0.16, 1, 0.3, 1), visibility 0s linear 0s;
       }
 
       /* Stacked Touch Double-Tap Skip Ripple Zones */
@@ -9082,13 +9509,14 @@
         visibility: hidden;
         pointer-events: none;
         transform: translate3d(0, 14px, 0) scale(0.96);
-        transition: bottom 0.28s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.24s ease, transform 0.28s cubic-bezier(0.22, 1, 0.36, 1), visibility 0.28s;
+        transition: bottom 0.28s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.2s cubic-bezier(0.4, 0, 1, 1), transform 0.22s cubic-bezier(0.4, 0, 1, 1), visibility 0s linear 0.22s;
       }
       .atv-upnext-card.atv-visible {
         opacity: 1;
         visibility: visible;
         pointer-events: auto;
         transform: translate3d(0, 0, 0) scale(1);
+        transition: bottom 0.28s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.24s cubic-bezier(0.22, 1, 0.36, 1), transform 0.28s cubic-bezier(0.16, 1, 0.3, 1), visibility 0s linear 0s;
       }
       .fx-player.atv-chrome-visible .atv-upnext-card {
         bottom: calc(14.75rem + env(safe-area-inset-bottom, 0px));
@@ -9177,7 +9605,7 @@
         overflow: hidden;
         pointer-events: none;
         transform: translate3d(0, 12px, 0) scale(0.985);
-        transition: max-height 0.34s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.24s ease, transform 0.32s cubic-bezier(0.22, 1, 0.36, 1), padding 0.3s cubic-bezier(0.22, 1, 0.36, 1), margin 0.3s cubic-bezier(0.22, 1, 0.36, 1), visibility 0.32s;
+        transition: max-height 0.26s cubic-bezier(0.4, 0, 1, 1), opacity 0.2s cubic-bezier(0.4, 0, 1, 1), transform 0.24s cubic-bezier(0.4, 0, 1, 1), padding 0.24s cubic-bezier(0.4, 0, 1, 1), margin 0.24s cubic-bezier(0.4, 0, 1, 1), border-color 0.2s ease, box-shadow 0.2s ease, visibility 0s linear 0.26s;
       }
       .atv-drawer.atv-open {
         max-height: 260px;
@@ -9190,6 +9618,7 @@
         box-shadow: 0 22px 56px rgba(0, 0, 0, 0.55);
         pointer-events: auto;
         transform: translate3d(0, 0, 0) scale(1);
+        transition: max-height 0.34s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.24s cubic-bezier(0.22, 1, 0.36, 1), transform 0.32s cubic-bezier(0.16, 1, 0.3, 1), padding 0.3s cubic-bezier(0.22, 1, 0.36, 1), margin 0.3s cubic-bezier(0.22, 1, 0.36, 1), border-color 0.24s ease, box-shadow 0.24s ease, visibility 0s linear 0s;
       }
       .atv-info-grid {
         display: flex;
@@ -9312,7 +9741,7 @@
         cursor: pointer;
         pointer-events: none;
         box-shadow: 0 18px 44px rgba(0, 0, 0, 0.55);
-        transition: transform 0.26s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.22s ease, background-color 0.18s ease, color 0.18s ease, visibility 0.26s;
+        transition: transform 0.22s cubic-bezier(0.4, 0, 1, 1), opacity 0.2s ease, background-color 0.18s ease, color 0.18s ease, visibility 0s linear 0.22s;
         z-index: 6;
       }
       .fx-player .kaira-center-play.atv-visible {
@@ -9320,6 +9749,7 @@
         visibility: visible;
         pointer-events: auto;
         transform: translate(-50%, -50%) scale(1);
+        transition: transform 0.26s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.22s ease, background-color 0.18s ease, color 0.18s ease, visibility 0s linear 0s;
       }
       .fx-player .kaira-center-play.atv-visible:hover {
         transform: translate(-50%, -50%) scale(1.08);
@@ -9464,18 +9894,118 @@
         padding-bottom: 1.75rem !important;
       }
 
+      /* Smooth Open & Close Modal Transitions (Settings & Trailer Modals) */
+      #flicx-settings-backdrop.set-backdrop {
+        background: rgba(0, 0, 0, 0.45);
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 0.2s cubic-bezier(0.4, 0, 1, 1);
+      }
+      #flicx-settings-backdrop.set-backdrop.set-open {
+        opacity: 1;
+        pointer-events: auto;
+        transition: opacity 0.24s cubic-bezier(0.22, 1, 0.36, 1);
+      }
+      #flicx-settings-dialog.set-dialog {
+        opacity: 0;
+        transform: translate3d(0, 12px, 0) scale(0.96);
+        pointer-events: none;
+        transition: opacity 0.2s cubic-bezier(0.4, 0, 1, 1), transform 0.22s cubic-bezier(0.4, 0, 1, 1) !important;
+        will-change: opacity, transform;
+      }
+      #flicx-settings-dialog.set-dialog.set-open {
+        opacity: 1;
+        transform: translate3d(0, 0, 0) scale(1);
+        pointer-events: auto;
+        transition: opacity 0.24s cubic-bezier(0.22, 1, 0.36, 1), transform 0.28s cubic-bezier(0.16, 1, 0.3, 1) !important;
+      }
+
+      .kaira-trailer-modal {
+        position: fixed;
+        inset: 0;
+        z-index: 9999;
+        background: rgba(0, 0, 0, 0.85);
+        -webkit-backdrop-filter: blur(16px);
+        backdrop-filter: blur(16px);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 1.5rem;
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 0.2s cubic-bezier(0.4, 0, 1, 1);
+      }
+      .kaira-trailer-modal.kaira-modal-open {
+        opacity: 1;
+        pointer-events: auto;
+        transition: opacity 0.24s cubic-bezier(0.22, 1, 0.36, 1);
+      }
+      .kaira-trailer-box {
+        position: relative;
+        width: 100%;
+        max-width: 960px;
+        aspect-ratio: 16 / 9;
+        background: #000;
+        border-radius: 1rem;
+        overflow: hidden;
+        box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.8), 0 0 0 1px rgba(255, 255, 255, 0.1);
+        opacity: 0;
+        transform: translate3d(0, 14px, 0) scale(0.94);
+        transition: opacity 0.2s cubic-bezier(0.4, 0, 1, 1), transform 0.22s cubic-bezier(0.4, 0, 1, 1);
+        will-change: opacity, transform;
+      }
+      .kaira-trailer-modal.kaira-modal-open .kaira-trailer-box {
+        opacity: 1;
+        transform: translate3d(0, 0, 0) scale(1);
+        transition: opacity 0.24s cubic-bezier(0.22, 1, 0.36, 1), transform 0.28s cubic-bezier(0.16, 1, 0.3, 1);
+      }
+      .kaira-trailer-close {
+        position: absolute;
+        top: 1rem;
+        right: 1rem;
+        z-index: 10;
+        width: 2.5rem;
+        height: 2.5rem;
+        border-radius: 50%;
+        border: 1px solid rgba(255, 255, 255, 0.16);
+        background: rgba(0, 0, 0, 0.65);
+        color: #ffffff;
+        cursor: pointer;
+        display: grid;
+        place-items: center;
+        font-size: 1.5rem;
+        line-height: 1;
+        transition: background-color 0.18s ease, transform 0.18s cubic-bezier(0.22, 1, 0.36, 1);
+      }
+      .kaira-trailer-close:hover {
+        background: rgba(255, 255, 255, 0.2);
+        transform: scale(1.06);
+      }
+      .kaira-trailer-close:active {
+        transform: scale(0.94);
+      }
+      .kaira-trailer-iframe {
+        width: 100%;
+        height: 100%;
+        border: none;
+      }
+
       /* Responsive Notifications Popover (Never clips off-screen on mobile) */
       #flicx-notes-popover.notes-popup {
         box-sizing: border-box !important;
         max-width: calc(100vw - 24px) !important;
         opacity: 0;
-        transform: translate3d(0, -8px, 0) scale(0.97);
+        pointer-events: none;
+        transform: translate3d(0, -8px, 0) scale(0.96);
         transform-origin: top right;
-        transition: opacity 0.22s cubic-bezier(0.22, 1, 0.36, 1), transform 0.24s cubic-bezier(0.22, 1, 0.36, 1);
+        transition: opacity 0.19s cubic-bezier(0.4, 0, 1, 1), transform 0.2s cubic-bezier(0.4, 0, 1, 1);
+        will-change: opacity, transform;
       }
       #flicx-notes-popover.notes-popup.notes-open {
         opacity: 1;
+        pointer-events: auto;
         transform: translate3d(0, 0, 0) scale(1);
+        transition: opacity 0.22s cubic-bezier(0.22, 1, 0.36, 1), transform 0.26s cubic-bezier(0.16, 1, 0.3, 1);
       }
       #flicx-notes-popover .notes-panel {
         width: 100% !important;
@@ -9504,6 +10034,12 @@
         }
         .set-dialog {
           padding: 12px !important;
+        }
+        #flicx-settings-dialog.set-dialog {
+          transform: translate3d(0, 28px, 0) scale(0.985);
+        }
+        #flicx-settings-dialog.set-dialog.set-open {
+          transform: translate3d(0, 0, 0) scale(1);
         }
         .set-window {
           width: min(560px, calc(100vw - 24px)) !important;
@@ -9859,13 +10395,14 @@
         opacity: 0;
         visibility: hidden;
         pointer-events: none;
-        transition: opacity 0.22s ease, transform 0.25s cubic-bezier(0.16, 1, 0.3, 1), visibility 0.25s;
+        transition: opacity 0.2s cubic-bezier(0.4, 0, 1, 1), transform 0.22s cubic-bezier(0.4, 0, 1, 1), visibility 0s linear 0.22s;
       }
       .atv-resume-pill.atv-visible {
         opacity: 1;
         visibility: visible;
         pointer-events: auto;
         transform: translate(-50%, 0);
+        transition: opacity 0.22s cubic-bezier(0.22, 1, 0.36, 1), transform 0.26s cubic-bezier(0.16, 1, 0.3, 1), visibility 0s linear 0s;
       }
       .atv-resume-restart-btn {
         border: none;
@@ -9882,6 +10419,46 @@
         background: rgba(255, 255, 255, 0.3);
       }
 
+      /* Smooth Continue Watching Card & Section Close Transitions */
+      .kaira-cw-section {
+        transition: opacity 0.22s cubic-bezier(0.4, 0, 1, 1), transform 0.24s cubic-bezier(0.4, 0, 1, 1);
+      }
+      .kaira-cw-section.kaira-cw-section-closing {
+        opacity: 0;
+        transform: translate3d(0, -10px, 0);
+        pointer-events: none;
+      }
+      .kaira-cw-section [role="listitem"] {
+        transition: opacity 0.2s cubic-bezier(0.4, 0, 1, 1), transform 0.22s cubic-bezier(0.4, 0, 1, 1);
+      }
+      .kaira-cw-section [role="listitem"].kaira-cw-removing {
+        opacity: 0;
+        transform: scale(0.86);
+        pointer-events: none;
+      }
+
+      html[data-motion="reduce"] .fx-player .fx-ui,
+      html[data-motion="reduce"] .fx-player .fx-ui .fx-top,
+      html[data-motion="reduce"] .fx-player .fx-ui .fx-bottom,
+      html[data-motion="reduce"] .atv-glass-popover,
+      html[data-motion="reduce"] .atv-drawer,
+      html[data-motion="reduce"] .atv-status-pill,
+      html[data-motion="reduce"] .atv-resume-pill,
+      html[data-motion="reduce"] .atv-upnext-card,
+      html[data-motion="reduce"] .atv-speed-boost-pill,
+      html[data-motion="reduce"] .fx-player .kaira-center-play,
+      html[data-motion="reduce"] #flicx-notes-popover.notes-popup,
+      html[data-motion="reduce"] #flicx-settings-dialog.set-dialog,
+      html[data-motion="reduce"] #flicx-settings-backdrop.set-backdrop,
+      html[data-motion="reduce"] .kaira-trailer-modal,
+      html[data-motion="reduce"] .kaira-trailer-box,
+      html[data-motion="reduce"] .select-popup,
+      html[data-motion="reduce"] .kaira-cw-section,
+      html[data-motion="reduce"] .kaira-cw-section [role="listitem"] {
+        transition-duration: 0.01ms !important;
+        transition-delay: 0s !important;
+      }
+
       @media (prefers-reduced-motion: reduce) {
         .fx-player .fx-ui,
         .fx-player .fx-ui .fx-top,
@@ -9890,10 +10467,174 @@
         .atv-drawer,
         .atv-status-pill,
         .atv-resume-pill,
+        .atv-upnext-card,
+        .atv-speed-boost-pill,
         .fx-player .kaira-center-play,
-        #flicx-notes-popover.notes-popup {
+        #flicx-notes-popover.notes-popup,
+        #flicx-settings-dialog.set-dialog,
+        #flicx-settings-backdrop.set-backdrop,
+        .kaira-trailer-modal,
+        .kaira-trailer-box,
+        .select-popup,
+        .kaira-cw-section,
+        .kaira-cw-section [role="listitem"] {
           transition-duration: 0.01ms !important;
+          transition-delay: 0s !important;
         }
+      }
+
+      /* Dynamic detail page fallback styling (for uncached/rewritten /movie/* & /tv/* routes) */
+      .kaira-dyn-detail .kaira-dyn-title {
+        font-size: clamp(2.1rem, 4.6vw, 4rem);
+        line-height: 1.04;
+        font-weight: 800;
+        letter-spacing: -0.03em;
+        color: #fff;
+        text-shadow: 0 8px 32px rgba(0, 0, 0, 0.55);
+        margin: 0;
+      }
+      .kaira-dyn-detail .kaira-dyn-logo {
+        display: block;
+        max-height: clamp(3.5rem, 12vh, 6.75rem);
+        max-width: min(76vw, 27rem);
+        width: auto;
+        height: auto;
+        object-fit: contain;
+        object-position: left bottom;
+        filter: drop-shadow(0 8px 28px rgba(0, 0, 0, 0.6));
+      }
+      @media (max-width: 767px) {
+        .kaira-dyn-detail .kaira-dyn-logo {
+          margin-inline: auto;
+          object-position: center bottom;
+        }
+      }
+      .kaira-dyn-detail .kaira-dyn-backdrop {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        object-position: center 22%;
+        transition: opacity 0.45s cubic-bezier(0.22, 1, 0.36, 1);
+      }
+      .kaira-dyn-detail .kaira-dyn-poster-blur {
+        filter: blur(22px) saturate(1.15) brightness(0.68);
+        transform: scale(1.12);
+      }
+      .kaira-dyn-cast-grid {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.625rem;
+      }
+      .kaira-dyn-cast-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.5rem;
+        padding: 0.5rem 0.95rem;
+        border-radius: 9999px;
+        background: rgba(255, 255, 255, 0.07);
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        color: rgba(255, 255, 255, 0.92);
+        font-size: 0.9rem;
+        font-weight: 500;
+        text-decoration: none;
+        transition: background 0.18s ease, border-color 0.18s ease, transform 0.18s ease;
+      }
+      .kaira-dyn-cast-chip:hover {
+        background: rgba(255, 255, 255, 0.14);
+        border-color: rgba(255, 255, 255, 0.24);
+        transform: translateY(-1px);
+      }
+      .kaira-dyn-season-tabs {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+        margin-bottom: 1.25rem;
+      }
+      .kaira-dyn-season-btn {
+        padding: 0.45rem 1rem;
+        border-radius: 9999px;
+        background: rgba(255, 255, 255, 0.08);
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        color: rgba(255, 255, 255, 0.78);
+        font-size: 0.875rem;
+        font-weight: 600;
+        cursor: pointer;
+        transition: background 0.18s ease, color 0.18s ease, border-color 0.18s ease;
+      }
+      .kaira-dyn-season-btn:hover {
+        background: rgba(255, 255, 255, 0.14);
+        color: #fff;
+      }
+      .kaira-dyn-season-btn[aria-selected="true"] {
+        background: #fff;
+        color: #0b0b0c;
+        border-color: #fff;
+      }
+      .kaira-dyn-ep-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+        gap: 1.15rem;
+      }
+      .kaira-dyn-ep-card {
+        display: flex;
+        flex-direction: column;
+        border-radius: 1rem;
+        overflow: hidden;
+        background: rgba(255, 255, 255, 0.05);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        text-decoration: none;
+        color: inherit;
+        transition: transform 0.2s cubic-bezier(0.22, 1, 0.36, 1), border-color 0.2s ease, background 0.2s ease;
+      }
+      .kaira-dyn-ep-card:hover {
+        transform: translateY(-3px);
+        background: rgba(255, 255, 255, 0.08);
+        border-color: rgba(255, 255, 255, 0.22);
+      }
+      .kaira-dyn-ep-thumb {
+        position: relative;
+        aspect-ratio: 16 / 9;
+        background: rgba(255, 255, 255, 0.06);
+        overflow: hidden;
+      }
+      .kaira-dyn-ep-thumb img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        display: block;
+      }
+      .kaira-dyn-ep-badge {
+        position: absolute;
+        left: 0.65rem;
+        bottom: 0.55rem;
+        padding: 0.18rem 0.55rem;
+        border-radius: 9999px;
+        background: rgba(0, 0, 0, 0.72);
+        backdrop-filter: blur(8px);
+        color: #fff;
+        font-size: 0.72rem;
+        font-weight: 700;
+        letter-spacing: 0.03em;
+      }
+      .kaira-dyn-ep-body {
+        padding: 0.85rem 0.95rem 1rem;
+      }
+      .kaira-dyn-ep-title {
+        font-size: 0.95rem;
+        font-weight: 600;
+        color: #fff;
+        line-height: 1.3;
+        margin: 0 0 0.35rem;
+      }
+      .kaira-dyn-ep-desc {
+        font-size: 0.82rem;
+        line-height: 1.45;
+        color: rgba(255, 255, 255, 0.66);
+        margin: 0;
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
       }
     `;
     document.head.appendChild(style);
@@ -9901,8 +10642,908 @@
 
   // --- 13. Ultra-Smooth Page Transitions & Client-Side Navigation ---
   const pageCache = new Map();
+  const clickedCardMetaMap = new Map();
   let isNavigating = false;
   let currentRenderedPath = window.location.pathname + window.location.search;
+  let dynHydrateSeq = 0;
+
+  function parseDetailRoute(rawPath) {
+    const norm = normalizeRoutePath(rawPath);
+    const m = norm.match(/^\/(movie|tv)\/([^/?#]+)$/);
+    if (!m) return null;
+    let slug = m[2];
+    try { slug = decodeURIComponent(slug); } catch {}
+    slug = slug.replace(/^\/+|\/+$/g, '');
+    if (!slug) return null;
+    return { folder: m[1], kind: m[1] === 'tv' ? 'show' : 'movie', slug };
+  }
+
+  function isValidDetailHtmlString(html) {
+    if (!html || typeof html !== 'string') return false;
+    if (html.includes('id="__next_error__"')) return false;
+    if (html.includes('hero-switch')) return false;
+    return /<article[\s>]/i.test(html);
+  }
+
+  function isValidDetailDoc(doc) {
+    if (!doc) return false;
+    if (doc.getElementById('__next_error__')) return false;
+    if (doc.querySelector('main .hero-switch, main .hero-switch-bars')) return false;
+    return Boolean(doc.querySelector('main article'));
+  }
+
+  function formatSlugToTitle(slug) {
+    const clean = String(slug || '').replace(/-\d{4}$/, '');
+    if (!clean) return 'Untitled';
+    const smallWords = new Set(['a', 'an', 'and', 'as', 'at', 'by', 'for', 'in', 'of', 'on', 'or', 'the', 'to', 'vs']);
+    return clean
+      .split('-')
+      .filter(Boolean)
+      .map((w, i) => (i > 0 && smallWords.has(w) ? w : w.charAt(0).toUpperCase() + w.slice(1)))
+      .join(' ');
+  }
+
+  function stashCardMetaFromElement(el, rawHref) {
+    const dyn = parseDynamicRoute(rawHref);
+    if (!dyn || (dyn.type !== 'detail' && dyn.type !== 'anime') || !el) return;
+    const card = el.closest('.card, .card-over, .card-action, .hero-copy, .hero, article') || el;
+    const title =
+      card.querySelector('.card-over-title')?.textContent?.trim() ||
+      card.querySelector('.card-fallback')?.textContent?.trim() ||
+      card.querySelector('h1, h2, h3')?.textContent?.trim() ||
+      el.getAttribute('aria-label')?.replace(/\s*\(\d{4}\).*$/, '').trim() ||
+      (dyn.type === 'anime' ? `Anime #${dyn.id}` : formatSlugToTitle(dyn.slug));
+    const year =
+      card.querySelector('.card-over-year')?.textContent?.trim() ||
+      (dyn.slug.match(/-(\d{4})$/)?.[1] || '');
+    const rating =
+      card.querySelector('.card-over-score')?.textContent?.trim()?.replace(/[^\d.]/g, '') || '';
+    const genre =
+      card.querySelector('.card-over-genre')?.textContent?.trim() || '';
+    const imgEl = card.querySelector('.card-pic img, img[src*="/a/poster/"], img');
+    const posterSrc = imgEl?.getAttribute('src') || '';
+    const imdbId =
+      posterSrc.match(/\/(tt\d+)\//)?.[1] ||
+      card.querySelector('[data-title-id]')?.getAttribute('data-title-id') ||
+      '';
+    const tone = card.style?.getPropertyValue('--tone')?.trim() || '#1c1d22';
+
+    clickedCardMetaMap.set(dyn.slug, {
+      slug: dyn.slug,
+      kind: dyn.type === 'anime' ? 'anime' : dyn.kind,
+      title,
+      year,
+      rating,
+      genres: genre ? [genre] : [],
+      poster: posterSrc,
+      imdbId,
+      tone
+    });
+    if (clickedCardMetaMap.size > 40) {
+      const oldest = clickedCardMetaMap.keys().next().value;
+      clickedCardMetaMap.delete(oldest);
+    }
+  }
+
+  function buildRatingStarSvg() {
+    return '<svg xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" fill="currentColor" viewBox="0 0 256 256" class="size-[1.625rem]"><path d="M239.18,97.26A16.38,16.38,0,0,0,224.92,86l-59-4.76L143.14,26.15a16.36,16.36,0,0,0-30.27,0L90.11,81.23,31.08,86a16.46,16.46,0,0,0-9.37,28.86l45,38.83L53,211.75a16.38,16.38,0,0,0,24.5,17.82L128,198.49l50.53,31.08A16.4,16.4,0,0,0,203,211.75l-13.76-58.07,45-38.83A16.43,16.43,0,0,0,239.18,97.26Zm-15.34,5.47-48.7,42a8,8,0,0,0-2.56,7.91l14.88,62.8a.37.37,0,0,1-.17.48c-.18.14-.23.11-.38,0l-54.72-33.65a8,8,0,0,0-8.38,0L69.09,215.94c-.15.09-.19.12-.38,0a.37.37,0,0,1-.17-.48l14.88-62.8a8,8,0,0,0-2.56-7.91l-48.7-42c-.12-.1-.23-.19-.13-.5s.18-.27.33-.29l63.92-5.16A8,8,0,0,0,103,91.86l24.62-59.61c.08-.17.11-.25.35-.25s.27.08.35.25L153,91.86a8,8,0,0,0,6.75,4.92l63.92,5.16c.15,0,.24,0,.33.29S224,102.63,223.84,102.73Z"></path></svg>';
+  }
+
+  function renderDynFactsItemsHtml(meta) {
+    const items = [];
+    if (meta.rating) {
+      items.push(`<li class="fact text-fg"><svg xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" fill="currentColor" viewBox="0 0 256 256" class="fact-icon mt-[0.058em] text-star"><path d="M234.29,114.85l-45,38.83L203,211.75a16.4,16.4,0,0,1-24.5,17.82L128,198.49,77.47,229.57A16.4,16.4,0,0,1,53,211.75l13.76-58.07-45-38.83A16.46,16.46,0,0,1,31.08,86l59-4.76,22.76-55.08a16.36,16.36,0,0,1,30.27,0l22.75,55.08,59,4.76a16.46,16.46,0,0,1,9.37,28.86Z"></path></svg><span>${escapeHtml(meta.rating)}</span><span class="sr-only">out of 10</span></li>`);
+    }
+    if (meta.year) {
+      items.push(`<li class="fact"><svg xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" fill="currentColor" viewBox="0 0 256 256" class="fact-icon"><path d="M208,28H188V24a12,12,0,0,0-24,0v4H92V24a12,12,0,0,0-24,0v4H48A20,20,0,0,0,28,48V208a20,20,0,0,0,20,20H208a20,20,0,0,0,20-20V48A20,20,0,0,0,208,28ZM68,52a12,12,0,0,0,24,0h72a12,12,0,0,0,24,0h16V76H52V52ZM52,204V100H204V204Z"></path></svg>${escapeHtml(meta.year)}</li>`);
+    }
+    if (meta.runtime) {
+      items.push(`<li class="fact"><svg xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" fill="currentColor" viewBox="0 0 256 256" class="fact-icon"><path d="M128,20A108,108,0,1,0,236,128,108.12,108.12,0,0,0,128,20Zm0,192a84,84,0,1,1,84-84A84.09,84.09,0,0,1,128,212Zm68-84a12,12,0,0,1-12,12H128a12,12,0,0,1-12-12V72a12,12,0,0,1,24,0v44h44A12,12,0,0,1,196,128Z"></path></svg>${escapeHtml(meta.runtime)}</li>`);
+    }
+    const genres = Array.isArray(meta.genres) ? meta.genres.filter(Boolean).slice(0, 3) : [];
+    if (genres.length) {
+      const genreLinks = genres.map((g, i) => {
+        const gSlug = String(g).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+        return `<span class="flex items-center gap-2">${i > 0 ? '<span aria-hidden="true" class="size-[3px] rounded-full bg-fg-faint"></span>' : ''}<a class="fact-link" href="${withBasePath(`/genres/${encodeURIComponent(gSlug)}`)}">${escapeHtml(g)}</a></span>`;
+      }).join('');
+      items.push(`<li class="fact"><svg xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" fill="currentColor" viewBox="0 0 256 256" class="fact-icon mt-[0.016em]"><path d="M246.15,133.18,146.83,33.86A19.85,19.85,0,0,0,132.69,28H40A12,12,0,0,0,28,40v92.69a19.85,19.85,0,0,0,5.86,14.14l99.32,99.32a20,20,0,0,0,28.28,0l84.69-84.69A20,20,0,0,0,246.15,133.18Zm-98.83,93.17L52,131V52h79l95.32,95.32ZM104,88A16,16,0,1,1,88,72,16,16,0,0,1,104,88Z"></path></svg><span class="flex items-center gap-2">${genreLinks}</span></li>`);
+    }
+    return items.join('');
+  }
+
+  function buildDynamicDetailDocument(slug, kind, hint) {
+    const isShow = kind === 'show' || kind === 'tv';
+    const title = hint?.title || formatSlugToTitle(slug);
+    const year = hint?.year || (slug.match(/-(\d{4})$/)?.[1] || '');
+    const rating = hint?.rating || '';
+    const genres = Array.isArray(hint?.genres) ? hint.genres : [];
+    const tone = hint?.tone || '#1a1b20';
+    const imdbId = hint?.imdbId || '';
+    const initialBackdrop = hint?.still || (imdbId ? `https://images.metahub.space/background/medium/${imdbId}/img` : '') || hint?.poster || '';
+    const isPosterFallback = !hint?.still && !imdbId && Boolean(hint?.poster);
+    const watchHref = withBasePath(isShow ? `/watch/${encodeURIComponent(slug)}/s1e1` : `/watch/${encodeURIComponent(slug)}`);
+    const rateId = imdbId ? `rate-${imdbId}` : `rate-${slug}`;
+    const numRating = parseFloat(rating);
+    const circumference = 392.699;
+    const dashOffset = Number.isFinite(numRating) && numRating > 0 ? Math.max(0, circumference * (1 - Math.min(10, numRating) / 10)) : circumference;
+
+    const factsHtml = renderDynFactsItemsHtml({ rating, year, genres, runtime: '' });
+    const starSvg = buildRatingStarSvg();
+    const starLabels = ['1 of 5: Not for me', '2 of 5: Weak', '3 of 5: Good', '4 of 5: Great', '5 of 5: A favourite'];
+    const starsHtml = starLabels.map(lbl => `<button type="button" role="radio" aria-checked="false" aria-label="${lbl}">${starSvg}</button>`).join('');
+
+    const html = `<!DOCTYPE html><html lang="en"><head><title>${escapeHtml(title)}${year ? ` (${escapeHtml(year)})` : ''} · Kaira</title></head><body><main id="main" tabindex="-1" class="outline-none"><div class="page" vt-update="none"><article class="kaira-dyn-detail" data-dyn-slug="${escapeHtml(slug)}" data-dyn-kind="${isShow ? 'show' : 'movie'}" style="--accent:oklch(0.84 0.09 62)">
+      <section class="hero" data-ambient-hero="true">
+        <div class="hero-stage grain" data-ambient-stage="true">
+          <div class="hero-media absolute inset-0" data-ambient-art="true" aria-hidden="true">
+            <div class="hero-slide" data-state="active" style="background:${escapeHtml(tone)}">
+              ${initialBackdrop ? `<img class="kaira-dyn-backdrop${isPosterFallback ? ' kaira-dyn-poster-blur' : ''}" data-dyn-backdrop src="${escapeHtml(initialBackdrop)}" alt="" decoding="async" draggable="false" referrerpolicy="no-referrer"/>` : ''}
+            </div>
+          </div>
+          <div class="hero-scrim" aria-hidden="true"></div>
+          <div class="shell gutter absolute inset-x-0 bottom-0 z-[5] flex items-end justify-between gap-10 pb-6 md:pb-[clamp(2.5rem,7.5vh,5.5rem)]">
+            <div class="hero-copy w-full min-w-0 md:max-w-[min(40rem,58%)]">
+              <div class="flex flex-col items-center text-center md:items-start md:text-left">
+                <div class="w-full" data-dyn-title-wrap>
+                  <h1 class="kaira-dyn-title">${escapeHtml(title)}</h1>
+                </div>
+                <ul class="facts mt-5 justify-center md:mt-6 md:justify-start" data-dyn-facts>${factsHtml}</ul>
+                <p class="hero-overview" data-dyn-overview>Loading details for ${escapeHtml(title)}…</p>
+              </div>
+              <div data-film-actions="" class="hero-actions">
+                <div role="group" aria-label="${escapeHtml(title)}: play, and the trailer" class="capsule">
+                  <span aria-hidden="true" data-glass-fill="" class="glass-fill"><span class="glass-standin"></span></span>
+                  <a data-warm="" class="capsule-btn capsule-btn-text capsule-btn-play capsule-btn-lit" href="${watchHref}"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" focusable="false"><path d="M4.66 4.62v14.76c0 1.02 1.1 1.66 1.98 1.14l12.06-7.38a1.33 1.33 0 0 0 0-2.28L6.64 3.48C5.76 2.96 4.66 3.6 4.66 4.62Z"></path></svg><span>${isShow ? 'Play S1 E1' : 'Play'}</span></a>
+                  <button type="button" class="capsule-btn capsule-btn-text" data-dyn-trailer-btn data-trailer-slug="${escapeHtml(slug)}" data-trailer-title="${escapeHtml(title)}" data-trailer-kind="${isShow ? 'show' : 'movie'}"><svg xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" fill="currentColor" viewBox="0 0 256 256" class="mt-[0.172em] ml-[0.094rem]"><path d="M216,100H132.92l78.14-20.63a12,12,0,0,0,8.52-14.75l-8.16-30a19.94,19.94,0,0,0-24.3-13.95L34.79,60.87a19.74,19.74,0,0,0-12.14,9.27,19.48,19.48,0,0,0-1.95,15L28,112v88a20,20,0,0,0,20,20H208a20,20,0,0,0,20-20V112A12,12,0,0,0,216,100ZM124.89,61.91l18.29,10.56-25.95,6.85L98.94,68.76Zm64.45-17,3.91,14.35-17.13,4.52L157.83,53.21ZM66,77.46,84.29,88l-35.4,9.35L45,83ZM204,196H52V124H204Z"></path></svg><span class="max-[20.5rem]:sr-only">Trailer</span></button>
+                </div>
+                <div role="group" aria-label="${escapeHtml(title)}: the library, and share" class="capsule">
+                  <span aria-hidden="true" data-glass-fill="" class="glass-fill"><span class="glass-standin"></span></span>
+                  <button type="button" data-watchlist-button="" data-dyn-watchlist-btn data-title-slug="${escapeHtml(slug)}" data-title-kind="${isShow ? 'show' : 'movie'}" data-title="${escapeHtml(title)}" data-title-year="${escapeHtml(year)}" data-title-rating="${escapeHtml(rating)}" data-title-id="${escapeHtml(imdbId)}" data-title-genre="${escapeHtml(genres[0] || '')}" aria-pressed="false" aria-label="Add to library: ${escapeHtml(title)}" title="Add to library" class="capsule-btn"><svg xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" fill="currentColor" viewBox="0 0 256 256"><path d="M228,128a12,12,0,0,1-12,12H140v76a12,12,0,0,1-24,0V140H40a12,12,0,0,1,0-24h76V40a12,12,0,0,1,24,0v76h76A12,12,0,0,1,228,128Z"></path></svg></button>
+                  <button type="button" class="capsule-btn" aria-label="Share ${escapeHtml(title)}" title="Share"><span class="capsule-icon relative grid place-items-center"><span class="absolute inset-0 grid place-items-center"><svg xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" fill="currentColor" viewBox="0 0 256 256" class="size-5"><path d="M220,112v96a20,20,0,0,1-20,20H56a20,20,0,0,1-20-20V112A20,20,0,0,1,56,92H76a12,12,0,0,1,0,24H60v88H196V116H180a12,12,0,0,1,0-24h20A20,20,0,0,1,220,112ZM96.49,72.49,116,53v83a12,12,0,0,0,24,0V53l19.51,19.52a12,12,0,1,0,17-17l-40-40a12,12,0,0,0-17,0l-40,40a12,12,0,1,0,17,17Z"></path></svg></span></span></button>
+                </div>
+              </div>
+              <div aria-hidden="true" class="mt-5 h-6 lg:hidden"></div>
+            </div>
+          </div>
+        </div>
+      </section>
+      <section class="section" data-dyn-episodes-section hidden>
+        <div class="shell gutter">
+          <header class="relative z-[1] mb-4 flex justify-between md:mb-5 items-baseline gap-6">
+            <h2 class="section-title min-w-0 max-w-full text-section font-semibold">Episodes</h2>
+          </header>
+          <div class="kaira-dyn-season-tabs" role="tablist" aria-label="Seasons" data-dyn-season-tabs></div>
+          <div class="kaira-dyn-ep-grid" data-dyn-ep-grid></div>
+        </div>
+      </section>
+      <section class="section" aria-label="Details and credits">
+        <div class="shell gutter">
+          <div class="movie-credits">
+            <div class="flex flex-wrap items-center gap-x-10 gap-y-6 lg:flex-col lg:items-start lg:gap-8">
+              <div class="flex items-center gap-5 lg:flex-col lg:items-start lg:gap-4" data-dyn-dial-wrap${rating ? '' : ' hidden'}>
+                <div class="rating-dial relative grid shrink-0 place-items-center">
+                  <svg viewBox="0 0 132 132" class="absolute inset-0 size-full -rotate-90 overflow-visible" aria-hidden="true">
+                    <circle cx="66" cy="66" r="62.5" fill="none" stroke="oklch(1 0 0 / 0.1)" stroke-width="7"></circle>
+                    <circle data-dyn-dial-arc cx="66" cy="66" r="62.5" fill="none" stroke="var(--accent)" stroke-width="7" stroke-linecap="round" stroke-dasharray="${circumference}" stroke-dashoffset="${dashOffset}"></circle>
+                  </svg>
+                  <div class="text-center">
+                    <p class="rating-dial-figure wdth-87 leading-none font-bold" data-dyn-dial-val aria-hidden="true">${escapeHtml(rating || '—')}</p>
+                    <p class="rating-dial-label eyebrow text-fg-subtle" aria-hidden="true">out of 10</p>
+                  </div>
+                </div>
+                <p class="text-[0.8125rem] leading-snug text-fg-subtle">IMDb rating</p>
+              </div>
+              <div class="rate">
+                <p class="eyebrow text-fg-faint" id="${escapeHtml(rateId)}">Your rating</p>
+                <div class="rate-stars" role="radiogroup" aria-labelledby="${escapeHtml(rateId)}">${starsHtml}</div>
+              </div>
+            </div>
+            <dl class="movie-facts" data-dyn-facts-dl>
+              <div class="movie-story">
+                <dt class="eyebrow text-fg-faint">Storyline</dt>
+                <dd class="mt-2.5 max-w-[46rem]"><p class="text-[1.0625rem] leading-[1.6] text-fg-muted" data-dyn-story>Loading synopsis…</p></dd>
+              </div>
+            </dl>
+          </div>
+        </div>
+      </section>
+      <section class="section" data-dyn-cast-section hidden>
+        <div class="shell gutter">
+          <header class="relative z-[1] mb-4 flex justify-between md:mb-5 items-baseline gap-6">
+            <h2 class="section-title min-w-0 max-w-full text-section font-semibold">Cast</h2>
+          </header>
+          <div class="kaira-dyn-cast-grid" data-dyn-cast-grid></div>
+        </div>
+      </section>
+    </article></div></main></body></html>`;
+
+    return new DOMParser().parseFromString(html, 'text/html');
+  }
+
+  async function hydrateDynamicDetailPage(slug, kind, hint) {
+    const seq = ++dynHydrateSeq;
+    const isShowHint = kind === 'show' || kind === 'tv';
+
+    let meta = null;
+    try {
+      meta = await resolveTitleMeta(slug, isShowHint ? 'show' : 'movie');
+    } catch {}
+
+    // Enrich with full Cinemeta /meta endpoint (gives full background, logo, cast, director, runtime, awards & TV episodes)
+    const resolvedImdbId = meta?.imdbId || meta?.id || hint?.imdbId || '';
+    const resolvedIsShow = meta?.kind === 'show' || isShowHint;
+    if (resolvedImdbId && /^tt\d+$/i.test(resolvedImdbId)) {
+      try {
+        const cmType = resolvedIsShow ? 'series' : 'movie';
+        const cmRes = await fetch(`https://v3-cinemeta.strem.io/meta/${cmType}/${encodeURIComponent(resolvedImdbId)}.json`);
+        if (cmRes.ok) {
+          const cmData = await cmRes.json().catch(() => null);
+          const m = cmData?.meta;
+          if (m) {
+            meta = {
+              ...(meta || {}),
+              slug,
+              id: m.imdb_id || resolvedImdbId,
+              imdbId: m.imdb_id || resolvedImdbId,
+              title: m.name || meta?.title || hint?.title || formatSlugToTitle(slug),
+              year: String(m.releaseInfo || m.year || meta?.year || hint?.year || '').slice(0, 4),
+              kind: cmType === 'series' ? 'show' : 'movie',
+              poster: m.poster || meta?.poster || hint?.poster || '',
+              still: m.background || meta?.still || `https://images.metahub.space/background/medium/${resolvedImdbId}/img`,
+              logo: m.logo || meta?.logo || '',
+              runtime: m.runtime || meta?.runtime || '',
+              description: m.description || meta?.description || '',
+              rating: m.imdbRating ? String(m.imdbRating) : (meta?.rating || hint?.rating || ''),
+              genres: Array.isArray(m.genres) && m.genres.length ? m.genres : (meta?.genres || hint?.genres || []),
+              cast: Array.isArray(m.cast) ? m.cast : (meta?.cast || []),
+              director: Array.isArray(m.director) ? m.director : (meta?.director || []),
+              writer: Array.isArray(m.writer) ? m.writer : (meta?.writer || []),
+              awards: m.awards || meta?.awards || '',
+              country: m.country || meta?.country || '',
+              videos: Array.isArray(m.videos) ? m.videos : (meta?.videos || []),
+              trailerId: (Array.isArray(m.trailers) && m.trailers[0]?.source) || meta?.trailerId || null
+            };
+          }
+        }
+      } catch {}
+    }
+
+    if (seq !== dynHydrateSeq) return;
+    const article = document.querySelector(`article.kaira-dyn-detail[data-dyn-slug="${CSS.escape(slug)}"]`);
+    if (!article) return;
+
+    const finalTitle = meta?.title || hint?.title || formatSlugToTitle(slug);
+    const finalYear = meta?.year || hint?.year || (slug.match(/-(\d{4})$/)?.[1] || '');
+    const finalRating = meta?.rating || hint?.rating || '';
+    const finalGenres = Array.isArray(meta?.genres) && meta.genres.length ? meta.genres : (hint?.genres || []);
+    const finalRuntime = meta?.runtime || '';
+    const finalDesc = meta?.description || `Watch ${finalTitle}${finalYear ? ` (${finalYear})` : ''} on Kaira.`;
+    const finalImdb = meta?.imdbId || meta?.id || hint?.imdbId || '';
+    const finalKind = meta?.kind === 'show' || isShowHint ? 'show' : 'movie';
+
+    document.title = `${finalTitle}${finalYear ? ` (${finalYear})` : ''} · Kaira`;
+
+    // 1. Hero backdrop
+    const backdropUrl = meta?.still || (finalImdb ? `https://images.metahub.space/background/medium/${finalImdb}/img` : '') || meta?.poster || hint?.poster || '';
+    const slideEl = article.querySelector('.hero-slide');
+    if (slideEl && backdropUrl) {
+      const existingImg = slideEl.querySelector('img[data-dyn-backdrop]');
+      if (!existingImg || existingImg.getAttribute('src') !== backdropUrl) {
+        const img = document.createElement('img');
+        img.className = 'kaira-dyn-backdrop' + (!meta?.still && !finalImdb ? ' kaira-dyn-poster-blur' : '');
+        img.setAttribute('data-dyn-backdrop', '');
+        img.alt = '';
+        img.decoding = 'async';
+        img.draggable = false;
+        img.referrerPolicy = 'no-referrer';
+        img.style.opacity = '0';
+        img.onload = () => {
+          img.style.opacity = '1';
+        };
+        img.onerror = () => {
+          if (meta?.poster && img.src !== meta.poster) {
+            img.src = meta.poster;
+            img.classList.add('kaira-dyn-poster-blur');
+          } else {
+            img.style.opacity = '1';
+          }
+        };
+        img.src = backdropUrl;
+        slideEl.innerHTML = '';
+        slideEl.appendChild(img);
+        if (img.complete && img.naturalWidth > 0) img.style.opacity = '1';
+      }
+    }
+
+    // 2. Title or clean logo treatment (keep h1 visible until logo actually loads)
+    const titleWrap = article.querySelector('[data-dyn-title-wrap]');
+    if (titleWrap) {
+      titleWrap.innerHTML = `<h1 class="kaira-dyn-title">${escapeHtml(finalTitle)}</h1>`;
+      if (meta?.logo) {
+        const logoImg = document.createElement('img');
+        logoImg.className = 'kaira-dyn-logo';
+        logoImg.alt = finalTitle;
+        logoImg.decoding = 'async';
+        logoImg.draggable = false;
+        logoImg.referrerPolicy = 'no-referrer';
+        logoImg.style.display = 'none';
+        logoImg.onload = () => {
+          if (logoImg.naturalWidth > 20 && logoImg.naturalHeight > 10) {
+            const h1 = titleWrap.querySelector('h1');
+            if (h1) h1.className = 'sr-only';
+            logoImg.style.display = 'block';
+          }
+        };
+        logoImg.onerror = () => {
+          logoImg.remove();
+        };
+        logoImg.src = meta.logo;
+        titleWrap.appendChild(logoImg);
+      }
+    }
+
+    // 3. Facts, synopsis, actions
+    const factsUl = article.querySelector('[data-dyn-facts]');
+    if (factsUl) {
+      factsUl.innerHTML = renderDynFactsItemsHtml({ rating: finalRating, year: finalYear, runtime: finalRuntime, genres: finalGenres });
+    }
+    const overviewEl = article.querySelector('[data-dyn-overview]');
+    if (overviewEl) overviewEl.textContent = finalDesc;
+
+    const trailerBtn = article.querySelector('[data-dyn-trailer-btn]');
+    if (trailerBtn) {
+      trailerBtn.setAttribute('data-trailer-title', finalTitle);
+      trailerBtn.setAttribute('data-trailer-kind', finalKind);
+      if (meta?.trailerId) trailerBtn.setAttribute('data-trailer-id', meta.trailerId);
+    }
+
+    const wlBtn = article.querySelector('[data-dyn-watchlist-btn]');
+    if (wlBtn) {
+      wlBtn.setAttribute('data-title', finalTitle);
+      wlBtn.setAttribute('data-title-kind', finalKind);
+      if (finalYear) wlBtn.setAttribute('data-title-year', finalYear);
+      if (finalRating) wlBtn.setAttribute('data-title-rating', finalRating);
+      if (finalImdb) wlBtn.setAttribute('data-title-id', finalImdb);
+      if (finalGenres[0]) wlBtn.setAttribute('data-title-genre', finalGenres[0]);
+      wlBtn.setAttribute('aria-label', `Add to library: ${finalTitle}`);
+    }
+
+    // 4. IMDb rating dial
+    const dialWrap = article.querySelector('[data-dyn-dial-wrap]');
+    const numRating = parseFloat(finalRating);
+    if (dialWrap && Number.isFinite(numRating) && numRating > 0) {
+      dialWrap.hidden = false;
+      const valEl = dialWrap.querySelector('[data-dyn-dial-val]');
+      const arcEl = dialWrap.querySelector('[data-dyn-dial-arc]');
+      if (valEl) valEl.textContent = finalRating;
+      if (arcEl) {
+        const circumference = 392.699;
+        arcEl.setAttribute('stroke-dashoffset', String(Math.max(0, circumference * (1 - Math.min(10, numRating) / 10))));
+      }
+    }
+
+    // 5. Storyline & Credits DL
+    const dlEl = article.querySelector('[data-dyn-facts-dl]');
+    if (dlEl) {
+      const blocks = [
+        `<div class="movie-story"><dt class="eyebrow text-fg-faint">Storyline</dt><dd class="mt-2.5 max-w-[46rem]"><p class="text-[1.0625rem] leading-[1.6] text-fg-muted">${escapeHtml(finalDesc)}</p></dd></div>`
+      ];
+      if (Array.isArray(meta?.director) && meta.director.length) {
+        const dirLinks = meta.director.map(n => `<span><a class="fact-link inline-block max-w-full" href="${withBasePath(`/search?q=${encodeURIComponent(n)}`)}">${escapeHtml(n)}</a></span>`).join(', ');
+        blocks.push(`<div><dt class="eyebrow text-fg-faint">Directed by</dt><dd class="fact-lead-names mt-2.5 font-serif text-[1.5rem] leading-[1.2] italic">${dirLinks}</dd></div>`);
+      }
+      if (Array.isArray(meta?.writer) && meta.writer.length) {
+        const wrLinks = meta.writer.slice(0, 4).map(n => `<span><a class="fact-link inline-block max-w-full" href="${withBasePath(`/search?q=${encodeURIComponent(n)}`)}">${escapeHtml(n)}</a></span>`).join(', ');
+        blocks.push(`<div><dt class="eyebrow text-fg-faint">Written by</dt><dd class="mt-2.5 text-[1.0625rem] leading-[1.45] fact-names">${wrLinks}</dd></div>`);
+      }
+      if (finalYear) {
+        blocks.push(`<div><dt class="eyebrow text-fg-faint">Released</dt><dd class="mt-2.5 text-[1.0625rem] leading-[1.45] text-fg-muted">${escapeHtml(finalYear)}</dd></div>`);
+      }
+      if (finalRuntime) {
+        blocks.push(`<div><dt class="eyebrow text-fg-faint">Running time</dt><dd class="mt-2.5 text-[1.0625rem] leading-[1.45] text-fg-muted">${escapeHtml(finalRuntime)}</dd></div>`);
+      }
+      if (finalGenres.length) {
+        const gLinks = finalGenres.map(g => {
+          const gSlug = String(g).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+          return `<span><a class="fact-link inline-block max-w-full" href="${withBasePath(`/genres/${encodeURIComponent(gSlug)}`)}">${escapeHtml(g)}</a></span>`;
+        }).join(', ');
+        blocks.push(`<div><dt class="eyebrow text-fg-faint">Genres</dt><dd class="mt-2.5 text-[1.0625rem] leading-[1.45] text-fg-muted">${gLinks}</dd></div>`);
+      }
+      if (meta?.country) {
+        blocks.push(`<div><dt class="eyebrow text-fg-faint">Countries</dt><dd class="mt-2.5 text-[1.0625rem] leading-[1.45] text-fg-muted">${escapeHtml(meta.country)}</dd></div>`);
+      }
+      if (meta?.awards) {
+        blocks.push(`<div><dt class="eyebrow text-fg-faint">Awards</dt><dd class="mt-2.5 text-[1.0625rem] leading-[1.45] text-fg-muted">${escapeHtml(meta.awards)}</dd></div>`);
+      }
+      dlEl.innerHTML = blocks.join('');
+    }
+
+    // 6. Cast section
+    const castSection = article.querySelector('[data-dyn-cast-section]');
+    const castGrid = article.querySelector('[data-dyn-cast-grid]');
+    if (castSection && castGrid && Array.isArray(meta?.cast) && meta.cast.length) {
+      castSection.hidden = false;
+      castGrid.innerHTML = meta.cast.slice(0, 14).map(name => (
+        `<a class="kaira-dyn-cast-chip" href="${withBasePath(`/search?q=${encodeURIComponent(name)}`)}">${escapeHtml(name)}</a>`
+      )).join('');
+    }
+
+    // 7. TV Show Seasons & Episodes
+    const epSection = article.querySelector('[data-dyn-episodes-section]');
+    const seasonTabs = article.querySelector('[data-dyn-season-tabs]');
+    const epGrid = article.querySelector('[data-dyn-ep-grid]');
+    if (finalKind === 'show' && epSection && seasonTabs && epGrid && Array.isArray(meta?.videos) && meta.videos.length) {
+      const seasonsMap = new Map();
+      for (const v of meta.videos) {
+        const sNum = Number(v.season);
+        const eNum = Number(v.episode || v.number);
+        if (!Number.isFinite(sNum) || sNum <= 0 || !Number.isFinite(eNum) || eNum <= 0) continue;
+        if (!seasonsMap.has(sNum)) seasonsMap.set(sNum, []);
+        seasonsMap.get(sNum).push({
+          season: sNum,
+          episode: eNum,
+          title: v.name || v.title || `Episode ${eNum}`,
+          overview: v.overview || v.description || '',
+          thumbnail: v.thumbnail || backdropUrl || ''
+        });
+      }
+      const seasonNums = Array.from(seasonsMap.keys()).sort((a, b) => a - b);
+      if (seasonNums.length > 0) {
+        epSection.hidden = false;
+        const renderSeason = (activeSeason) => {
+          const eps = (seasonsMap.get(activeSeason) || []).slice().sort((a, b) => a.episode - b.episode);
+          seasonTabs.querySelectorAll('.kaira-dyn-season-btn').forEach(btn => {
+            btn.setAttribute('aria-selected', String(Number(btn.dataset.season) === activeSeason));
+          });
+          epGrid.innerHTML = eps.map(ep => `
+            <a class="kaira-dyn-ep-card" href="${withBasePath(`/watch/${encodeURIComponent(slug)}/s${ep.season}e${ep.episode}`)}">
+              <div class="kaira-dyn-ep-thumb">
+                ${ep.thumbnail ? `<img src="${escapeHtml(ep.thumbnail)}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer"/>` : ''}
+                <span class="kaira-dyn-ep-badge">S${ep.season} · E${ep.episode}</span>
+              </div>
+              <div class="kaira-dyn-ep-body">
+                <h3 class="kaira-dyn-ep-title">${escapeHtml(ep.title)}</h3>
+                ${ep.overview ? `<p class="kaira-dyn-ep-desc">${escapeHtml(ep.overview)}</p>` : ''}
+              </div>
+            </a>
+          `).join('');
+        };
+        seasonTabs.innerHTML = seasonNums.map((sNum, idx) => (
+          `<button type="button" role="tab" class="kaira-dyn-season-btn" data-season="${sNum}" aria-selected="${idx === 0 ? 'true' : 'false'}">Season ${sNum}</button>`
+        )).join('');
+        seasonTabs.querySelectorAll('.kaira-dyn-season-btn').forEach(btn => {
+          btn.addEventListener('click', () => renderSeason(Number(btn.dataset.season)));
+        });
+        renderSeason(seasonNums[0]);
+      }
+    }
+
+    try { syncDetailContinueWatchingButton(); } catch {}
+    try { initWatchlist(); } catch {}
+    try { initDetailPageControls(); } catch {}
+  }
+
+  function canonicalizeAliasRoute(rawPath) {
+    const [pathOnly, searchPart] = String(rawPath || '/').split('?');
+    const norm = normalizeRoutePath(pathOnly);
+    if (norm === '/top-rated') return withBasePath('/discover?sort=rating');
+    if (norm === '/new') return withBasePath('/just-added');
+    return searchPart ? `${pathOnly}?${searchPart}` : pathOnly;
+  }
+
+  function parseDynamicRoute(rawPath) {
+    const norm = normalizeRoutePath(rawPath);
+    const detail = parseDetailRoute(norm);
+    if (detail) return { type: 'detail', ...detail };
+
+    const animeMatch = norm.match(/^\/anime\/(\d+)$/);
+    if (animeMatch) return { type: 'anime', id: animeMatch[1], slug: `anime-${animeMatch[1]}` };
+
+    const genreMatch = norm.match(/^\/genres\/([^/?#]+)$/);
+    if (genreMatch) {
+      let raw = genreMatch[1];
+      try { raw = decodeURIComponent(raw); } catch {}
+      raw = raw.trim();
+      if (raw) return { type: 'genre', slug: raw };
+    }
+
+    const colMatch = norm.match(/^\/collection\/([^/?#]+)$/);
+    if (colMatch) {
+      let raw = colMatch[1];
+      try { raw = decodeURIComponent(raw); } catch {}
+      raw = raw.trim();
+      if (raw) return { type: 'collection', slug: raw };
+    }
+
+    const studioMatch = norm.match(/^\/studio\/([^/?#]+)$/);
+    if (studioMatch) {
+      let raw = studioMatch[1];
+      try { raw = decodeURIComponent(raw); } catch {}
+      raw = raw.trim();
+      if (raw) return { type: 'studio', slug: raw };
+    }
+
+    return null;
+  }
+
+  function isValidRouteHtmlString(html, rawPath) {
+    if (!html || typeof html !== 'string') return false;
+    if (html.includes('id="__next_error__"')) return false;
+    const norm = normalizeRoutePath(rawPath);
+    if (norm.startsWith('/watch/')) return true;
+    const dyn = parseDynamicRoute(norm);
+    if (dyn && dyn.type === 'detail') return isValidDetailHtmlString(html);
+    if (!/<main[\s>]/i.test(html)) return false;
+    const allowsHeroSwitch = norm === '/' || norm === '/index.html' || norm === '/movies' || norm === '/tv';
+    if (!allowsHeroSwitch && html.includes('hero-switch')) return false;
+    return true;
+  }
+
+  function isValidRouteDoc(doc, rawPath) {
+    if (!doc) return false;
+    if (doc.getElementById('__next_error__')) return false;
+    const norm = normalizeRoutePath(rawPath);
+    if (norm.startsWith('/watch/')) return true;
+    const dyn = parseDynamicRoute(norm);
+    if (dyn && dyn.type === 'detail') return isValidDetailDoc(doc);
+    if (!doc.querySelector('main')) return false;
+    const allowsHeroSwitch = norm === '/' || norm === '/index.html' || norm === '/movies' || norm === '/tv';
+    if (!allowsHeroSwitch && doc.querySelector('main .hero-switch, main .hero-switch-bars')) return false;
+    if (dyn && dyn.type === 'anime') {
+      return Boolean(doc.querySelector('main article') || doc.querySelector('a[href*="/watch/anime/"]'));
+    }
+    return true;
+  }
+
+  function formatLabelFromSlug(rawSlug, stripSuffix) {
+    let s = String(rawSlug || '').trim();
+    if (stripSuffix) s = s.replace(new RegExp(`-${stripSuffix}$`, 'i'), '');
+    if (s.toLowerCase() === 'sci-fi') return 'Sci-Fi';
+    if (s.toLowerCase() === 'sci-fi & fantasy' || s.toLowerCase() === 'sci-fi-fantasy') return 'Sci-Fi & Fantasy';
+    if (s.toLowerCase() === 'action & adventure' || s.toLowerCase() === 'action-adventure') return 'Action & Adventure';
+    return s
+      .replace(/[-_]+/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .split(' ')
+      .filter(Boolean)
+      .map(w => w === '&' ? '&' : w.charAt(0).toUpperCase() + w.slice(1))
+      .join(' ');
+  }
+
+  function buildDynamicAnimeDocument(animeId, hint) {
+    const title = hint?.title || `Anime #${animeId}`;
+    const year = hint?.year || '';
+    const rating = hint?.rating || '';
+    const backdrop = hint?.poster || '';
+    const watchHref = withBasePath(`/watch/anime/${encodeURIComponent(animeId)}/1`);
+    const html = `<!DOCTYPE html><html lang="en"><head><title>${escapeHtml(title)} · Kaira</title></head><body><main id="main" tabindex="-1" class="outline-none"><div class="page" vt-update="none"><article class="kaira-dyn-detail" data-dyn-anime-id="${escapeHtml(animeId)}" style="--accent:oklch(0.84 0.11 32)">
+      <section class="hero" data-ambient-hero="true">
+        <div class="hero-stage grain" data-ambient-stage="true">
+          <div class="hero-media absolute inset-0" data-ambient-art="true" aria-hidden="true">
+            <div class="hero-slide" data-state="active" style="background:#16171d">
+              ${backdrop ? `<img class="kaira-dyn-backdrop kaira-dyn-poster-blur" data-dyn-backdrop src="${escapeHtml(backdrop)}" alt="" decoding="async" draggable="false" referrerpolicy="no-referrer"/>` : ''}
+            </div>
+          </div>
+          <div class="hero-scrim" aria-hidden="true"></div>
+          <div class="shell gutter absolute inset-x-0 bottom-0 z-[5] flex items-end justify-between gap-10 pb-6 md:pb-[clamp(2.5rem,7.5vh,5.5rem)]">
+            <div class="hero-copy w-full min-w-0 md:max-w-[min(40rem,58%)]">
+              <div class="flex flex-col items-center text-center md:items-start md:text-left">
+                <div class="w-full" data-dyn-title-wrap><h1 class="kaira-dyn-title">${escapeHtml(title)}</h1></div>
+                <ul class="facts mt-5 justify-center md:mt-6 md:justify-start" data-dyn-facts>${renderDynFactsItemsHtml({ rating, year, genres: [], runtime: '' })}</ul>
+                <p class="hero-overview" data-dyn-overview>Loading anime details…</p>
+              </div>
+              <div data-film-actions="" class="hero-actions">
+                <div role="group" aria-label="${escapeHtml(title)}: play, and the trailer" class="capsule">
+                  <span aria-hidden="true" data-glass-fill="" class="glass-fill"><span class="glass-standin"></span></span>
+                  <a data-warm="" class="capsule-btn capsule-btn-text capsule-btn-play capsule-btn-lit" href="${watchHref}"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" focusable="false"><path d="M4.66 4.62v14.76c0 1.02 1.1 1.66 1.98 1.14l12.06-7.38a1.33 1.33 0 0 0 0-2.28L6.64 3.48C5.76 2.96 4.66 3.6 4.66 4.62Z"></path></svg><span>Play Ep 1</span></a>
+                  <button type="button" class="capsule-btn capsule-btn-text" data-dyn-trailer-btn data-trailer-slug="anime-${escapeHtml(animeId)}" data-trailer-title="${escapeHtml(title)}" data-trailer-kind="show" hidden><svg xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" fill="currentColor" viewBox="0 0 256 256" class="mt-[0.172em] ml-[0.094rem]"><path d="M216,100H132.92l78.14-20.63a12,12,0,0,0,8.52-14.75l-8.16-30a19.94,19.94,0,0,0-24.3-13.95L34.79,60.87a19.74,19.74,0,0,0-12.14,9.27,19.48,19.48,0,0,0-1.95,15L28,112v88a20,20,0,0,0,20,20H208a20,20,0,0,0,20-20V112A12,12,0,0,0,216,100Z"></path></svg><span>Trailer</span></button>
+                </div>
+                <div role="group" aria-label="${escapeHtml(title)}: share" class="capsule">
+                  <span aria-hidden="true" data-glass-fill="" class="glass-fill"><span class="glass-standin"></span></span>
+                  <button type="button" class="capsule-btn" aria-label="Share ${escapeHtml(title)}" title="Share"><span class="capsule-icon relative grid place-items-center"><span class="absolute inset-0 grid place-items-center"><svg xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" fill="currentColor" viewBox="0 0 256 256" class="size-5"><path d="M220,112v96a20,20,0,0,1-20,20H56a20,20,0,0,1-20-20V112A20,20,0,0,1,56,92H76a12,12,0,0,1,0,24H60v88H196V116H180a12,12,0,0,1,0-24h20A20,20,0,0,1,220,112ZM96.49,72.49,116,53v83a12,12,0,0,0,24,0V53l19.51,19.52a12,12,0,1,0,17-17l-40-40a12,12,0,0,0-17,0l-40,40a12,12,0,1,0,17,17Z"></path></svg></span></span></button>
+                </div>
+              </div>
+              <div aria-hidden="true" class="mt-5 h-6 lg:hidden"></div>
+            </div>
+          </div>
+        </div>
+      </section>
+      <section class="section" data-dyn-episodes-section hidden>
+        <div class="shell gutter">
+          <header class="relative z-[1] mb-4 flex justify-between md:mb-5 items-baseline gap-6">
+            <h2 class="section-title min-w-0 max-w-full text-section font-semibold">Episodes</h2>
+          </header>
+          <div class="kaira-dyn-ep-grid" data-dyn-ep-grid></div>
+        </div>
+      </section>
+    </article></div></main></body></html>`;
+    return new DOMParser().parseFromString(html, 'text/html');
+  }
+
+  async function hydrateDynamicAnimePage(animeId, hint) {
+    const seq = ++dynHydrateSeq;
+    let info = null;
+
+    // 1. Primary: AniList GraphQL by MyAnimeList ID (fast, CORS-friendly, widescreen banners)
+    const numericId = Number(animeId);
+    if (Number.isFinite(numericId) && numericId > 0) {
+      try {
+        const ctrl = typeof AbortController === 'function' ? new AbortController() : null;
+        const timer = ctrl ? setTimeout(() => ctrl.abort(), 5000) : null;
+        const res = await fetch('https://graphql.anilist.co', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+          signal: ctrl?.signal,
+          body: JSON.stringify({
+            query: 'query($id:Int){Media(idMal:$id,type:ANIME){title{english romaji}description(asHtml:false)seasonYear averageScore episodes duration genres bannerImage coverImage{extraLarge large}trailer{id site}}}',
+            variables: { id: numericId }
+          })
+        });
+        if (timer) clearTimeout(timer);
+        if (res.ok) {
+          const json = await res.json().catch(() => null);
+          const m = json?.data?.Media;
+          if (m) {
+            const cleanDesc = String(m.description || '')
+              .replace(/<br\s*\/?>/gi, ' ')
+              .replace(/<[^>]+>/g, '')
+              .replace(/\s+/g, ' ')
+              .trim();
+            info = {
+              title: m.title?.english || m.title?.romaji || '',
+              year: m.seasonYear ? String(m.seasonYear) : '',
+              rating: m.averageScore ? (Number(m.averageScore) / 10).toFixed(1) : '',
+              genres: Array.isArray(m.genres) ? m.genres.filter(Boolean) : [],
+              runtime: m.duration ? `${m.duration} min` : '',
+              synopsis: cleanDesc,
+              banner: m.bannerImage || '',
+              cover: m.coverImage?.extraLarge || m.coverImage?.large || '',
+              trailerId: m.trailer?.site === 'youtube' ? (m.trailer.id || '') : '',
+              episodes: Number(m.episodes) || 0
+            };
+          }
+        }
+      } catch {}
+    }
+
+    // 2. Secondary fallback: Jikan API
+    if (!info) {
+      try {
+        const ctrl = typeof AbortController === 'function' ? new AbortController() : null;
+        const timer = ctrl ? setTimeout(() => ctrl.abort(), 4500) : null;
+        const res = await fetch(`https://api.jikan.moe/v4/anime/${encodeURIComponent(animeId)}`, { signal: ctrl?.signal });
+        if (timer) clearTimeout(timer);
+        if (res.ok) {
+          const json = await res.json().catch(() => null);
+          const d = json?.data;
+          if (d) {
+            info = {
+              title: d.title_english || d.title || '',
+              year: d.year ? String(d.year) : (d.aired?.prop?.from?.year ? String(d.aired.prop.from.year) : ''),
+              rating: d.score ? Number(d.score).toFixed(1) : '',
+              genres: Array.isArray(d.genres) ? d.genres.map(g => g.name).filter(Boolean) : [],
+              runtime: d.duration ? String(d.duration).replace(/ per ep.*/i, '') : '',
+              synopsis: d.synopsis || '',
+              banner: '',
+              cover: d.images?.webp?.large_image_url || d.images?.jpg?.large_image_url || '',
+              trailerId: d.trailer?.youtube_id || '',
+              episodes: Number(d.episodes) || 0
+            };
+          }
+        }
+      } catch {}
+    }
+
+    if (seq !== dynHydrateSeq) return;
+    const article = document.querySelector(`article.kaira-dyn-detail[data-dyn-anime-id="${CSS.escape(animeId)}"]`);
+    if (!article) return;
+
+    const title = info?.title || hint?.title || `Anime #${animeId}`;
+    const year = info?.year || hint?.year || '';
+    const rating = info?.rating || hint?.rating || '';
+    const genres = Array.isArray(info?.genres) && info.genres.length ? info.genres : (hint?.genres || []);
+    const runtime = info?.runtime || '';
+    const desc = info?.synopsis || `Stream ${title} episodes on Kaira.`;
+    const heroImg = info?.banner || info?.cover || hint?.poster || '';
+    const isBlurredCover = !info?.banner && Boolean(heroImg);
+    const thumbImg = info?.banner || info?.cover || hint?.poster || '';
+    const trailerId = info?.trailerId || '';
+    const epCount = Math.min(Math.max(Number(info?.episodes) || 12, 1), 60);
+
+    document.title = `${title}${year ? ` (${year})` : ''} · Kaira`;
+    const titleWrap = article.querySelector('[data-dyn-title-wrap]');
+    if (titleWrap) titleWrap.innerHTML = `<h1 class="kaira-dyn-title">${escapeHtml(title)}</h1>`;
+    const factsUl = article.querySelector('[data-dyn-facts]');
+    if (factsUl) factsUl.innerHTML = renderDynFactsItemsHtml({ rating, year, runtime, genres });
+    const ov = article.querySelector('[data-dyn-overview]');
+    if (ov) ov.textContent = desc;
+
+    const slideEl = article.querySelector('.hero-slide');
+    if (slideEl && heroImg) {
+      const img = document.createElement('img');
+      img.className = `kaira-dyn-backdrop${isBlurredCover ? ' kaira-dyn-poster-blur' : ''}`;
+      img.alt = '';
+      img.decoding = 'async';
+      img.draggable = false;
+      img.referrerPolicy = 'no-referrer';
+      img.style.opacity = '0';
+      img.onload = () => { img.style.opacity = '1'; };
+      img.onerror = () => { img.style.opacity = '1'; };
+      img.src = heroImg;
+      slideEl.innerHTML = '';
+      slideEl.appendChild(img);
+      if (img.complete && img.naturalWidth > 0) img.style.opacity = '1';
+    }
+    const trailerBtn = article.querySelector('[data-dyn-trailer-btn]');
+    if (trailerBtn && trailerId) {
+      trailerBtn.hidden = false;
+      trailerBtn.setAttribute('data-trailer-id', trailerId);
+      trailerBtn.setAttribute('data-trailer-title', title);
+    }
+
+    const epSection = article.querySelector('[data-dyn-episodes-section]');
+    const epGrid = article.querySelector('[data-dyn-ep-grid]');
+    if (epSection && epGrid) {
+      epSection.hidden = false;
+      const cards = [];
+      for (let ep = 1; ep <= epCount; ep++) {
+        cards.push(`
+          <a class="kaira-dyn-ep-card" href="${withBasePath(`/watch/anime/${encodeURIComponent(animeId)}/${ep}`)}">
+            <div class="kaira-dyn-ep-thumb">
+              ${thumbImg ? `<img src="${escapeHtml(thumbImg)}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer"/>` : ''}
+              <span class="kaira-dyn-ep-badge">Episode ${ep}</span>
+            </div>
+            <div class="kaira-dyn-ep-body">
+              <h3 class="kaira-dyn-ep-title">${escapeHtml(title)} · Episode ${ep}</h3>
+            </div>
+          </a>
+        `);
+      }
+      epGrid.innerHTML = cards.join('');
+    }
+  }
+
+  function buildDynamicCatalogDocument(route) {
+    const isGenre = route.type === 'genre';
+    const isCollection = route.type === 'collection';
+    const heading = isGenre
+      ? formatLabelFromSlug(route.slug, '')
+      : isCollection
+        ? `${formatLabelFromSlug(route.slug, 'collection')} Collection`
+        : formatLabelFromSlug(route.slug, '');
+    const eyebrow = isGenre ? 'Genre' : isCollection ? 'Collection' : 'Studio';
+    const html = `<!DOCTYPE html><html lang="en"><head><title>${escapeHtml(heading)} · Kaira</title></head><body><main id="main" tabindex="-1" class="outline-none"><div class="page" vt-update="none">
+      <section class="section" style="padding-top:clamp(6.5rem,11vh,8.5rem);" data-dyn-catalog-type="${escapeHtml(route.type)}" data-dyn-catalog-slug="${escapeHtml(route.slug)}">
+        <div class="shell gutter">
+          <p class="eyebrow text-fg-faint">${escapeHtml(eyebrow)}</p>
+          <h1 class="mt-2 text-display font-bold tracking-tight text-fg" style="font-size:clamp(2rem,4vw,3.25rem);line-height:1.08;">${escapeHtml(heading)}</h1>
+          <p class="mt-3 text-fg-muted" data-dyn-catalog-status>Loading titles…</p>
+          <ul class="film-grid mt-8" data-dyn-catalog-grid aria-label="${escapeHtml(heading)} titles"></ul>
+        </div>
+      </section>
+    </div></main></body></html>`;
+    return new DOMParser().parseFromString(html, 'text/html');
+  }
+
+  async function hydrateDynamicCatalogPage(route) {
+    const seq = ++dynHydrateSeq;
+    let items = [];
+
+    if (route.type === 'genre') {
+      const label = formatLabelFromSlug(route.slug, '');
+      const primaryGenre = label.split('&')[0].trim();
+      const apiSlug = primaryGenre.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+      try {
+        const res = await fetch(`/api/browse?genre=${encodeURIComponent(apiSlug)}&kind=movie`);
+        if (res.ok) {
+          const ct = res.headers.get('content-type') || '';
+          if (ct.includes('json')) {
+            const data = await res.json().catch(() => null);
+            items = data?.films || data?.results || [];
+          }
+        }
+      } catch {}
+      if (!items.length) {
+        try {
+          const [mRes, sRes] = await Promise.all([
+            fetch(`https://v3-cinemeta.strem.io/catalog/movie/top/genre=${encodeURIComponent(primaryGenre)}.json`).then(r => r.ok ? r.json() : null).catch(() => null),
+            fetch(`https://v3-cinemeta.strem.io/catalog/series/top/genre=${encodeURIComponent(primaryGenre)}.json`).then(r => r.ok ? r.json() : null).catch(() => null)
+          ]);
+          const combined = [
+            ...((mRes?.metas || []).slice(0, 18).map(m => ({ ...m, _kind: 'movie' }))),
+            ...((sRes?.metas || []).slice(0, 10).map(m => ({ ...m, _kind: 'show' })))
+          ];
+          items = combined.map(m => ({
+            id: m.imdb_id || m.id,
+            slug: makeSlugFromTitleYear(m.name, m.releaseInfo || m.year),
+            title: m.name,
+            year: String(m.releaseInfo || m.year || '').slice(0, 4),
+            kind: m._kind,
+            poster: m.poster || '',
+            rating: m.imdbRating ? Number(m.imdbRating) : undefined,
+            genres: Array.isArray(m.genres) && m.genres.length ? m.genres : [primaryGenre]
+          }));
+        } catch {}
+      }
+    } else {
+      const query = formatLabelFromSlug(route.slug, route.type === 'collection' ? 'collection' : '');
+      try {
+        const res = await fetch(`/api/search?q=${encodeURIComponent(query)}`);
+        if (res.ok) {
+          const ct = res.headers.get('content-type') || '';
+          if (ct.includes('json')) {
+            const data = await res.json().catch(() => null);
+            items = data?.results || data?.films || [];
+          }
+        }
+      } catch {}
+      if (!items.length) {
+        try {
+          const [mRes, sRes] = await Promise.all([
+            fetch(`https://v3-cinemeta.strem.io/catalog/movie/top/search=${encodeURIComponent(query)}.json`).then(r => r.ok ? r.json() : null).catch(() => null),
+            fetch(`https://v3-cinemeta.strem.io/catalog/series/top/search=${encodeURIComponent(query)}.json`).then(r => r.ok ? r.json() : null).catch(() => null)
+          ]);
+          const combined = [
+            ...((mRes?.metas || []).slice(0, 18).map(m => ({ ...m, _kind: 'movie' }))),
+            ...((sRes?.metas || []).slice(0, 8).map(m => ({ ...m, _kind: 'show' })))
+          ];
+          items = combined.map(m => ({
+            id: m.imdb_id || m.id,
+            slug: makeSlugFromTitleYear(m.name, m.releaseInfo || m.year),
+            title: m.name,
+            year: String(m.releaseInfo || m.year || '').slice(0, 4),
+            kind: m._kind,
+            poster: m.poster || '',
+            rating: m.imdbRating ? Number(m.imdbRating) : undefined,
+            genres: Array.isArray(m.genres) ? m.genres : []
+          }));
+        } catch {}
+      }
+    }
+
+    if (seq !== dynHydrateSeq) return;
+    const section = document.querySelector(`[data-dyn-catalog-type="${CSS.escape(route.type)}"][data-dyn-catalog-slug="${CSS.escape(route.slug)}"]`);
+    if (!section) return;
+    const grid = section.querySelector('[data-dyn-catalog-grid]');
+    const status = section.querySelector('[data-dyn-catalog-status]');
+
+    if (!items.length) {
+      if (status) status.textContent = 'No titles matched directly — try searching our full catalog.';
+      if (grid) {
+        grid.innerHTML = `<li style="grid-column:1 / -1;padding:2rem 0;"><a class="btn btn-primary" href="${withBasePath(`/search?q=${encodeURIComponent(formatLabelFromSlug(route.slug, 'collection'))}`)}">Search catalog</a></li>`;
+      }
+      return;
+    }
+
+    if (status) status.textContent = `${items.length} titles available`;
+    if (grid) {
+      grid.innerHTML = items.map(it => `<li>${renderPosterCardHtml(it, { defaultIsTv: it.kind === 'show' })}</li>`).join('');
+    }
+    try { initWatchlist(); } catch {}
+  }
+
+  function buildFallbackDocumentForDynamicRoute(dynRoute) {
+    if (!dynRoute) return null;
+    if (dynRoute.type === 'detail') {
+      const hint = clickedCardMetaMap.get(dynRoute.slug) || null;
+      return {
+        doc: buildDynamicDetailDocument(dynRoute.slug, dynRoute.kind, hint),
+        hydrate: () => hydrateDynamicDetailPage(dynRoute.slug, dynRoute.kind, hint)
+      };
+    }
+    if (dynRoute.type === 'anime') {
+      const hint = clickedCardMetaMap.get(dynRoute.slug) || null;
+      return {
+        doc: buildDynamicAnimeDocument(dynRoute.id, hint),
+        hydrate: () => hydrateDynamicAnimePage(dynRoute.id, hint)
+      };
+    }
+    return {
+      doc: buildDynamicCatalogDocument(dynRoute),
+      hydrate: () => hydrateDynamicCatalogPage(dynRoute)
+    };
+  }
 
   async function fetchPageHtml(path) {
     if (pageCache.has(path)) {
@@ -9913,15 +11554,18 @@
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const html = await res.text();
-    if (pageCache.size > 25) {
-      const first = pageCache.keys().next().value;
-      pageCache.delete(first);
+    if (isValidRouteHtmlString(html, path)) {
+      if (pageCache.size > 25) {
+        const first = pageCache.keys().next().value;
+        pageCache.delete(first);
+      }
+      pageCache.set(path, html);
     }
-    pageCache.set(path, html);
     return html;
   }
 
-  async function navigateTo(targetPath, pushState = true) {
+  async function navigateTo(rawTargetPath, pushState = true) {
+    const targetPath = canonicalizeAliasRoute(rawTargetPath);
     if (isNavigating) return;
     if (pushState && targetPath === currentRenderedPath) {
       window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -9932,9 +11576,32 @@
     document.documentElement.setAttribute('data-pending', '');
 
     try {
-      const html = await fetchPageHtml(targetPath);
-      const parser = new DOMParser();
-      const newDoc = parser.parseFromString(html, 'text/html');
+      const dynRoute = parseDynamicRoute(targetPath);
+      const isTargetWatch = normalizeRoutePath(targetPath).startsWith('/watch/');
+      let newDoc = null;
+      let hydrateDynamic = null;
+
+      try {
+        const html = await fetchPageHtml(targetPath);
+        const parser = new DOMParser();
+        newDoc = parser.parseFromString(html, 'text/html');
+      } catch (fetchErr) {
+        if (!dynRoute && !isTargetWatch) throw fetchErr;
+      }
+
+      if (isTargetWatch && !newDoc) {
+        newDoc = new DOMParser().parseFromString('<!DOCTYPE html><html><head><title>Watch · Kaira</title></head><body><div class="watch-root"></div></body></html>', 'text/html');
+      } else if (dynRoute && !isValidRouteDoc(newDoc, targetPath)) {
+        const built = buildFallbackDocumentForDynamicRoute(dynRoute);
+        if (built) {
+          newDoc = built.doc;
+          hydrateDynamic = built.hydrate;
+        }
+      }
+
+      if (!newDoc) {
+        throw new Error('No document available for navigation');
+      }
 
       const currentMain = document.querySelector('main') || document.querySelector('.watch-root');
 
@@ -9942,7 +11609,10 @@
         const transition = document.startViewTransition(() => {
           swapPageDom(newDoc, targetPath, pushState);
         });
-        await transition.finished.catch(() => {});
+        await Promise.race([
+          transition.finished.catch(() => {}),
+          new Promise(r => setTimeout(r, 800))
+        ]);
       } else {
         if (currentMain) {
           currentMain.classList.add('page-transitioning-out');
@@ -9956,6 +11626,10 @@
             activeMain.classList.remove('page-transitioning-in');
           }, 280);
         }
+      }
+
+      if (hydrateDynamic) {
+        hydrateDynamic();
       }
     } catch (err) {
       console.warn('Transition navigation failed, falling back to full reload', err);
@@ -9994,8 +11668,9 @@
     if (normPrev.startsWith('/search') && !normTarget.startsWith('/search')) {
       try { if (typeof window.destroyFlicxLightPillar === 'function') window.destroyFlicxLightPillar(); } catch (e) {}
     }
-    closeTrailerModal();
-    closeNotifications();
+    closeSettingsModal(null, true);
+    closeTrailerModal(true);
+    closeNotifications(true);
     closeCurrentPopup();
 
     const isTargetWatch = normTarget.startsWith('/watch/');
@@ -10250,6 +11925,7 @@
           return;
         }
 
+        stashCardMetaFromElement(link, url.pathname);
         e.preventDefault();
         navigateTo(url.pathname + url.search);
       } catch (err) {}
@@ -10297,6 +11973,29 @@
 
     try { rewriteProxyImagesInDom(document); } catch (e) {}
     try { injectLiquidGlassStyles(); applyLiquidChromeAttributes(); } catch (e) { console.error('Liquid glass error', e); }
+
+    // Guard direct deep-links / reloads on static hosts (e.g. Firebase Hosting ** -> /index.html)
+    let initialDynamicHydrate = null;
+    try {
+      const currentRaw = window.location.pathname + window.location.search;
+      const canonical = canonicalizeAliasRoute(currentRaw);
+      if (canonical !== currentRaw) {
+        window.history.replaceState({ path: canonical }, '', canonical);
+        currentRenderedPath = canonical;
+      }
+      const initialDynRoute = parseDynamicRoute(window.location.pathname);
+      if (initialDynRoute && !isValidRouteDoc(document, window.location.pathname)) {
+        const built = buildFallbackDocumentForDynamicRoute(initialDynRoute);
+        const dynMain = built?.doc?.querySelector('main');
+        const curMain = document.querySelector('main');
+        if (dynMain && curMain) {
+          curMain.replaceWith(dynMain);
+          document.title = built.doc.title;
+          initialDynamicHydrate = built.hydrate;
+        }
+      }
+    } catch (e) { console.error('Dynamic route bootstrap error', e); }
+
     try { updateActiveNavTabs(window.location.pathname); } catch (e) { console.error('Nav tab sync error', e); }
     try { getSettingsState(); } catch (e) { console.error('Settings init error', e); }
     try { initHeroCarousel(); } catch (e) { console.error('Hero init error', e); }
@@ -10313,6 +12012,10 @@
     try { initAnimatedLogoHover(); } catch (e) { console.error('LogoHover error', e); }
     try { initBackToTopButton(); } catch (e) { console.error('BackToTop error', e); }
     try { initPageTransitions(); } catch (e) { console.error('PageTransitions error', e); }
+
+    if (typeof initialDynamicHydrate === 'function') {
+      initialDynamicHydrate();
+    }
 
     // Wire Settings & Notification header buttons (strictly excluding controls inside the modals themselves)
     document.addEventListener('click', (e) => {

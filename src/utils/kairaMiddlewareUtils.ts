@@ -192,6 +192,52 @@ export function extractTitleMetadataFromHtml(
 }
 
 /**
+ * Validates that an HTML document for /movie/<slug> or /tv/<slug> is a real
+ * detail page rather than a Next.js __next_error__ shell or homepage rewrite.
+ */
+export function isValidDetailPageHtml(html: string): boolean {
+  if (!html || typeof html !== 'string') return false;
+  if (html.includes('id="__next_error__"') || html.includes("id='__next_error__'")) {
+    return false;
+  }
+  if (html.includes('hero-switch')) {
+    return false;
+  }
+  return /<article[\s>]/i.test(html);
+}
+
+/**
+ * Validates any cached or upstream-fetched HTML page before serving or caching it to disk.
+ * Rejects Next.js error shells, pages missing <main> (except /watch/*), homepage clones on
+ * non-browse routes, and invalid movie/TV detail documents.
+ */
+export function isValidAppPageHtml(html: string, cleanPath: string): boolean {
+  if (!html || typeof html !== 'string') return false;
+  if (html.includes('id="__next_error__"') || html.includes("id='__next_error__'")) {
+    return false;
+  }
+  const normalized = String(cleanPath || '').replace(/^\/+|\/+$/g, '').toLowerCase();
+  if (normalized.startsWith('watch/')) {
+    return html.includes('watch-root') || /<body[\s>]/i.test(html);
+  }
+  if (/^(movie|tv)\/[^/]+$/.test(normalized)) {
+    return isValidDetailPageHtml(html);
+  }
+  if (!/<main[\s>]/i.test(html)) {
+    return false;
+  }
+  const allowsHeroSwitch =
+    normalized === '' ||
+    normalized === 'index.html' ||
+    normalized === 'movies' ||
+    normalized === 'tv';
+  if (!allowsHeroSwitch && html.includes('hero-switch')) {
+    return false;
+  }
+  return true;
+}
+
+/**
  * Strips unused Next.js preload links that trigger console warnings, cleans leftover
  * "Flicx" branding strings in visible copy, and ensures the interactive runtime script is injected.
  */

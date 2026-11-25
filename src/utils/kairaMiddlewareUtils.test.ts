@@ -5,6 +5,8 @@ import {
   isAllowedImageUrl,
   resolveSafePublicPath,
   extractTitleMetadataFromHtml,
+  isValidDetailPageHtml,
+  isValidAppPageHtml,
   prepareServedHtml,
 } from './kairaMiddlewareUtils';
 
@@ -57,6 +59,39 @@ test('extractTitleMetadataFromHtml avoids duplicating year in fallback title fro
   assert.equal(meta.title, 'The Odyssey');
   assert.equal(meta.year, '2026');
   assert.equal(meta.id, null);
+});
+
+test('isValidDetailPageHtml accepts real movie/TV detail pages and rejects error or homepage shells', () => {
+  assert.equal(
+    isValidDetailPageHtml('<html><body><main><div class="page"><article><section class="hero"></section></article></div></main></body></html>'),
+    true
+  );
+  assert.equal(
+    isValidDetailPageHtml('<!DOCTYPE html><html id="__next_error__"><head><title>Kaira: a home for films</title></head></html>'),
+    false
+  );
+  assert.equal(
+    isValidDetailPageHtml('<html><body><main><section class="hero"><div class="hero-switch"></div></section></main></body></html>'),
+    false
+  );
+  assert.equal(isValidDetailPageHtml(''), false);
+});
+
+test('isValidAppPageHtml blocks __next_error__ and homepage clones on non-browse routes while allowing real pages', () => {
+  const errHtml = '<!DOCTYPE html><html id="__next_error__"><head><title>Kaira</title></head></html>';
+  const homeHtml = '<html><body><main><section class="hero"><div class="hero-switch"></div></section></main></body></html>';
+  const genreHtml = '<html><body><main><div class="page"><h1>Biography</h1><ul class="film-grid"></ul></div></main></body></html>';
+  const watchHtml = '<html><body><div class="watch-root"></div></body></html>';
+
+  assert.equal(isValidAppPageHtml(errHtml, 'genres/biography'), false);
+  assert.equal(isValidAppPageHtml(errHtml, 'anime/20'), false);
+  assert.equal(isValidAppPageHtml(homeHtml, 'genres/biography'), false);
+  assert.equal(isValidAppPageHtml(homeHtml, 'collection/james-bond-collection'), false);
+  assert.equal(isValidAppPageHtml(homeHtml, 'studio/marvel-studios'), false);
+  assert.equal(isValidAppPageHtml(homeHtml, 'movies'), true);
+  assert.equal(isValidAppPageHtml(homeHtml, 'tv'), true);
+  assert.equal(isValidAppPageHtml(genreHtml, 'genres/biography'), true);
+  assert.equal(isValidAppPageHtml(watchHtml, 'watch/titanic-1997'), true);
 });
 
 test('prepareServedHtml strips unused preload chunk, updates branding and OG image, and injects interactive script once', () => {

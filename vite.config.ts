@@ -8,6 +8,8 @@ import {
   isAllowedImageUrl,
   resolveSafePublicPath,
   extractTitleMetadataFromHtml,
+  isValidDetailPageHtml,
+  isValidAppPageHtml,
   prepareServedHtml,
 } from './src/utils/kairaMiddlewareUtils';
 
@@ -259,24 +261,43 @@ function createKairaMiddleware(rootDir: string) {
 
     // 2. Clean URL HTML resolution with strict path confinement
     const rawUrl = reqUrl.split('?')[0];
+    if (rawUrl === '/top-rated' || rawUrl === '/top-rated/') {
+      res.statusCode = 302;
+      res.setHeader('Location', '/discover?sort=rating');
+      return res.end();
+    }
+    if (rawUrl === '/new' || rawUrl === '/new/') {
+      res.statusCode = 302;
+      res.setHeader('Location', '/just-added');
+      return res.end();
+    }
     if (rawUrl && !rawUrl.includes('.') && rawUrl !== '/') {
       const cleanPath = rawUrl.replace(/^\//, '').replace(/\/$/, '');
       const safeTargetDir = resolveSafePublicPath(publicPath, cleanPath);
       const safeHtmlFile = resolveSafePublicPath(publicPath, `${cleanPath}.html`);
 
+      const detailRouteMatch = cleanPath.match(/^(movie|tv)\/([^/]+)$/);
+      const isDetailRoute = Boolean(detailRouteMatch);
+
       if (safeTargetDir) {
         const indexFile = path.join(safeTargetDir, 'index.html');
         if (fs.existsSync(indexFile)) {
-          const content = prepareServedHtml(fs.readFileSync(indexFile, 'utf-8'));
-          res.setHeader('Content-Type', 'text/html; charset=utf-8');
-          return res.end(content);
+          const rawFile = fs.readFileSync(indexFile, 'utf-8');
+          if (isValidAppPageHtml(rawFile, cleanPath)) {
+            const content = prepareServedHtml(rawFile);
+            res.setHeader('Content-Type', 'text/html; charset=utf-8');
+            return res.end(content);
+          }
         }
       }
 
       if (safeHtmlFile && fs.existsSync(safeHtmlFile)) {
-        const content = prepareServedHtml(fs.readFileSync(safeHtmlFile, 'utf-8'));
-        res.setHeader('Content-Type', 'text/html; charset=utf-8');
-        return res.end(content);
+        const rawFile = fs.readFileSync(safeHtmlFile, 'utf-8');
+        if (isValidAppPageHtml(rawFile, cleanPath)) {
+          const content = prepareServedHtml(rawFile);
+          res.setHeader('Content-Type', 'text/html; charset=utf-8');
+          return res.end(content);
+        }
       }
 
       if (rawUrl.startsWith('/watch/')) {
@@ -290,24 +311,38 @@ function createKairaMiddleware(rootDir: string) {
 
       // On-demand title resolver from fli.cx (only for validated safe route segments)
       if (safeTargetDir) {
-        try {
-          const fetchResp = await fetch(`https://fli.cx/${cleanPath}`, {
-            headers: { 'User-Agent': BROWSER_UA },
-          });
-          if (fetchResp.ok) {
-            let pageHtml = await fetchResp.text();
-            pageHtml = pageHtml.replace(/<script[^>]*src="\/_next\/static\/chunks\/[^"]+"[^>]*><\/script>/g, '');
-            pageHtml = pageHtml.replace(/<script[^>]*src="https:\/\/static\.cloudflareinsights\.com\/[^"]+"[^>]*><\/script>/g, '');
-            pageHtml = prepareServedHtml(pageHtml);
+        const candidatePaths = detailRouteMatch
+          ? [
+              cleanPath,
+              `${detailRouteMatch[1] === 'movie' ? 'tv' : 'movie'}/${detailRouteMatch[2]}`,
+            ]
+          : [cleanPath];
 
-            fs.mkdirSync(safeTargetDir, { recursive: true });
-            fs.writeFileSync(path.join(safeTargetDir, 'index.html'), pageHtml, 'utf-8');
+        for (const candidate of candidatePaths) {
+          try {
+            const fetchResp = await fetch(`https://fli.cx/${candidate}`, {
+              headers: { 'User-Agent': BROWSER_UA },
+            });
+            if (fetchResp.ok) {
+              let pageHtml = await fetchResp.text();
+              if (!isValidAppPageHtml(pageHtml, cleanPath)) {
+                continue;
+              }
+              pageHtml = pageHtml.replace(/<script[^>]*src="\/_next\/static\/chunks\/[^"]+"[^>]*><\/script>/g, '');
+              pageHtml = pageHtml.replace(/<script[^>]*src="https:\/\/static\.cloudflareinsights\.com\/[^"]+"[^>]*><\/script>/g, '');
+              pageHtml = prepareServedHtml(pageHtml);
 
-            res.setHeader('Content-Type', 'text/html; charset=utf-8');
-            return res.end(pageHtml);
+              if (isValidAppPageHtml(pageHtml, cleanPath)) {
+                fs.mkdirSync(safeTargetDir, { recursive: true });
+                fs.writeFileSync(path.join(safeTargetDir, 'index.html'), pageHtml, 'utf-8');
+              }
+
+              res.setHeader('Content-Type', 'text/html; charset=utf-8');
+              return res.end(pageHtml);
+            }
+          } catch {
+            // Try next candidate or fall through
           }
-        } catch {
-          // Fall through to next()
         }
       }
     }
