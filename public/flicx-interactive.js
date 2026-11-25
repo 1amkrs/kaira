@@ -1441,6 +1441,10 @@
                 <div class="fx-spinner" style="width:2.85rem;height:2.85rem;border:3px solid rgba(255,255,255,0.22);border-top-color:#ffffff;border-radius:50%;animation:spin 0.8s linear infinite;"></div>
               </div>
               <div id="atv-status-pill" class="atv-status-pill" role="status" aria-live="polite" aria-hidden="true"></div>
+              <div id="atv-resume-pill" class="atv-resume-pill" role="status" aria-live="polite" aria-hidden="true">
+                <span id="atv-resume-text">Resumed</span>
+                <button type="button" id="atv-resume-restart" class="atv-resume-restart-btn">Start Over</button>
+              </div>
             </div>
 
             <!-- Apple TV Floating UI -->
@@ -1754,11 +1758,96 @@
       const drawerInfo = watchRoot.querySelector('#atv-drawer-info');
       const drawerChapters = watchRoot.querySelector('#atv-drawer-chapters');
       const chaptersListEl = watchRoot.querySelector('#atv-chapters-list');
+      const resumePillEl = watchRoot.querySelector('#atv-resume-pill');
+      const resumeTextEl = watchRoot.querySelector('#atv-resume-text');
+      const resumeRestartBtn = watchRoot.querySelector('#atv-resume-restart');
 
       let currentHls = null;
       let hideTimeout = null;
       let statusTimeout = null;
+      let resumePillTimeout = null;
       let isDestroyed = false;
+
+      // Continue Watching tracking & auto-resume state
+      const canonicalWatchUrl = isAnimeRoute
+        ? `/watch/anime/${encodeURIComponent(animeId)}/${episodeNum}`
+        : isShow
+          ? `/watch/${encodeURIComponent(titleSlug)}/s${seasonNum}e${episodeNum}`
+          : `/watch/${encodeURIComponent(titleSlug)}`;
+      const canonicalDetailUrl = isAnimeRoute
+        ? '/anime'
+        : isShow
+          ? `/tv/${encodeURIComponent(titleSlug)}`
+          : `/movie/${encodeURIComponent(titleSlug)}`;
+      const existingProgressEntry = getContinueWatchingBySlug(titleSlug);
+      const savedResumeSeconds = urlParams.get('restart') === '1'
+        ? 0
+        : getResumeTimeForEntry(existingProgressEntry, seasonNum, episodeNum);
+      let hasAppliedResume = false;
+      let lastProgressSaveAt = 0;
+
+      function hideResumePill() {
+        clearTimeout(resumePillTimeout);
+        if (resumePillEl) {
+          resumePillEl.classList.remove('atv-visible');
+          resumePillEl.setAttribute('aria-hidden', 'true');
+        }
+      }
+
+      function showResumePill(seconds) {
+        if (!resumePillEl || !resumeTextEl) return;
+        resumeTextEl.textContent = `Resumed at ${formatResumeTimestamp(seconds)}`;
+        resumePillEl.classList.add('atv-visible');
+        resumePillEl.setAttribute('aria-hidden', 'false');
+        clearTimeout(resumePillTimeout);
+        resumePillTimeout = setTimeout(hideResumePill, 7500);
+      }
+
+      function persistPlaybackProgress(force, modeOverride) {
+        const mode = modeOverride || (isEmbedMode ? 'embed' : 'direct');
+        const now = Date.now();
+        if (!force && mode === 'direct' && now - lastProgressSaveAt < 4000) return;
+
+        const cur = mode === 'embed' ? 0 : (Number(videoEl.currentTime) || 0);
+        const dur = mode === 'embed' ? 0 : (Number.isFinite(videoEl.duration) ? videoEl.duration : 0);
+
+        if (mode === 'direct') {
+          const metrics = computeProgressMetrics(cur, dur, 'direct');
+          if (!metrics.shouldTrack && !metrics.isCompleted) return;
+        }
+
+        lastProgressSaveAt = now;
+        upsertContinueWatchingProgress({
+          slug: titleSlug,
+          title: cleanTitle,
+          kind: isAnimeRoute ? 'anime' : (isShow ? 'show' : 'movie'),
+          imdbId: imdbId || undefined,
+          year: yearStr || '',
+          poster: posterUrl || '',
+          rating: ratingText || '',
+          genre: genresList[0] || '',
+          watchUrl: canonicalWatchUrl,
+          detailUrl: canonicalDetailUrl,
+          season: isShow ? seasonNum : undefined,
+          episode: (isShow || isAnimeRoute) ? episodeNum : undefined,
+          currentTime: cur,
+          duration: dur,
+          mode,
+          serverName: currentServer?.name || '',
+          updatedAt: now
+        });
+      }
+
+      if (resumeRestartBtn) {
+        resumeRestartBtn.onclick = (e) => {
+          e.stopPropagation();
+          hideResumePill();
+          try { videoEl.currentTime = 0; } catch {}
+          updateTimeDisplay();
+          showPlayerStatus('Started from beginning');
+          wakeControls();
+        };
+      }
       let isPointerOverControls = false;
       let showTotalInsteadOfRemaining = false;
       let activePopover = null; // 'subs' | 'audio' | 'cast' | 'server' | null
@@ -2176,6 +2265,7 @@
           uiEl.setAttribute('data-chrome', '');
           uiEl.style.opacity = '1';
           playerEl.classList.add('atv-chrome-visible');
+          persistPlaybackProgress(true, 'embed');
           return;
         }
 
@@ -2353,7 +2443,11 @@
         wakeControls();
       };
       videoEl.onpause = () => {
+        persistPlaybackProgress(true);
         showPausedCenterPlay();
+      };
+      videoEl.onended = () => {
+        persistPlaybackProgress(true);
       };
       videoEl.onwaiting = () => { bufferingEl.style.display = 'block'; };
       videoEl.onplaying = () => {
@@ -2388,11 +2482,24 @@
           scrubBuffered.style.width = Math.min(100, (bufEnd / dur) * 100) + '%';
         }
         renderActiveSubtitleCue();
+        persistPlaybackProgress(false);
       }
 
       videoEl.ontimeupdate = updateTimeDisplay;
-      videoEl.onseeked = renderActiveSubtitleCue;
+      videoEl.onseeked = () => {
+        renderActiveSubtitleCue();
+        persistPlaybackProgress(true);
+      };
       videoEl.onloadedmetadata = () => {
+        if (!hasAppliedResume && savedResumeSeconds >= 5 && Number.isFinite(videoEl.duration) && videoEl.duration > 0) {
+          if (savedResumeSeconds < videoEl.duration * 0.92) {
+            hasAppliedResume = true;
+            try {
+              videoEl.currentTime = savedResumeSeconds;
+              showResumePill(savedResumeSeconds);
+            } catch {}
+          }
+        }
         updateTimeDisplay();
         if (activeDrawer === 'chapters') renderChaptersIfReady();
       };
@@ -3116,14 +3223,31 @@
       };
       document.addEventListener('keydown', onKeyDown);
 
+      const onPageHideSave = () => {
+        if (!isDestroyed) persistPlaybackProgress(true);
+      };
+      const onVisibilitySave = () => {
+        if (!isDestroyed && document.visibilityState === 'hidden') {
+          persistPlaybackProgress(true);
+        }
+      };
+      window.addEventListener('pagehide', onPageHideSave);
+      document.addEventListener('visibilitychange', onVisibilitySave);
+
       // Register complete teardown hook so leaving /watch/* never leaks streams or listeners
       activePlayerCleanup = () => {
+        if (!isDestroyed) {
+          try { persistPlaybackProgress(true); } catch {}
+        }
         isDestroyed = true;
         subtitleFetchToken += 1;
         activeSubtitleCues = [];
         clearTimeout(hideTimeout);
         clearTimeout(statusTimeout);
+        clearTimeout(resumePillTimeout);
         clearTimeout(streamLoadTimer);
+        window.removeEventListener('pagehide', onPageHideSave);
+        document.removeEventListener('visibilitychange', onVisibilitySave);
         clearNativeStreamListeners();
         if (currentHls) {
           try { currentHls.destroy(); } catch {}
@@ -3558,6 +3682,349 @@
     `;
   }
 
+  // --- 6a. Continue Watching (Per-Browser Playback Progress Engine & UI Rails) ---
+  const CONTINUE_WATCHING_KEY = 'flicx:player:progress';
+  const CONTINUE_WATCHING_MIN_SECONDS = 5;
+  const CONTINUE_WATCHING_COMPLETE_RATIO = 0.92;
+  const CONTINUE_WATCHING_MAX_ITEMS = 24;
+
+  function computeProgressMetrics(currentTime, duration, mode) {
+    if (mode === 'embed') {
+      return { shouldTrack: true, isCompleted: false, progressPercent: 0, remainingSeconds: 0 };
+    }
+    const safeTime = Number.isFinite(currentTime) && currentTime > 0 ? currentTime : 0;
+    const safeDuration = Number.isFinite(duration) && duration > 0 ? duration : 0;
+    if (safeDuration > 0 && (safeTime / safeDuration) >= CONTINUE_WATCHING_COMPLETE_RATIO) {
+      return { shouldTrack: false, isCompleted: true, progressPercent: 100, remainingSeconds: 0 };
+    }
+    if (safeTime < CONTINUE_WATCHING_MIN_SECONDS) {
+      return {
+        shouldTrack: false,
+        isCompleted: false,
+        progressPercent: 0,
+        remainingSeconds: safeDuration > 0 ? Math.max(0, safeDuration - safeTime) : 0
+      };
+    }
+    const pct = safeDuration > 0
+      ? Math.min(99, Math.max(1, Math.round((safeTime / safeDuration) * 100)))
+      : 0;
+    return {
+      shouldTrack: true,
+      isCompleted: false,
+      progressPercent: pct,
+      remainingSeconds: safeDuration > 0 ? Math.max(0, safeDuration - safeTime) : 0
+    };
+  }
+
+  function formatContinueTimeLeft(entry) {
+    if (!entry) return 'Resume';
+    const epPrefix =
+      entry.kind === 'show' && entry.season && entry.episode
+        ? `S${entry.season} E${entry.episode} · `
+        : entry.kind === 'anime' && entry.episode
+          ? `Ep ${entry.episode} · `
+          : '';
+    if (entry.mode === 'embed' || !entry.duration || entry.duration <= 0) {
+      return `${epPrefix}Resume`;
+    }
+    const remaining = Math.max(0, entry.duration - (entry.currentTime || 0));
+    if (remaining < 60) return `${epPrefix}< 1m left`;
+    const totalMins = Math.ceil(remaining / 60);
+    const hours = Math.floor(totalMins / 60);
+    const mins = totalMins % 60;
+    if (hours > 0) {
+      return mins > 0 ? `${epPrefix}${hours}h ${mins}m left` : `${epPrefix}${hours}h left`;
+    }
+    return `${epPrefix}${mins}m left`;
+  }
+
+  function formatResumeTimestamp(seconds) {
+    if (!Number.isFinite(seconds) || seconds <= 0) return '0:00';
+    const total = Math.floor(seconds);
+    const h = Math.floor(total / 3600);
+    const m = Math.floor((total % 3600) / 60);
+    const s = total % 60;
+    if (h > 0) return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+    return `${m}:${String(s).padStart(2, '0')}`;
+  }
+
+  function getResumeTimeForEntry(entry, season, episode) {
+    if (!entry || entry.mode !== 'direct') return 0;
+    if (entry.kind === 'show') {
+      if (typeof season === 'number' && typeof entry.season === 'number' && entry.season !== season) return 0;
+      if (typeof episode === 'number' && typeof entry.episode === 'number' && entry.episode !== episode) return 0;
+    }
+    const metrics = computeProgressMetrics(entry.currentTime, entry.duration, 'direct');
+    if (!metrics.shouldTrack || metrics.isCompleted) return 0;
+    return Math.floor(entry.currentTime);
+  }
+
+  function getContinueWatchingItems() {
+    let list = [];
+    try {
+      const raw = JSON.parse(localStorage.getItem(CONTINUE_WATCHING_KEY) || 'null');
+      const arr = Array.isArray(raw) ? raw : (raw && Array.isArray(raw.items) ? raw.items : []);
+      const seen = new Set();
+      for (const item of arr) {
+        if (!item || !item.slug) continue;
+        const clean = normalizeWatchSlug(item.slug);
+        if (!clean || seen.has(clean)) continue;
+        seen.add(clean);
+        list.push({
+          ...item,
+          slug: clean,
+          mode: item.mode === 'embed' ? 'embed' : 'direct',
+          currentTime: Number(item.currentTime) || 0,
+          duration: Number(item.duration) || 0,
+          progressPercent: Number(item.progressPercent) || 0,
+          updatedAt: Number(item.updatedAt) || 0
+        });
+      }
+      list.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+    } catch {}
+    document.documentElement.classList.toggle('has-progress', list.length > 0);
+    return list;
+  }
+
+  function saveContinueWatchingItems(items) {
+    const cleanList = (Array.isArray(items) ? items : []).slice(0, CONTINUE_WATCHING_MAX_ITEMS);
+    try {
+      if (cleanList.length === 0) {
+        localStorage.removeItem(CONTINUE_WATCHING_KEY);
+      } else {
+        localStorage.setItem(CONTINUE_WATCHING_KEY, JSON.stringify({ items: cleanList }));
+      }
+    } catch {}
+    document.documentElement.classList.toggle('has-progress', cleanList.length > 0);
+    return cleanList;
+  }
+
+  function getContinueWatchingBySlug(slug) {
+    const clean = normalizeWatchSlug(slug);
+    if (!clean) return null;
+    return getContinueWatchingItems().find(item => item.slug === clean) || null;
+  }
+
+  function upsertContinueWatchingProgress(incoming) {
+    const cleanSlug = normalizeWatchSlug(incoming?.slug);
+    if (!cleanSlug) return [];
+    const existing = getContinueWatchingItems();
+    const mode = incoming.mode === 'embed' ? 'embed' : 'direct';
+    const metrics = computeProgressMetrics(incoming.currentTime, incoming.duration, mode);
+    const filtered = existing.filter(item => item.slug !== cleanSlug);
+
+    if (metrics.isCompleted) {
+      return saveContinueWatchingItems(filtered);
+    }
+    if (!metrics.shouldTrack) {
+      return existing;
+    }
+
+    const nextEntry = {
+      ...incoming,
+      slug: cleanSlug,
+      mode,
+      currentTime: mode === 'embed' ? 0 : Math.floor(incoming.currentTime || 0),
+      duration: mode === 'embed' ? 0 : Math.floor(Math.max(0, incoming.duration || 0)),
+      progressPercent: metrics.progressPercent,
+      updatedAt: typeof incoming.updatedAt === 'number' ? incoming.updatedAt : Date.now()
+    };
+
+    const updated = [nextEntry, ...filtered]
+      .sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))
+      .slice(0, CONTINUE_WATCHING_MAX_ITEMS);
+    return saveContinueWatchingItems(updated);
+  }
+
+  function removeContinueWatchingBySlug(slug) {
+    const clean = normalizeWatchSlug(slug);
+    if (!clean) return;
+    const next = getContinueWatchingItems().filter(item => item.slug !== clean);
+    saveContinueWatchingItems(next);
+    refreshContinueWatchingUI();
+  }
+
+  function clearAllContinueWatching() {
+    saveContinueWatchingItems([]);
+    refreshContinueWatchingUI();
+  }
+
+  function renderContinueWatchingCardHtml(entry) {
+    const slug = normalizeWatchSlug(entry.slug);
+    const title = entry.title || slug.replace(/-\d{4}$/, '').split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+    const posterUrl = safeImageUrl(entry.poster) || (entry.imdbId ? `https://s.fli.cx/a/poster/medium/${encodeURIComponent(entry.imdbId)}/img` : '');
+    const watchHref = withBasePath(entry.watchUrl || `/watch/${encodeURIComponent(slug)}`);
+    const timeLeftLabel = formatContinueTimeLeft(entry);
+    const pct = entry.mode === 'direct' && entry.progressPercent > 0 ? Math.min(99, Math.max(2, entry.progressPercent)) : 0;
+    const toneColor = safeColor(entry.tone, '#2a2623');
+
+    return `
+      <div class="card kaira-cw-card" style="--tone:${toneColor}" data-cw-slug="${escapeAttr(slug)}">
+        <div class="card-art card-poster">
+          <span class="card-pic">
+            ${posterUrl
+              ? `<img data-fade="true" src="${escapeAttr(posterUrl)}" alt="" width="500" height="750" loading="lazy" decoding="async" draggable="false" />`
+              : `<img data-fade="true" data-failed="true" alt="" width="500" height="750" />`}
+          </span>
+          <span class="card-fallback" aria-hidden="true">${escapeHtml(title)}</span>
+          <span class="kaira-cw-play-badge" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="currentColor" width="22" height="22"><path d="M5.5 4.5v15l13-7.5-13-7.5Z"/></svg>
+          </span>
+          <span class="kaira-cw-overlay">
+            <span class="kaira-cw-title">${escapeHtml(title)}</span>
+            <span class="kaira-cw-meta">${escapeHtml(timeLeftLabel)}</span>
+            ${pct > 0
+              ? `<span class="kaira-cw-track" aria-hidden="true"><span class="kaira-cw-fill" style="width:${pct}%"></span></span>`
+              : `<span class="kaira-cw-track kaira-cw-track-embed" aria-hidden="true"><span class="kaira-cw-fill" style="width:100%"></span></span>`}
+          </span>
+          <a class="card-link" data-film="${escapeAttr(slug)}" data-rail-focus="true" aria-label="Continue watching ${escapeAttr(title)} (${escapeAttr(timeLeftLabel)})" href="${escapeAttr(watchHref)}"></a>
+          <button type="button" class="kaira-cw-remove" data-cw-remove="${escapeAttr(slug)}" aria-label="Remove ${escapeAttr(title)} from Continue Watching" title="Remove from Continue Watching">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" width="13" height="13"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>
+        </div>
+      </div>
+    `;
+  }
+
+  function buildContinueWatchingSectionHtml(sectionId, items) {
+    return `
+      <section id="${escapeAttr(sectionId)}" class="section pt-6 md:pt-4 kaira-cw-section" aria-labelledby="${escapeAttr(sectionId)}-title">
+        <header class="shell gutter relative z-[1] mb-4 flex justify-between md:mb-5 items-baseline gap-6">
+          <div class="flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-1">
+            <h2 id="${escapeAttr(sectionId)}-title" class="section-title min-w-0 max-w-full text-section font-semibold">
+              <span class="title-row">Continue Watching</span>
+            </h2>
+          </div>
+          <button type="button" class="section-action kaira-cw-clear-all -mr-2 flex h-9 shrink-0 items-center gap-1.5 rounded-full px-2">Clear all</button>
+        </header>
+        <div class="shell">
+          <div class="rail">
+            <div role="list" aria-label="Continue Watching" class="rail-track [--cols:2.35] sm:[--cols:3.4] md:[--cols:4.3] lg:[--cols:5] xl:[--cols:6] 2xl:[--cols:7]">
+              ${items.map(item => `<div role="listitem">${renderContinueWatchingCardHtml(item)}</div>`).join('')}
+            </div>
+          </div>
+        </div>
+      </section>
+    `;
+  }
+
+  function renderContinueWatchingHomeRail() {
+    document.querySelectorAll('.continue-outline').forEach(el => el.remove());
+    const cleanPath = normalizeRoutePath(window.location.pathname);
+    const existing = document.getElementById('kaira-continue-watching-section');
+    if (cleanPath !== '/' && cleanPath !== '/index.html') {
+      if (existing) existing.remove();
+      return;
+    }
+    const items = getContinueWatchingItems();
+    if (items.length === 0) {
+      if (existing) existing.remove();
+      return;
+    }
+
+    const html = buildContinueWatchingSectionHtml('kaira-continue-watching-section', items);
+    if (existing) {
+      existing.outerHTML = html;
+    } else {
+      const hero = document.querySelector('section.hero');
+      const main = document.querySelector('main');
+      if (hero && hero.parentNode) {
+        hero.insertAdjacentHTML('afterend', html);
+      } else if (main) {
+        main.insertAdjacentHTML('afterbegin', html);
+      }
+    }
+    try { initRailScroll(); } catch {}
+  }
+
+  function renderContinueWatchingLibraryRail() {
+    const cleanPath = normalizeRoutePath(window.location.pathname);
+    const existing = document.getElementById('kaira-library-cw-section');
+    if (cleanPath !== '/library') {
+      if (existing) existing.remove();
+      return;
+    }
+    const items = getContinueWatchingItems();
+    if (items.length === 0) {
+      if (existing) existing.remove();
+      return;
+    }
+    const html = buildContinueWatchingSectionHtml('kaira-library-cw-section', items);
+    if (existing) {
+      existing.outerHTML = html;
+    } else {
+      const firstSection = document.querySelector('main section.section, section.section');
+      if (firstSection && firstSection.parentNode) {
+        firstSection.insertAdjacentHTML('beforebegin', html);
+      }
+    }
+    try { initRailScroll(); } catch {}
+  }
+
+  function syncDetailContinueWatchingButton() {
+    const cleanPath = normalizeRoutePath(window.location.pathname);
+    if (!cleanPath.startsWith('/movie/') && !cleanPath.startsWith('/tv/')) return;
+    const slug = normalizeWatchSlug(cleanPath);
+    if (!slug) return;
+    const playBtn = document.querySelector('.hero-actions a.capsule-btn-play');
+    if (!playBtn) return;
+
+    if (!playBtn.dataset.origHtml) {
+      playBtn.dataset.origHtml = playBtn.innerHTML;
+      playBtn.dataset.origHref = playBtn.getAttribute('href') || '';
+    }
+
+    const entry = getContinueWatchingBySlug(slug);
+    if (!entry) {
+      playBtn.classList.remove('kaira-btn-continue');
+      playBtn.style.removeProperty('--cw-pct');
+      if (playBtn.dataset.origHtml) playBtn.innerHTML = playBtn.dataset.origHtml;
+      if (playBtn.dataset.origHref) playBtn.setAttribute('href', playBtn.dataset.origHref);
+      return;
+    }
+
+    const timeLabel = formatContinueTimeLeft(entry);
+    const pct = entry.mode === 'direct' && entry.progressPercent > 0 ? entry.progressPercent : 0;
+    const playIcon = '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" focusable="false"><path d="M4.66 4.62v14.76c0 1.02 1.1 1.66 1.98 1.14l12.06-7.38a1.33 1.33 0 0 0 0-2.28L6.64 3.48C5.76 2.96 4.66 3.6 4.66 4.62Z"></path></svg>';
+    playBtn.setAttribute('href', withBasePath(entry.watchUrl || playBtn.dataset.origHref));
+    playBtn.classList.add('kaira-btn-continue');
+    playBtn.style.setProperty('--cw-pct', `${pct}%`);
+    playBtn.innerHTML = `${playIcon}<span>Continue Watching</span>${timeLabel && timeLabel !== 'Resume' ? `<span class="kaira-continue-meta">${escapeHtml(timeLabel)}</span>` : ''}`;
+  }
+
+  function refreshContinueWatchingUI() {
+    try { renderContinueWatchingHomeRail(); } catch {}
+    try { renderContinueWatchingLibraryRail(); } catch {}
+    try { syncDetailContinueWatchingButton(); } catch {}
+  }
+
+  let continueWatchingBound = false;
+  function initContinueWatching() {
+    refreshContinueWatchingUI();
+    if (continueWatchingBound) return;
+    continueWatchingBound = true;
+    document.addEventListener('click', (e) => {
+      const removeBtn = e.target.closest('button.kaira-cw-remove');
+      if (removeBtn) {
+        e.preventDefault();
+        e.stopPropagation();
+        const slug = removeBtn.getAttribute('data-cw-remove');
+        if (slug) {
+          removeContinueWatchingBySlug(slug);
+          showKairaToast('Removed from Continue Watching');
+        }
+        return;
+      }
+      const clearAllBtn = e.target.closest('button.kaira-cw-clear-all');
+      if (clearAllBtn) {
+        e.preventDefault();
+        e.stopPropagation();
+        clearAllContinueWatching();
+        showKairaToast('Continue Watching cleared');
+      }
+    });
+  }
+
   function getWatchlistItems() {
     try {
       const raw = JSON.parse(localStorage.getItem('flicx:watchlist:v1') || 'null');
@@ -3705,6 +4172,7 @@
     document.documentElement.setAttribute('data-watchlist', items.length ? 'some' : 'empty');
 
     if (cleanPath !== '/library') return;
+    renderContinueWatchingLibraryRail();
 
     const grid = document.querySelector('ul.film-grid');
     const emptyState = document.querySelector('.empty-state');
@@ -4627,8 +5095,7 @@
         saveSettingsState();
       };
       body.querySelector('#kaira-clear-progress').onclick = () => {
-        localStorage.removeItem('flicx:player:progress');
-        document.documentElement.classList.remove('has-progress');
+        clearAllContinueWatching();
         showKairaToast('Playback progress cleared');
       };
       body.querySelector('#kaira-clear-ratings').onclick = () => {
@@ -4710,6 +5177,7 @@
         applySettingsToDOM();
         showKairaToast('All local data cleared');
         closeSettingsModal();
+        refreshContinueWatchingUI();
         renderLibraryPage();
       };
     }
@@ -7846,6 +8314,204 @@
         }
       }
 
+      /* Continue Watching Rail, Cards, Detail CTA & Player Resume Pill */
+      .continue-outline {
+        display: none !important;
+      }
+      .kaira-cw-section .section-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 1rem;
+      }
+      .kaira-cw-clear-all {
+        background: transparent;
+        border: none;
+        color: rgba(255, 255, 255, 0.56);
+        font-size: 0.85rem;
+        font-weight: 500;
+        cursor: pointer;
+        padding: 0.35rem 0.65rem;
+        border-radius: 999px;
+        transition: color 0.18s ease, background-color 0.18s ease;
+      }
+      .kaira-cw-clear-all:hover {
+        color: #ffffff;
+        background: rgba(255, 255, 255, 0.1);
+      }
+      .kaira-cw-card .kaira-cw-overlay {
+        position: absolute;
+        inset-inline: 0;
+        bottom: 0;
+        z-index: 3;
+        display: flex;
+        flex-direction: column;
+        gap: 0.25rem;
+        padding: 2.25rem 0.7rem 0.65rem;
+        background: linear-gradient(180deg, rgba(0, 0, 0, 0) 0%, rgba(0, 0, 0, 0.72) 52%, rgba(0, 0, 0, 0.92) 100%);
+        pointer-events: none;
+      }
+      .kaira-cw-title {
+        color: #ffffff;
+        font-size: 0.84rem;
+        font-weight: 600;
+        line-height: 1.25;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        text-shadow: 0 1px 4px rgba(0, 0, 0, 0.65);
+      }
+      .kaira-cw-meta {
+        color: rgba(255, 255, 255, 0.76);
+        font-size: 0.72rem;
+        font-weight: 500;
+        letter-spacing: 0.01em;
+      }
+      .kaira-cw-track {
+        display: block;
+        width: 100%;
+        height: 3.5px;
+        margin-top: 0.2rem;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.24);
+        overflow: hidden;
+      }
+      .kaira-cw-fill {
+        display: block;
+        height: 100%;
+        border-radius: 999px;
+        background: var(--color-flare, #f59e0b);
+        box-shadow: 0 0 8px rgba(245, 158, 11, 0.55);
+      }
+      .kaira-cw-track-embed .kaira-cw-fill {
+        background: rgba(255, 255, 255, 0.58);
+        box-shadow: none;
+      }
+      .kaira-cw-play-badge {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -56%) scale(0.92);
+        z-index: 3;
+        width: 44px;
+        height: 44px;
+        border-radius: 50%;
+        background: rgba(18, 18, 22, 0.72);
+        border: 1px solid rgba(255, 255, 255, 0.28);
+        backdrop-filter: blur(14px);
+        -webkit-backdrop-filter: blur(14px);
+        color: #ffffff;
+        display: grid;
+        place-items: center;
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 0.2s ease, transform 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+      }
+      .kaira-cw-card:hover .kaira-cw-play-badge,
+      .kaira-cw-card:focus-within .kaira-cw-play-badge {
+        opacity: 1;
+        transform: translate(-50%, -56%) scale(1);
+      }
+      .kaira-cw-remove {
+        position: absolute;
+        top: 0.5rem;
+        right: 0.5rem;
+        z-index: 5;
+        width: 28px;
+        height: 28px;
+        border-radius: 50%;
+        border: 1px solid rgba(255, 255, 255, 0.26);
+        background: rgba(14, 14, 18, 0.72);
+        backdrop-filter: blur(12px);
+        -webkit-backdrop-filter: blur(12px);
+        color: rgba(255, 255, 255, 0.9);
+        display: grid;
+        place-items: center;
+        cursor: pointer;
+        opacity: 0;
+        transition: opacity 0.18s ease, background-color 0.18s ease, transform 0.15s ease;
+      }
+      .kaira-cw-card:hover .kaira-cw-remove,
+      .kaira-cw-card:focus-within .kaira-cw-remove,
+      .kaira-cw-remove:focus-visible {
+        opacity: 1;
+      }
+      @media (hover: none) {
+        .kaira-cw-remove {
+          opacity: 0.9;
+        }
+      }
+      .kaira-cw-remove:hover {
+        background: rgba(220, 38, 38, 0.85);
+        border-color: rgba(255, 255, 255, 0.45);
+        color: #ffffff;
+        transform: scale(1.06);
+      }
+      .capsule-btn-play.kaira-btn-continue {
+        position: relative;
+        overflow: hidden;
+      }
+      .capsule-btn-play.kaira-btn-continue::after {
+        content: "";
+        position: absolute;
+        left: 0;
+        bottom: 0;
+        height: 3px;
+        width: var(--cw-pct, 0%);
+        background: var(--color-flare, #f59e0b);
+        pointer-events: none;
+      }
+      .kaira-continue-meta {
+        font-size: 0.8em;
+        opacity: 0.78;
+        font-weight: 500;
+        margin-left: 0.15rem;
+      }
+      .atv-resume-pill {
+        position: absolute;
+        top: calc(4.8rem + env(safe-area-inset-top, 0px));
+        left: 50%;
+        transform: translate(-50%, -8px);
+        z-index: 25;
+        display: inline-flex;
+        align-items: center;
+        gap: 0.65rem;
+        padding: 0.45rem 0.55rem 0.45rem 0.95rem;
+        border-radius: 999px;
+        background: rgba(22, 22, 28, 0.78);
+        border: 1px solid rgba(255, 255, 255, 0.22);
+        backdrop-filter: blur(22px) saturate(1.6);
+        -webkit-backdrop-filter: blur(22px) saturate(1.6);
+        color: #ffffff;
+        font-size: 0.84rem;
+        font-weight: 500;
+        box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+        opacity: 0;
+        visibility: hidden;
+        pointer-events: none;
+        transition: opacity 0.22s ease, transform 0.25s cubic-bezier(0.16, 1, 0.3, 1), visibility 0.25s;
+      }
+      .atv-resume-pill.atv-visible {
+        opacity: 1;
+        visibility: visible;
+        pointer-events: auto;
+        transform: translate(-50%, 0);
+      }
+      .atv-resume-restart-btn {
+        border: none;
+        border-radius: 999px;
+        padding: 0.32rem 0.72rem;
+        background: rgba(255, 255, 255, 0.18);
+        color: #ffffff;
+        font-size: 0.78rem;
+        font-weight: 600;
+        cursor: pointer;
+        transition: background-color 0.16s ease;
+      }
+      .atv-resume-restart-btn:hover {
+        background: rgba(255, 255, 255, 0.3);
+      }
+
       @media (prefers-reduced-motion: reduce) {
         .fx-player .fx-ui,
         .fx-player .fx-ui .fx-top,
@@ -7853,6 +8519,7 @@
         .atv-glass-popover,
         .atv-drawer,
         .atv-status-pill,
+        .atv-resume-pill,
         .fx-player .kaira-center-play,
         #flicx-notes-popover.notes-popup {
           transition-duration: 0.01ms !important;
@@ -8159,6 +8826,7 @@
     closeCurrentPopup();
 
     try { initHeroCarousel(); } catch (e) { console.error(e); }
+    try { initContinueWatching(); } catch (e) { console.error(e); }
     try { initRailScroll(); } catch (e) { console.error(e); }
     try { initWatchlist(); } catch (e) { console.error(e); }
     try { renderLibraryPage(); } catch (e) { console.error(e); }
@@ -8258,6 +8926,7 @@
     try { updateActiveNavTabs(window.location.pathname); } catch (e) { console.error('Nav tab sync error', e); }
     try { getSettingsState(); } catch (e) { console.error('Settings init error', e); }
     try { initHeroCarousel(); } catch (e) { console.error('Hero init error', e); }
+    try { initContinueWatching(); } catch (e) { console.error('ContinueWatching error', e); }
     try { initCardNavigation(); } catch (e) { console.error('Card nav error', e); }
     try { initRailScroll(); } catch (e) { console.error('Rail scroll error', e); }
     try { initWatchlist(); } catch (e) { console.error('Watchlist error', e); }
