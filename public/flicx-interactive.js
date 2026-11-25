@@ -152,6 +152,132 @@
     ];
   }
 
+  function isPublicHttpStreamUrl(rawUrl) {
+    if (typeof rawUrl !== 'string') return false;
+    const trimmed = rawUrl.trim();
+    if (!trimmed || trimmed.startsWith('blob:') || trimmed.startsWith('/') || trimmed.startsWith('data:')) return false;
+    try {
+      const parsed = new URL(trimmed);
+      if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') return false;
+      const host = parsed.hostname.toLowerCase();
+      if (host === 'localhost' || host === '127.0.0.1' || host === '0.0.0.0' || host === '::1' || host.endsWith('.local')) {
+        return false;
+      }
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  function inferCastContentType(rawUrl) {
+    const lower = String(rawUrl || '').toLowerCase().split('?')[0].split('#')[0];
+    if (lower.includes('.m3u8')) return 'application/x-mpegurl';
+    if (lower.includes('.mpd')) return 'application/dash+xml';
+    if (lower.endsWith('.webm')) return 'video/webm';
+    return 'video/mp4';
+  }
+
+  function pickCastableStreamSource(servers, currentServer) {
+    if (currentServer && currentServer.kind !== 'embed' && isPublicHttpStreamUrl(currentServer.src)) {
+      const url = currentServer.src.trim();
+      return { kind: 'direct', server: currentServer, url, contentType: inferCastContentType(url) };
+    }
+    const rankQ = (q) => {
+      const u = String(q || '').toUpperCase();
+      if (u.includes('4K') || u.includes('2160')) return 4;
+      if (u.includes('1080')) return 3;
+      if (u.includes('720')) return 2;
+      if (u.includes('HD')) return 1;
+      return 0;
+    };
+    const directPublic = (Array.isArray(servers) ? servers : [])
+      .filter(s => s && s.kind !== 'embed' && isPublicHttpStreamUrl(s.src))
+      .sort((a, b) => rankQ(b.quality) - rankQ(a.quality));
+    if (directPublic.length > 0) {
+      const best = directPublic[0];
+      const url = best.src.trim();
+      return { kind: 'direct', server: best, url, contentType: inferCastContentType(url) };
+    }
+    return {
+      kind: 'embed-only',
+      server: currentServer || (Array.isArray(servers) && servers[0]) || null,
+      url: null,
+      contentType: null
+    };
+  }
+
+  function buildExternalPlayerLinks(streamUrl) {
+    if (!streamUrl || !isPublicHttpStreamUrl(streamUrl)) {
+      return { vlcUrl: null, infuseUrl: null };
+    }
+    const clean = streamUrl.trim();
+    return {
+      vlcUrl: `vlc://${clean}`,
+      infuseUrl: `infuse://x-callback-url/play?url=${encodeURIComponent(clean)}`
+    };
+  }
+
+  function parsePersonRouteToSearchQuery(pathname) {
+    const clean = String(pathname || '').split('?')[0].split('#')[0];
+    const match = clean.match(/\/person\/(?:\d+-)?([a-z0-9-]+)\/?$/i);
+    if (!match) return null;
+    const words = match[1].split('-').filter(Boolean).map(w => w.charAt(0).toUpperCase() + w.slice(1));
+    return words.length > 0 ? words.join(' ') : null;
+  }
+
+  let googleCastSdkPromise = null;
+  let googleCastInitialized = false;
+  function initGoogleCastContextIfReady() {
+    try {
+      if (window.cast && window.cast.framework && window.chrome && window.chrome.cast) {
+        if (!googleCastInitialized) {
+          const ctx = window.cast.framework.CastContext.getInstance();
+          ctx.setOptions({
+            receiverApplicationId: window.chrome.cast.media.DEFAULT_MEDIA_RECEIVER_APP_ID,
+            autoJoinPolicy: window.chrome.cast.AutoJoinPolicy.ORIGIN_SCOPED
+          });
+          googleCastInitialized = true;
+        }
+        return true;
+      }
+    } catch {}
+    return false;
+  }
+
+  function ensureGoogleCastSdkLoaded() {
+    if (initGoogleCastContextIfReady()) return Promise.resolve(true);
+    if (googleCastSdkPromise) return googleCastSdkPromise;
+    googleCastSdkPromise = new Promise((resolve) => {
+      let settled = false;
+      const done = (ok) => {
+        if (settled) return;
+        settled = true;
+        resolve(Boolean(ok));
+      };
+      const prevCb = window.__onGCastApiAvailable;
+      window.__onGCastApiAvailable = (isAvailable) => {
+        if (typeof prevCb === 'function') {
+          try { prevCb(isAvailable); } catch {}
+        }
+        if (isAvailable) {
+          done(initGoogleCastContextIfReady());
+        } else {
+          done(false);
+        }
+      };
+      if (!document.querySelector('script[data-kaira-cast-sdk="1"]')) {
+        const s = document.createElement('script');
+        s.src = 'https://www.gstatic.com/cv/js/sender/v1/cast_sender.js?loadCastFramework=1';
+        s.async = true;
+        s.setAttribute('data-kaira-cast-sdk', '1');
+        s.onerror = () => done(false);
+        document.head.appendChild(s);
+      }
+      setTimeout(() => done(initGoogleCastContextIfReady()), 3500);
+    });
+    return googleCastSdkPromise;
+  }
+
   let staticCatalogIndexPromise = null;
   function fetchStaticCatalogIndex() {
     if (!staticCatalogIndexPromise) {
@@ -1299,6 +1425,17 @@
             <div class="fx-video-wrap" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:#000;">
               <video id="flicx-video" class="fx-video" playsinline webkit-playsinline="true" preload="auto"${posterUrl ? ` poster="${escapeAttr(posterUrl)}"` : ''} crossorigin="anonymous" x-webkit-airplay="allow" style="width:100%;height:100%;object-fit:contain;background:#000;display:block;"></video>
               <iframe id="flicx-embed-frame" class="atv-embed-frame" title="${escapeAttr(cleanTitle)}" allow="autoplay; fullscreen; encrypted-media; picture-in-picture" referrerpolicy="origin" style="display:none;position:absolute;inset:0;width:100%;height:100%;border:0;background:#000;z-index:2;"></iframe>
+              <div id="atv-cast-banner" class="atv-cast-banner" aria-live="polite" aria-hidden="true">
+                <div class="atv-cast-banner-icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="32" height="32"><path d="M2 16.1A5 5 0 0 1 5.9 20M2 12.05A9 9 0 0 1 9.95 20M2 8V6a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-6"/><line x1="2" y1="20" x2="2.01" y2="20"/></svg>
+                </div>
+                <div class="atv-cast-banner-label" id="atv-cast-device-label">Casting to TV</div>
+                <div class="atv-cast-banner-title">${escapeHtml(cleanTitle)}</div>
+                <div class="atv-cast-banner-actions">
+                  <button type="button" id="atv-cast-banner-play" class="atv-cast-banner-btn">Pause on TV</button>
+                  <button type="button" id="atv-cast-banner-stop" class="atv-cast-banner-btn atv-cast-banner-stop">Stop Casting</button>
+                </div>
+              </div>
               <div id="atv-subtitle-cue" class="atv-subtitle-cue" aria-live="polite" aria-hidden="true"></div>
               <div id="flicx-buffering" class="fx-buffering" style="position:absolute;display:none;pointer-events:none;z-index:4;">
                 <div class="fx-spinner" style="width:2.85rem;height:2.85rem;border:3px solid rgba(255,255,255,0.22);border-top-color:#ffffff;border-radius:50%;animation:spin 0.8s linear infinite;"></div>
@@ -1342,6 +1479,9 @@
                     </div>
                   </div>
 
+                  <button type="button" id="atv-top-cast-btn" class="atv-top-circle atv-top-cast-btn" aria-label="Cast to TV" title="Cast / External Player">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><path d="M2 16.1A5 5 0 0 1 5.9 20M2 12.05A9 9 0 0 1 9.95 20M2 8V6a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-6"/><line x1="2" y1="20" x2="2.01" y2="20"/></svg>
+                  </button>
                   <button type="button" class="atv-top-circle fx-btn-fullscreen" aria-label="Fullscreen" title="Fullscreen (F)">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>
                   </button>
@@ -1442,10 +1582,29 @@
                             <span>Cast to TV / Chromecast</span>
                           </span>
                         </button>
+                        <button type="button" id="atv-cast-disconnect" class="atv-pop-item atv-pop-item-danger" role="menuitem" style="display:none;">
+                          <span class="atv-pop-item-label">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                            <span>Stop Casting</span>
+                          </span>
+                        </button>
                         <button type="button" id="atv-cast-airplay" class="atv-pop-item" role="menuitem">
                           <span class="atv-pop-item-label">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><path d="M5 17H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2h-1"/><polygon points="12 15 17 21 7 21 12 15"/></svg>
                             <span>AirPlay Display</span>
+                          </span>
+                        </button>
+                        <div class="atv-pop-divider"></div>
+                        <button type="button" id="atv-cast-vlc" class="atv-pop-item" role="menuitem">
+                          <span class="atv-pop-item-label">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                            <span>Open in VLC Player</span>
+                          </span>
+                        </button>
+                        <button type="button" id="atv-cast-infuse" class="atv-pop-item" role="menuitem">
+                          <span class="atv-pop-item-label">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+                            <span>Open in Infuse (iOS / Apple TV)</span>
                           </span>
                         </button>
                         <button type="button" id="atv-cast-copy-stream" class="atv-pop-item" role="menuitem">
@@ -2397,57 +2556,331 @@
       videoEl.addEventListener('enterpictureinpicture', onEnterPiP);
       videoEl.addEventListener('leavepictureinpicture', onLeavePiP);
 
-      // Cast & AirPlay Actions
+      // Cast & AirPlay Actions (Google Cast Web Sender SDK v3 + Public HTTPS HLS Selection + AirPlay + VLC/Infuse)
       const castRemoteBtn = watchRoot.querySelector('#atv-cast-remote');
+      const castDisconnectBtn = watchRoot.querySelector('#atv-cast-disconnect');
       const castAirplayBtn = watchRoot.querySelector('#atv-cast-airplay');
+      const castVlcBtn = watchRoot.querySelector('#atv-cast-vlc');
+      const castInfuseBtn = watchRoot.querySelector('#atv-cast-infuse');
       const castCopyStreamBtn = watchRoot.querySelector('#atv-cast-copy-stream');
       const castShareLinkBtn = watchRoot.querySelector('#atv-cast-share-link');
+      const topCastBtn = watchRoot.querySelector('#atv-top-cast-btn');
+      const castBannerEl = watchRoot.querySelector('#atv-cast-banner');
+      const castDeviceLabelEl = watchRoot.querySelector('#atv-cast-device-label');
+      const castBannerPlayBtn = watchRoot.querySelector('#atv-cast-banner-play');
+      const castBannerStopBtn = watchRoot.querySelector('#atv-cast-banner-stop');
+
+      let activeCastSession = null;
+      let castRemotePlayer = null;
+      let castRemoteController = null;
+      let castSessionStateHandler = null;
+      let castFallbackVideoEl = null;
 
       function updateCastStatus(text) {
         if (castStatusEl) castStatusEl.textContent = text;
       }
 
+      function setCastingUiActive(connected, deviceName) {
+        const isConnected = Boolean(connected);
+        if (playerEl) playerEl.classList.toggle('atv-casting-active', isConnected);
+        if (castBtn) castBtn.classList.toggle('atv-icon-connected', isConnected);
+        if (topCastBtn) topCastBtn.classList.toggle('atv-icon-connected', isConnected);
+        if (castDisconnectBtn) castDisconnectBtn.style.display = isConnected ? '' : 'none';
+        if (castBannerEl) {
+          castBannerEl.classList.toggle('atv-cast-active', isConnected);
+          castBannerEl.setAttribute('aria-hidden', isConnected ? 'false' : 'true');
+        }
+        if (castDeviceLabelEl && deviceName) {
+          castDeviceLabelEl.textContent = `Casting to ${deviceName}`;
+        }
+      }
+
+      function syncCastBannerPlayLabel() {
+        if (!castBannerPlayBtn || !castRemotePlayer) return;
+        castBannerPlayBtn.textContent = castRemotePlayer.isPaused ? 'Resume on TV' : 'Pause on TV';
+      }
+
+      function loadMediaIntoCastSession(session) {
+        if (!session || !window.chrome || !window.chrome.cast) return;
+        const target = pickCastableStreamSource(servers, currentServer);
+        const deviceName = session.getCastDevice?.()?.friendlyName || 'Chromecast TV';
+        if (target.kind !== 'direct' || !target.url) {
+          updateCastStatus(`Connected to ${deviceName} — switch to a direct HLS server or use Chrome's Cast Tab for embed players`);
+          showPlayerStatus(`Connected to ${deviceName} (embed server cannot stream directly)`);
+          setCastingUiActive(true, deviceName);
+          return;
+        }
+
+        const mediaInfo = new window.chrome.cast.media.MediaInfo(target.url, target.contentType || 'application/x-mpegurl');
+        mediaInfo.streamType = window.chrome.cast.media.StreamType.BUFFERED;
+        if (target.contentType === 'application/x-mpegurl') {
+          try {
+            mediaInfo.hlsSegmentFormat = window.chrome.cast.media.HlsSegmentFormat.TS;
+            mediaInfo.hlsVideoSegmentFormat = window.chrome.cast.media.HlsVideoSegmentFormat.MPEG2_TS;
+          } catch {}
+        }
+
+        const metadata = new window.chrome.cast.media.MovieMediaMetadata();
+        metadata.title = cleanTitle;
+        metadata.subtitle = isShow
+          ? (isAnimeRoute ? `Episode ${episodeNum}` : `Season ${seasonNum} · Episode ${episodeNum}`)
+          : (yearStr || 'Kaira');
+        if (posterUrl) {
+          metadata.images = [new window.chrome.cast.Image(posterUrl)];
+        }
+        mediaInfo.metadata = metadata;
+
+        const request = new window.chrome.cast.media.LoadRequest(mediaInfo);
+        request.autoplay = true;
+        request.currentTime = Number.isFinite(videoEl.currentTime) && videoEl.currentTime > 1 ? videoEl.currentTime : 0;
+
+        updateCastStatus(`Sending ${target.server?.name || 'stream'} to ${deviceName}…`);
+        session.loadMedia(request).then(
+          () => {
+            if (isDestroyed) return;
+            activeCastSession = session;
+            try { videoEl.pause(); } catch {}
+            setCastingUiActive(true, deviceName);
+            updateCastStatus(`Casting ${target.server?.name || ''} to ${deviceName}`.trim());
+            showPlayerStatus(`Casting to ${deviceName}`);
+            try {
+              if (!castRemotePlayer && window.cast?.framework?.RemotePlayer) {
+                castRemotePlayer = new window.cast.framework.RemotePlayer();
+                castRemoteController = new window.cast.framework.RemotePlayerController(castRemotePlayer);
+                castRemoteController.addEventListener(
+                  window.cast.framework.RemotePlayerEventType.IS_PAUSED_CHANGED,
+                  syncCastBannerPlayLabel
+                );
+              }
+              syncCastBannerPlayLabel();
+            } catch {}
+          },
+          (errCode) => {
+            if (isDestroyed) return;
+            updateCastStatus(`TV could not play stream (${String(errCode || 'error')}). Try switching server or Copy Stream URL.`);
+            showPlayerStatus('Cast stream load failed — try another server');
+          }
+        );
+      }
+
+      function stopActiveCastSession() {
+        try {
+          if (activeCastSession && typeof activeCastSession.endSession === 'function') {
+            activeCastSession.endSession(true);
+          } else if (window.cast?.framework?.CastContext) {
+            const cur = window.cast.framework.CastContext.getInstance().getCurrentSession();
+            if (cur) cur.endSession(true);
+          }
+        } catch {}
+        activeCastSession = null;
+        setCastingUiActive(false);
+        updateCastStatus('Disconnected from TV');
+        showPlayerStatus('Stopped casting');
+      }
+
+      // Preload Google Cast Web Sender SDK in the background so clicks stay inside a valid user gesture
+      ensureGoogleCastSdkLoaded().then((available) => {
+        if (isDestroyed || !available || !window.cast?.framework?.CastContext) return;
+        try {
+          const ctx = window.cast.framework.CastContext.getInstance();
+          castSessionStateHandler = (ev) => {
+            if (isDestroyed) return;
+            const state = ev?.sessionState;
+            const SS = window.cast.framework.SessionState;
+            if (state === SS.SESSION_STARTED || state === SS.SESSION_RESUMED) {
+              const sess = ctx.getCurrentSession();
+              if (sess) loadMediaIntoCastSession(sess);
+            } else if (state === SS.SESSION_ENDED) {
+              activeCastSession = null;
+              setCastingUiActive(false);
+              updateCastStatus('Ready to connect to a TV or external player');
+            }
+          };
+          ctx.addEventListener(window.cast.framework.CastContextEventType.SESSION_STATE_CHANGED, castSessionStateHandler);
+          const existing = ctx.getCurrentSession();
+          if (existing) {
+            activeCastSession = existing;
+            const devName = existing.getCastDevice?.()?.friendlyName || 'Chromecast TV';
+            setCastingUiActive(true, devName);
+            updateCastStatus(`Connected to ${devName}`);
+          }
+        } catch {}
+      });
+
+      // Safari AirPlay wireless playback status listener
+      const onAirplayWirelessChange = () => {
+        const isWireless = Boolean(videoEl.webkitCurrentPlaybackTargetIsWireless);
+        setCastingUiActive(isWireless, 'AirPlay TV');
+        updateCastStatus(isWireless ? 'Playing via AirPlay' : 'Ready to connect to a TV or external player');
+        if (isWireless) showPlayerStatus('AirPlay connected');
+      };
+      try {
+        videoEl.addEventListener('webkitcurrentplaybacktargetiswirelesschanged', onAirplayWirelessChange);
+      } catch {}
+
       if (videoEl.remote) {
         try {
           videoEl.remote.addEventListener('connecting', () => updateCastStatus('Connecting to TV display…'));
           videoEl.remote.addEventListener('connect', () => {
+            setCastingUiActive(true, 'TV Display');
             updateCastStatus('Casting to remote display');
-            if (castBtn) castBtn.classList.add('atv-icon-connected');
             showPlayerStatus('Casting connected');
           });
           videoEl.remote.addEventListener('disconnect', () => {
+            setCastingUiActive(false);
             updateCastStatus('Disconnected from remote display');
-            if (castBtn) castBtn.classList.remove('atv-icon-connected');
           });
         } catch {}
+      }
+
+      async function triggerCastToTv() {
+        const target = pickCastableStreamSource(servers, currentServer);
+
+        // 1. Official Google Cast Web Sender SDK (Chrome Desktop, Edge, Android Chrome)
+        if (initGoogleCastContextIfReady() && window.cast?.framework?.CastContext) {
+          try {
+            const ctx = window.cast.framework.CastContext.getInstance();
+            const existing = ctx.getCurrentSession();
+            if (existing) {
+              loadMediaIntoCastSession(existing);
+              return;
+            }
+            updateCastStatus('Opening Chromecast device picker…');
+            await ctx.requestSession();
+            const session = ctx.getCurrentSession();
+            if (session) loadMediaIntoCastSession(session);
+            return;
+          } catch (err) {
+            const errStr = String(err?.code || err?.message || err || '').toLowerCase();
+            if (errStr.includes('cancel')) {
+              updateCastStatus('Cast cancelled');
+              return;
+            }
+            if (errStr.includes('receiver_unavailable') || errStr.includes('no_devices')) {
+              updateCastStatus('No Chromecast devices found on your Wi-Fi network');
+              showPlayerStatus('No Chromecast devices found on Wi-Fi');
+              return;
+            }
+            // Fall through to Remote Playback API if Cast SDK is blocked (e.g. inside iframe preview)
+          }
+        }
+
+        // 2. W3C Remote Playback API using a real public HTTPS stream URL (avoids HLS.js blob: MediaSource failure)
+        if (target.kind === 'direct' && target.url) {
+          const canUseDirectOnMain = videoEl.currentSrc && isPublicHttpStreamUrl(videoEl.currentSrc);
+          let promptEl = canUseDirectOnMain ? videoEl : null;
+          if (!promptEl) {
+            if (!castFallbackVideoEl) {
+              castFallbackVideoEl = document.createElement('video');
+              castFallbackVideoEl.crossOrigin = 'anonymous';
+              castFallbackVideoEl.playsInline = true;
+              castFallbackVideoEl.style.display = 'none';
+              playerEl.appendChild(castFallbackVideoEl);
+            }
+            if (castFallbackVideoEl.src !== target.url) {
+              castFallbackVideoEl.src = target.url;
+            }
+            promptEl = castFallbackVideoEl;
+          }
+
+          if (promptEl && promptEl.remote && typeof promptEl.remote.prompt === 'function') {
+            try {
+              updateCastStatus('Searching for Cast devices…');
+              await promptEl.remote.prompt();
+              return;
+            } catch (err) {
+              const name = err?.name || '';
+              if (name === 'NotFoundError') {
+                updateCastStatus('No Cast devices found on this Wi-Fi network');
+                showPlayerStatus('No Cast devices found on Wi-Fi');
+                return;
+              }
+              if (name === 'NotAllowedError') {
+                updateCastStatus('Cast blocked inside embedded preview — open Kaira directly in Chrome or use VLC / Infuse below');
+                showPlayerStatus('Open in Chrome tab or copy stream URL for TV');
+                return;
+              }
+            }
+          }
+        }
+
+        // 3. Clear, actionable guidance when browser lacks native Cast SDK (Firefox, embedded iframe, or embed-only server)
+        if (target.kind === 'embed-only') {
+          updateCastStatus('This embed server requires Chrome Cast Tab (⋮ → Cast) — or switch to a direct HLS server like Vega');
+          showPlayerStatus('Use Chrome menu → Cast Tab for embed streams');
+        } else if (window.self !== window.top) {
+          updateCastStatus('Open Kaira in its own Chrome tab for Chromecast, or tap Open in VLC / Copy Stream URL below');
+          showPlayerStatus('Open in a direct Chrome tab to cast');
+        } else {
+          updateCastStatus('Chromecast requires Chrome/Edge on the same Wi-Fi — or use Open in VLC / Infuse below');
+          showPlayerStatus('Use Chrome for Chromecast, or VLC / Infuse');
+        }
       }
 
       if (castRemoteBtn) {
         castRemoteBtn.onclick = async (e) => {
           e.stopPropagation();
-          if (videoEl.remote && typeof videoEl.remote.prompt === 'function') {
-            try {
-              updateCastStatus('Searching for Cast devices…');
-              await videoEl.remote.prompt();
-            } catch (err) {
-              const msg = err && err.name === 'NotFoundError'
-                ? 'No Cast devices found on this network'
-                : 'Cast device picker closed or unavailable';
-              updateCastStatus(msg);
-              showPlayerStatus(msg);
-            }
-          } else {
-            updateCastStatus('Browser Cast API unavailable — copy the stream URL below for VLC, Infuse, or Apple TV');
-            showPlayerStatus('Use Copy Stream URL for external casting');
-          }
+          await triggerCastToTv();
           wakeControls();
+        };
+      }
+
+      if (castDisconnectBtn) {
+        castDisconnectBtn.onclick = (e) => {
+          e.stopPropagation();
+          stopActiveCastSession();
+          wakeControls();
+        };
+      }
+
+      if (castBannerStopBtn) {
+        castBannerStopBtn.onclick = (e) => {
+          e.stopPropagation();
+          stopActiveCastSession();
+        };
+      }
+
+      if (castBannerPlayBtn) {
+        castBannerPlayBtn.onclick = (e) => {
+          e.stopPropagation();
+          if (castRemoteController) {
+            try { castRemoteController.playOrPause(); } catch {}
+          }
+        };
+      }
+
+      if (topCastBtn) {
+        topCastBtn.onclick = async (e) => {
+          e.stopPropagation();
+          await triggerCastToTv();
         };
       }
 
       if (castAirplayBtn) {
         castAirplayBtn.onclick = (e) => {
           e.stopPropagation();
+          const target = pickCastableStreamSource(servers, currentServer);
           if (typeof videoEl.webkitShowPlaybackTargetPicker === 'function') {
+            // Safari AirPlay cannot cast HLS.js blob: MediaSource URLs — switch to native .m3u8 first if needed
+            if (
+              target.kind === 'direct' &&
+              target.url &&
+              String(videoEl.currentSrc || '').startsWith('blob:') &&
+              (videoEl.canPlayType('application/vnd.apple.mpegurl') || videoEl.canPlayType('application/x-mpegURL'))
+            ) {
+              const resumeAt = Number.isFinite(videoEl.currentTime) ? videoEl.currentTime : 0;
+              if (currentHls) {
+                try { currentHls.destroy(); } catch {}
+                currentHls = null;
+              }
+              videoEl.src = target.url;
+              videoEl.addEventListener('loadedmetadata', () => {
+                if (resumeAt > 1) {
+                  try { videoEl.currentTime = resumeAt; } catch {}
+                }
+                videoEl.play().catch(() => {});
+              }, { once: true });
+            }
             videoEl.webkitShowPlaybackTargetPicker();
             updateCastStatus('Opening AirPlay picker…');
           } else {
@@ -2479,11 +2912,49 @@
         }
       }
 
+      if (castVlcBtn) {
+        castVlcBtn.onclick = (e) => {
+          e.stopPropagation();
+          const target = pickCastableStreamSource(servers, currentServer);
+          const links = buildExternalPlayerLinks(target.url);
+          if (!links.vlcUrl) {
+            updateCastStatus('No direct HLS stream available for VLC on this title');
+            showPlayerStatus('Direct HLS stream required for VLC');
+            return;
+          }
+          updateCastStatus(`Opening ${target.server?.name || 'stream'} in VLC…`);
+          showPlayerStatus('Launching VLC…');
+          window.location.href = links.vlcUrl;
+          wakeControls();
+        };
+      }
+
+      if (castInfuseBtn) {
+        castInfuseBtn.onclick = (e) => {
+          e.stopPropagation();
+          const target = pickCastableStreamSource(servers, currentServer);
+          const links = buildExternalPlayerLinks(target.url);
+          if (!links.infuseUrl) {
+            updateCastStatus('No direct HLS stream available for Infuse on this title');
+            showPlayerStatus('Direct HLS stream required for Infuse');
+            return;
+          }
+          updateCastStatus(`Opening ${target.server?.name || 'stream'} in Infuse…`);
+          showPlayerStatus('Launching Infuse…');
+          window.location.href = links.infuseUrl;
+          wakeControls();
+        };
+      }
+
       if (castCopyStreamBtn) {
         castCopyStreamBtn.onclick = (e) => {
           e.stopPropagation();
-          const fullStreamUrl = new URL(currentServer.src, window.location.origin).href;
-          copyTextWithFeedback(fullStreamUrl, 'Stream URL copied for VLC / Infuse');
+          const target = pickCastableStreamSource(servers, currentServer);
+          if (target.url) {
+            copyTextWithFeedback(target.url, `Public ${target.server?.name || ''} stream URL copied for VLC / Infuse`.replace(/\s+/g, ' '));
+          } else {
+            copyTextWithFeedback(window.location.href, 'No direct stream URL — copied Watch Link instead');
+          }
           wakeControls();
         };
       }
@@ -2662,6 +3133,18 @@
           try { embedFrameEl.src = 'about:blank'; } catch {}
         }
         try {
+          if (castSessionStateHandler && window.cast?.framework?.CastContext) {
+            window.cast.framework.CastContext.getInstance().removeEventListener(
+              window.cast.framework.CastContextEventType.SESSION_STATE_CHANGED,
+              castSessionStateHandler
+            );
+          }
+          if (castFallbackVideoEl) {
+            castFallbackVideoEl.removeAttribute('src');
+            castFallbackVideoEl.remove();
+            castFallbackVideoEl = null;
+          }
+          videoEl.removeEventListener('webkitcurrentplaybacktargetiswirelesschanged', onAirplayWirelessChange);
           videoEl.removeEventListener('enterpictureinpicture', onEnterPiP);
           videoEl.removeEventListener('leavepictureinpicture', onLeavePiP);
           videoEl.pause();
@@ -2917,6 +3400,18 @@
       if (e.target.closest('[data-watchlist-button], .cover-add, .card-over-genre, button, input, select')) {
         return;
       }
+
+      // Wire Cast & Crew /person/<id>-<slug> links cleanly to live Kaira search instead of 404
+      const personLink = e.target.closest('a[href*="/person/"]');
+      if (personLink) {
+        const personQuery = parsePersonRouteToSearchQuery(personLink.getAttribute('href') || '');
+        if (personQuery) {
+          e.preventDefault();
+          navigateTo(withBasePath(`/search?q=${encodeURIComponent(personQuery)}`));
+          return;
+        }
+      }
+
       const card = e.target.closest('.card, .card-over, .card-action, [data-href]');
       if (!card) return;
 
@@ -6547,6 +7042,17 @@
         left: auto;
         top: auto;
       }
+      #atv-popover-cast {
+        max-height: min(440px, calc(100dvh - 130px)) !important;
+      }
+      .atv-pop-item-danger {
+        color: #b91c1c !important;
+        font-weight: 600 !important;
+      }
+      .atv-pop-item-danger:hover {
+        background: rgba(185, 28, 28, 0.14) !important;
+        color: #991b1b !important;
+      }
       .atv-server-popover {
         top: calc(100% + 10px) !important;
         bottom: auto !important;
@@ -7053,7 +7559,84 @@
         }
       }
 
-      /* Embed Fallback Mode (GitHub Pages universal playback): keep top Back/Server/Fullscreen bar interactive while passing clicks through to embed player */
+      /* Embed Fallback Mode (GitHub Pages universal playback): keep top Back/Server/Cast/Fullscreen bar interactive while passing clicks through to embed player */
+      .atv-top-cast-btn {
+        display: none;
+      }
+      .fx-player.atv-mode-embed .atv-top-cast-btn {
+        display: inline-flex;
+      }
+      .atv-cast-banner {
+        position: absolute;
+        inset: 0;
+        z-index: 6;
+        display: none;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 0.75rem;
+        padding: 2rem;
+        background: radial-gradient(circle at center, rgba(24, 24, 32, 0.88) 0%, rgba(5, 5, 8, 0.96) 100%);
+        color: #ffffff;
+        text-align: center;
+      }
+      .atv-cast-banner.atv-cast-active {
+        display: flex;
+      }
+      .atv-cast-banner-icon {
+        width: 4rem;
+        height: 4rem;
+        border-radius: 50%;
+        background: rgba(10, 132, 255, 0.18);
+        border: 1px solid rgba(10, 132, 255, 0.45);
+        color: #64b5ff;
+        display: grid;
+        place-items: center;
+      }
+      .atv-cast-banner-label {
+        font-size: 0.85rem;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: #64b5ff;
+        font-weight: 600;
+      }
+      .atv-cast-banner-title {
+        font-size: clamp(1.25rem, 2.8vw, 1.85rem);
+        font-weight: 700;
+      }
+      .atv-cast-banner-actions {
+        display: flex;
+        gap: 0.75rem;
+        margin-top: 0.5rem;
+      }
+      .atv-cast-banner-btn {
+        padding: 0.6rem 1.2rem;
+        border-radius: 999px;
+        border: 1px solid rgba(255, 255, 255, 0.22);
+        background: rgba(255, 255, 255, 0.14);
+        color: #ffffff;
+        font-size: 0.9rem;
+        font-weight: 600;
+        cursor: pointer;
+        transition: background 0.18s ease, transform 0.15s ease;
+      }
+      .atv-cast-banner-btn:hover {
+        background: rgba(255, 255, 255, 0.24);
+      }
+      .atv-cast-banner-stop {
+        border-color: rgba(255, 105, 97, 0.45);
+        background: rgba(255, 69, 58, 0.2);
+        color: #ff9a94;
+      }
+      .atv-cast-banner-stop:hover {
+        background: rgba(255, 69, 58, 0.34);
+      }
+      .fx-player.atv-casting-active #fx-center-play,
+      .fx-player.atv-casting-active .kaira-center-play,
+      .fx-player.atv-casting-active .fx-buffering,
+      .fx-player.atv-casting-active .atv-subtitle-cue {
+        display: none !important;
+      }
       .fx-player.atv-mode-embed .fx-bottom,
       .fx-player.atv-mode-embed .kaira-center-play,
       .fx-player.atv-mode-embed .atv-subtitle-cue {
@@ -7620,6 +8203,13 @@
           return;
         }
 
+        const personQuery = parsePersonRouteToSearchQuery(url.pathname);
+        if (personQuery) {
+          e.preventDefault();
+          navigateTo(withBasePath(`/search?q=${encodeURIComponent(personQuery)}`));
+          return;
+        }
+
         e.preventDefault();
         navigateTo(url.pathname + url.search);
       } catch (err) {}
@@ -7637,7 +8227,7 @@
       const link = e.target.closest('a[href]');
       if (!link) return;
       const href = link.getAttribute('href');
-      if (!href || href.startsWith('#') || href.startsWith('http') || href.startsWith('mailto:')) return;
+      if (!href || href.startsWith('#') || href.startsWith('http') || href.startsWith('mailto:') || href.includes('/person/')) return;
       try {
         const url = new URL(href, window.location.origin);
         if (url.origin === window.location.origin) {
