@@ -205,6 +205,12 @@ export function prepareServedHtml(html: string): string {
   out = out.replace(/Watch on Flicx/g, 'Watch on Kaira');
   out = out.replace(/https:\/\/fli\.cx\/opengraph-image(?:\?[^"'\s<>\\]*)?/gi, '/brand/og-image.png');
   out = out.replace(/<link[^>]*rel=["']alternate["'][^>]*href=["']https:\/\/fli\.cx\/feed\.xml["'][^>]*\/?>/gi, '');
+  if (!out.includes('pagead2.googlesyndication.com/pagead/js/adsbygoogle.js')) {
+    out = out.replace(
+      '</head>',
+      '<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-9047551447187712" crossorigin="anonymous"></script></head>'
+    );
+  }
   if (!out.includes('flicx-interactive.js')) {
     out = out.replace('</body>', '<script src="/flicx-interactive.js"></script></body>');
   }
