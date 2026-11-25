@@ -559,57 +559,202 @@
     return serverList;
   }
 
-  async function resolveSubtitlesForImdb(imdbId, isShow, seasonNum, episodeNum) {
-    // 1. Try local Vite /api/subtitles endpoint first
-    try {
-      const subUrl = `/api/subtitles/${encodeURIComponent(imdbId)}${isShow ? `?s=${seasonNum}&e=${episodeNum}` : ''}`;
-      const res = await fetch(subUrl);
-      if (res.ok) {
-        const ct = (res.headers.get('content-type') || '').toLowerCase();
-        if (ct.includes('json')) {
-          const data = await res.json().catch(() => null);
-          if (data && Array.isArray(data.tracks) && data.tracks.length > 0) {
-            return data.tracks;
-          }
-        }
-      }
-    } catch {}
+  const SUBTITLE_PREF_LANG_KEY = 'kaira:subtitles:lang';
+  const SUBTITLE_ISO3_TO_2 = {
+    eng: 'en', spa: 'es', fre: 'fr', fra: 'fr', ger: 'de', deu: 'de', ita: 'it',
+    por: 'pt', pob: 'pt-BR', pb: 'pt-BR', rus: 'ru', jpn: 'ja', kor: 'ko',
+    chi: 'zh', zho: 'zh', ara: 'ar', hin: 'hi', dut: 'nl', nld: 'nl', pol: 'pl',
+    tur: 'tr', swe: 'sv', nor: 'no', dan: 'da', fin: 'fi', cze: 'cs', ces: 'cs',
+    gre: 'el', ell: 'el', heb: 'he', hun: 'hu', ind: 'id', rum: 'ro', ron: 'ro',
+    tha: 'th', ukr: 'uk', vie: 'vi', bul: 'bg', hrv: 'hr', srp: 'sr', slk: 'sk',
+    per: 'fa', fas: 'fa', may: 'ms', msa: 'ms', ben: 'bn', mal: 'ml', tam: 'ta',
+    tel: 'te', urd: 'ur', fil: 'tl', tgl: 'tl'
+  };
 
-    // 2. Live CORS fallback: OpenSubtitles Stremio v3 (Access-Control-Allow-Origin: * on both index & .srt files!)
-    if (/^tt\d+$/i.test(String(imdbId || ''))) {
+  function normalizeSubLangCode(raw) {
+    const cleaned = String(raw || '').trim().toLowerCase();
+    if (!cleaned) return '';
+    if (SUBTITLE_ISO3_TO_2[cleaned]) return SUBTITLE_ISO3_TO_2[cleaned];
+    if (cleaned === 'pt-br' || cleaned === 'pt_br') return 'pt-BR';
+    return cleaned.slice(0, 2);
+  }
+
+  function loadPreferredSubtitleLang() {
+    try {
+      const saved = localStorage.getItem(SUBTITLE_PREF_LANG_KEY);
+      return saved ? String(saved).trim().toLowerCase() : '';
+    } catch {
+      return '';
+    }
+  }
+
+  function savePreferredSubtitleLang(lang) {
+    try {
+      const clean = String(lang || '').trim().toLowerCase();
+      if (!clean) localStorage.removeItem(SUBTITLE_PREF_LANG_KEY);
+      else localStorage.setItem(SUBTITLE_PREF_LANG_KEY, clean);
+    } catch {}
+  }
+
+  function buildOpenSubtitlesRestUrl(params) {
+    const segments = [];
+    const cleanImdb = String(params?.imdbId || '').trim();
+    const imdbMatch = /^tt(\d+)$/i.exec(cleanImdb);
+    const cleanQuery = String(params?.query || '').trim().replace(/\s+/g, ' ');
+    if (imdbMatch) {
+      segments.push(['imdbid', imdbMatch[1]]);
+    } else if (cleanQuery) {
+      segments.push(['query', encodeURIComponent(cleanQuery.toLowerCase())]);
+    } else {
+      return null;
+    }
+    if (params?.isShow) {
+      const s = Math.max(1, Math.floor(Number(params.season) || 1));
+      const e = Math.max(1, Math.floor(Number(params.episode) || 1));
+      segments.push(['episode', String(e)]);
+      segments.push(['season', String(s)]);
+    }
+    segments.sort((a, b) => a[0].localeCompare(b[0]));
+    return `https://rest.opensubtitles.org/search/${segments.map(([k, v]) => `${k}-${v}`).join('/')}`;
+  }
+
+  function normalizeOpenSubtitlesRestList(entries) {
+    if (!Array.isArray(entries)) return [];
+    const out = [];
+    for (const item of entries) {
+      if (!item || typeof item !== 'object') continue;
+      const fileId = String(item.IDSubtitleFile || '').trim();
+      if (!/^\d+$/.test(fileId)) continue;
+      const fmt = String(item.SubFormat || 'srt').toLowerCase();
+      if (fmt && fmt !== 'srt' && fmt !== 'vtt' && fmt !== 'sub') continue;
+      const lang = normalizeSubLangCode(item.SubLanguageID || item.ISO639 || '');
+      if (!lang) continue;
+      const downloads = Number(item.SubDownloadsCnt) || 0;
+      const sdh =
+        item.SubHearingImpaired === '1' ||
+        item.SubHearingImpaired === 1 ||
+        /\b(sdh|cc|hi)\b/i.test(String(item.SubFileName || ''));
+      out.push({
+        language: lang,
+        src: `https://subs5.strem.io/en/download/subencoding-stremio-utf8/src-api/file/${fileId}`,
+        sdh,
+        source: 'OpenSubtitles',
+        downloads
+      });
+    }
+    out.sort((a, b) => (b.downloads || 0) - (a.downloads || 0));
+    return out;
+  }
+
+  async function searchOpenSubtitlesByQuery(query, isShow, seasonNum, episodeNum) {
+    const restUrl = buildOpenSubtitlesRestUrl({
+      query,
+      isShow: Boolean(isShow),
+      season: seasonNum,
+      episode: episodeNum
+    });
+    if (!restUrl) return [];
+    try {
+      const res = await fetch(restUrl);
+      if (!res.ok) return [];
+      const ct = (res.headers.get('content-type') || '').toLowerCase();
+      if (!ct.includes('json')) return [];
+      const data = await res.json().catch(() => null);
+      return normalizeOpenSubtitlesRestList(data);
+    } catch {
+      return [];
+    }
+  }
+
+  async function resolveSubtitlesForImdb(imdbId, isShow, seasonNum, episodeNum, fallbackTitle) {
+    const collected = [];
+    const pushTracks = (list, defaultSource) => {
+      if (!Array.isArray(list)) return;
+      for (const item of list) {
+        if (!item || !item.src || !item.language) continue;
+        collected.push({
+          language: normalizeSubLangCode(item.language) || String(item.language).trim(),
+          src: String(item.src).trim(),
+          sdh: Boolean(item.sdh),
+          source: item.source || defaultSource || 'OpenSubtitles',
+          downloads: Number(item.downloads) || 0
+        });
+      }
+    };
+
+    const hasValidImdb = /^tt\d+$/i.test(String(imdbId || '').trim());
+
+    // 1. Local Vite / server /api/subtitles endpoint (when running with backend)
+    if (hasValidImdb) {
       try {
-        const osUrl = isShow
-          ? `https://opensubtitles-v3.strem.io/subtitles/series/${encodeURIComponent(imdbId)}:${seasonNum}:${episodeNum}.json`
-          : `https://opensubtitles-v3.strem.io/subtitles/movie/${encodeURIComponent(imdbId)}.json`;
-        const res = await fetch(osUrl);
+        const subUrl = `/api/subtitles/${encodeURIComponent(imdbId)}${isShow ? `?s=${seasonNum}&e=${episodeNum}` : ''}`;
+        const res = await fetch(subUrl);
         if (res.ok) {
-          const data = await res.json().catch(() => null);
-          const subs = Array.isArray(data?.subtitles) ? data.subtitles : [];
-          const ISO3_TO_2 = {
-            eng: 'en', spa: 'es', fre: 'fr', fra: 'fr', ger: 'de', deu: 'de', ita: 'it',
-            por: 'pt', pob: 'pt-BR', rus: 'ru', jpn: 'ja', kor: 'ko', chi: 'zh', zho: 'zh',
-            ara: 'ar', hin: 'hi', dut: 'nl', nld: 'nl', pol: 'pl', tur: 'tr', swe: 'sv',
-            nor: 'no', dan: 'da', fin: 'fi', cze: 'cs', ces: 'cs', gre: 'el', ell: 'el',
-            heb: 'he', hun: 'hu', ind: 'id', rum: 'ro', ron: 'ro', tha: 'th', ukr: 'uk',
-            vie: 'vi', bul: 'bg', hrv: 'hr', srp: 'sr', slk: 'sk', per: 'fa', fas: 'fa',
-            may: 'ms', msa: 'ms', ben: 'bn', mal: 'ml'
-          };
-          return subs
-            .filter(s => s && s.url && s.lang)
-            .map(s => {
-              const rawLang = String(s.lang).toLowerCase();
-              const code = ISO3_TO_2[rawLang] || rawLang.slice(0, 2);
-              return {
-                language: code,
-                src: s.url,
-                sdh: Boolean(s.SubHearingImpaired === '1' || /sdh|cc|hi/i.test(String(s.id || '')))
-              };
-            });
+          const ct = (res.headers.get('content-type') || '').toLowerCase();
+          if (ct.includes('json')) {
+            const data = await res.json().catch(() => null);
+            if (data && Array.isArray(data.tracks) && data.tracks.length > 0) {
+              pushTracks(data.tracks, 'Kaira');
+            }
+          }
         }
       } catch {}
     }
 
-    return [];
+    // 2 & 3. Parallel CORS-wildcard OpenSubtitles sources (Stremio v3 catalog + OpenSubtitles REST IMDb/Episode)
+    if (hasValidImdb) {
+      const osV3Url = isShow
+        ? `https://opensubtitles-v3.strem.io/subtitles/series/${encodeURIComponent(imdbId)}:${seasonNum}:${episodeNum}.json`
+        : `https://opensubtitles-v3.strem.io/subtitles/movie/${encodeURIComponent(imdbId)}.json`;
+      const osRestUrl = buildOpenSubtitlesRestUrl({
+        imdbId,
+        isShow: Boolean(isShow),
+        season: seasonNum,
+        episode: episodeNum
+      });
+
+      const [v3Tracks, restTracks] = await Promise.all([
+        fetch(osV3Url)
+          .then(async (res) => {
+            if (!res.ok) return [];
+            const data = await res.json().catch(() => null);
+            const subs = Array.isArray(data?.subtitles) ? data.subtitles : [];
+            return subs
+              .filter(s => s && s.url && s.lang)
+              .map(s => ({
+                language: normalizeSubLangCode(s.lang),
+                src: s.url,
+                sdh: Boolean(s.SubHearingImpaired === '1' || /sdh|cc|hi/i.test(String(s.id || ''))),
+                source: 'OpenSubtitles'
+              }));
+          })
+          .catch(() => []),
+        osRestUrl
+          ? fetch(osRestUrl)
+              .then(async (res) => {
+                if (!res.ok) return [];
+                const ct = (res.headers.get('content-type') || '').toLowerCase();
+                if (!ct.includes('json')) return [];
+                const data = await res.json().catch(() => null);
+                return normalizeOpenSubtitlesRestList(data);
+              })
+              .catch(() => [])
+          : Promise.resolve([])
+      ]);
+
+      // Prioritize popularity-ranked REST releases alongside v3 tracks for multi-candidate failover
+      pushTracks(restTracks, 'OpenSubtitles');
+      pushTracks(v3Tracks, 'OpenSubtitles');
+    }
+
+    // 4. Title-query OpenSubtitles REST fallback whenever IMDb lookup found nothing (e.g. missing IMDb ID / newer release)
+    if (collected.length === 0 && fallbackTitle && String(fallbackTitle).trim().length >= 2) {
+      const cleanQuery = String(fallbackTitle).replace(/\(\d{4}\)/g, '').trim();
+      const queryTracks = await searchOpenSubtitlesByQuery(cleanQuery, isShow, seasonNum, episodeNum);
+      pushTracks(queryTracks, 'OpenSubtitles');
+    }
+
+    return collected;
   }
 
   let toastTimer = null;
@@ -1414,30 +1559,43 @@
         const valid = (Array.isArray(rawTracks) ? rawTracks : []).filter(t => t && t.src && t.language);
         const byKey = new Map();
         for (const t of valid) {
-          const lang = String(t.language).trim();
+          const lang = normalizeSubLangCode(t.language) || String(t.language).trim();
           const isSdh = Boolean(t.sdh);
           const key = lang.toLowerCase() === 'en' ? `en:${isSdh ? 'cc' : 'std'}` : lang.toLowerCase();
-          if (!byKey.has(key)) {
+          const cleanSrc = String(t.src).trim();
+          const existing = byKey.get(key);
+          if (!existing) {
             byKey.set(key, {
               id: `${key}:${byKey.size}`,
               language: lang,
               label: formatSubLabel(lang, lang.toLowerCase() === 'en' ? isSdh : false),
-              src: String(t.src).trim(),
-              sdh: isSdh
+              src: cleanSrc,
+              candidates: [cleanSrc],
+              sdh: isSdh,
+              source: t.source || 'OpenSubtitles'
             });
+          } else if (existing.candidates.length < 3 && !existing.candidates.includes(cleanSrc)) {
+            existing.candidates.push(cleanSrc);
           }
         }
         const sorted = Array.from(byKey.values()).sort((a, b) => {
           const aEn = a.language.toLowerCase().startsWith('en') ? 0 : 1;
           const bEn = b.language.toLowerCase().startsWith('en') ? 0 : 1;
           if (aEn !== bEn) return aEn - bEn;
-          if (aEn === 0 && bEn === 0 && a.sdh !== b.sdh) return a.sdh ? -1 : 1;
+          if (aEn === 0 && bEn === 0 && a.sdh !== b.sdh) return a.sdh ? 1 : -1;
           return a.label.localeCompare(b.label);
         });
         const autoTrack = sorted.find(t => t.language.toLowerCase().startsWith('en')) || sorted[0] || null;
         return [
-          { id: 'off', language: 'off', label: 'Off', src: null },
-          { id: 'auto', language: autoTrack ? autoTrack.language : 'en', label: 'Auto', src: autoTrack ? autoTrack.src : null },
+          { id: 'off', language: 'off', label: 'Off', src: null, candidates: [] },
+          {
+            id: 'auto',
+            language: autoTrack ? autoTrack.language : 'en',
+            label: 'Auto',
+            src: autoTrack ? autoTrack.src : null,
+            candidates: autoTrack ? [...autoTrack.candidates] : [],
+            source: autoTrack?.source
+          },
           ...sorted
         ];
       }
@@ -1453,6 +1611,10 @@
           return { index: idx + 1, title, startSeconds, timeLabel: formatTime(startSeconds) };
         });
       }
+
+      try {
+        document.title = `Watch ${cleanTitle} · Kaira`;
+      } catch {}
 
       watchRoot.innerHTML = `
         <div class="watch-stage" style="background:#000;width:100%;height:100dvh;position:fixed;top:0;left:0;z-index:9999;user-select:none;">
@@ -1478,10 +1640,45 @@
                 <div class="fx-spinner" style="width:2.85rem;height:2.85rem;border:3px solid rgba(255,255,255,0.22);border-top-color:#ffffff;border-radius:50%;animation:spin 0.8s linear infinite;"></div>
               </div>
               <div id="atv-status-pill" class="atv-status-pill" role="status" aria-live="polite" aria-hidden="true"></div>
+              <div id="atv-speed-boost-pill" class="atv-speed-boost-pill" role="status" aria-live="polite" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14" aria-hidden="true"><path d="M13 6v12l8.5-6L13 6zM4 6v12l8.5-6L4 6z"/></svg>
+                <span>2&times; Speed</span>
+              </div>
+              <div id="atv-seek-ripple-left" class="atv-seek-ripple atv-seek-ripple-left" aria-hidden="true">
+                <div class="atv-seek-ripple-inner">
+                  <span class="atv-seek-chevrons atv-seek-chevrons-left" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" fill="currentColor" width="18" height="18"><path d="M15.5 5l-7 7 7 7V5z"/></svg>
+                    <svg viewBox="0 0 24 24" fill="currentColor" width="18" height="18"><path d="M15.5 5l-7 7 7 7V5z"/></svg>
+                    <svg viewBox="0 0 24 24" fill="currentColor" width="18" height="18"><path d="M15.5 5l-7 7 7 7V5z"/></svg>
+                  </span>
+                  <span id="atv-seek-label-left" class="atv-seek-label">-10s</span>
+                </div>
+              </div>
+              <div id="atv-seek-ripple-right" class="atv-seek-ripple atv-seek-ripple-right" aria-hidden="true">
+                <div class="atv-seek-ripple-inner">
+                  <span class="atv-seek-chevrons atv-seek-chevrons-right" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" fill="currentColor" width="18" height="18"><path d="M8.5 5l7 7-7 7V5z"/></svg>
+                    <svg viewBox="0 0 24 24" fill="currentColor" width="18" height="18"><path d="M8.5 5l7 7-7 7V5z"/></svg>
+                    <svg viewBox="0 0 24 24" fill="currentColor" width="18" height="18"><path d="M8.5 5l7 7-7 7V5z"/></svg>
+                  </span>
+                  <span id="atv-seek-label-right" class="atv-seek-label">+10s</span>
+                </div>
+              </div>
               <div id="atv-resume-pill" class="atv-resume-pill" role="status" aria-live="polite" aria-hidden="true">
                 <span id="atv-resume-text">Resumed</span>
                 <button type="button" id="atv-resume-restart" class="atv-resume-restart-btn">Start Over</button>
               </div>
+              ${(isShow || isAnimeRoute) ? `
+              <div id="atv-upnext-card" class="atv-upnext-card" role="region" aria-label="Up Next episode" aria-hidden="true">
+                <div class="atv-upnext-kicker" id="atv-upnext-kicker">Up Next</div>
+                <div class="atv-upnext-title" id="atv-upnext-title">${isAnimeRoute ? `Episode ${episodeNum + 1}` : `Season ${seasonNum} &middot; Episode ${episodeNum + 1}`}</div>
+                <div class="atv-upnext-sub" id="atv-upnext-sub">${escapeHtml(cleanTitle)}</div>
+                <div class="atv-upnext-actions">
+                  <button type="button" id="atv-upnext-play" class="atv-upnext-btn atv-upnext-primary">Play Next</button>
+                  <button type="button" id="atv-upnext-dismiss" class="atv-upnext-btn">Dismiss</button>
+                </div>
+              </div>
+              ` : ''}
             </div>
 
             <!-- Apple TV Floating UI -->
@@ -1574,6 +1771,15 @@
                       <div class="atv-pop-heading">SUBTITLES</div>
                       <div id="atv-subs-list" class="atv-pop-list">
                         <div class="atv-pop-empty">Loading subtitles&hellip;</div>
+                      </div>
+                      <div class="atv-pop-divider"></div>
+                      <div class="atv-sub-tools">
+                        <form id="atv-sub-search-form" class="atv-sub-search-row">
+                          <input type="search" id="atv-sub-search-input" class="atv-sub-search-input" placeholder="Search OpenSubtitles…" aria-label="Search OpenSubtitles by title" />
+                          <button type="submit" id="atv-sub-search-btn" class="atv-sub-tool-btn">Find</button>
+                        </form>
+                        <button type="button" id="atv-sub-file-btn" class="atv-sub-file-btn">Load local .srt / .vtt file</button>
+                        <input type="file" id="atv-sub-file-input" accept=".srt,.vtt,text/vtt,application/x-subrip" hidden />
                       </div>
                     </div>
 
@@ -1711,12 +1917,12 @@
                   </div>
 
                   <div class="atv-time-row">
-                    <span id="fx-time-now" class="atv-time-elapsed" style="left:0%;">0:00</span>
+                    <span id="fx-time-now" class="atv-time-elapsed">0:00</span>
                     <button type="button" id="fx-time-remaining" class="atv-time-remaining" title="Toggle remaining / total time">-0:00</button>
                   </div>
                 </div>
 
-                <!-- ROW 3: Apple TV Bottom Tabs (Info, Chapters) + Subtle Transport Controls -->
+                <!-- ROW 3: Apple TV Bottom Tabs (Info, Chapters) + Transport & Inline Volume -->
                 <div class="atv-footer-row">
                   <div class="atv-tabs" role="tablist" aria-label="Playback details">
                     <button type="button" id="atv-tab-info" class="atv-tab-btn" role="tab" aria-selected="false" aria-controls="atv-drawer-info">Info</button>
@@ -1734,6 +1940,14 @@
                     <button type="button" id="fx-btn-fwd10" class="atv-transport-btn" aria-label="Forward 10 seconds" title="Forward 10s (Right Arrow)">
                       <svg viewBox="0 0 256 256" fill="currentColor" width="19" height="19"><path d="M128,48a80,80,0,1,0,56.57,23.43,8,8,0,0,0-11.32,11.32A64,64,0,1,1,128,64h44.69L154.34,82.34a8,8,0,0,0,11.32,11.32l32-32a8,8,0,0,0,0-11.32l-32-32a8,8,0,0,0-11.32,11.32L172.69,48ZM112,108v48a8,8,0,0,1-16,0V122.4l-4.21,2.52a8,8,0,1,1-8.23-13.72l16-9.6A8,8,0,0,1,112,108Zm56,24c0,16.57-9.87,28-24,28s-24-11.43-24-28,9.87-28,24-28S168,115.43,168,132Zm-16,0c0-8.65-3.6-12-8-12s-8,3.35-8,12,3.6,12,8,12S152,140.65,152,132Z"/></svg>
                     </button>
+                    <div class="atv-inline-vol" role="group" aria-label="Volume controls">
+                      <button type="button" id="fx-btn-inline-mute" class="atv-transport-btn atv-inline-mute-btn" aria-label="Mute" title="Mute (M)">
+                        <svg id="fx-inline-icon-vol-high" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="19" height="19"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>
+                        <svg id="fx-inline-icon-vol-low" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="19" height="19" style="display:none;"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>
+                        <svg id="fx-inline-icon-vol-muted" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="19" height="19" style="display:none;"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><line x1="23" y1="9" x2="17" y2="15"/><line x1="17" y1="9" x2="23" y2="15"/></svg>
+                      </button>
+                      <input type="range" id="fx-inline-vol-slider" class="atv-inline-vol-slider" min="0" max="1" step="0.02" value="1" aria-label="Volume" style="--vol-pct:100%;" />
+                    </div>
                     <button type="button" id="fx-btn-bottom-fs" class="atv-transport-btn" aria-label="Toggle fullscreen" title="Fullscreen (F)">
                       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>
                     </button>
@@ -1767,6 +1981,24 @@
       const iconMuted = watchRoot.querySelector('#fx-icon-muted');
       const volSlider = watchRoot.querySelector('#fx-volume-slider');
       const volPctEl = watchRoot.querySelector('#atv-vol-pct');
+      const inlineMuteBtn = watchRoot.querySelector('#fx-btn-inline-mute');
+      const inlineVolSlider = watchRoot.querySelector('#fx-inline-vol-slider');
+      const inlineIconVolHigh = watchRoot.querySelector('#fx-inline-icon-vol-high');
+      const inlineIconVolLow = watchRoot.querySelector('#fx-inline-icon-vol-low');
+      const inlineIconVolMuted = watchRoot.querySelector('#fx-inline-icon-vol-muted');
+      const speedBoostPillEl = watchRoot.querySelector('#atv-speed-boost-pill');
+      const seekRippleLeftEl = watchRoot.querySelector('#atv-seek-ripple-left');
+      const seekRippleRightEl = watchRoot.querySelector('#atv-seek-ripple-right');
+      const seekLabelLeftEl = watchRoot.querySelector('#atv-seek-label-left');
+      const seekLabelRightEl = watchRoot.querySelector('#atv-seek-label-right');
+      const upNextCardEl = watchRoot.querySelector('#atv-upnext-card');
+      const upNextKickerEl = watchRoot.querySelector('#atv-upnext-kicker');
+      const upNextPlayBtn = watchRoot.querySelector('#atv-upnext-play');
+      const upNextDismissBtn = watchRoot.querySelector('#atv-upnext-dismiss');
+      const subSearchForm = watchRoot.querySelector('#atv-sub-search-form');
+      const subSearchInput = watchRoot.querySelector('#atv-sub-search-input');
+      const subFileBtn = watchRoot.querySelector('#atv-sub-file-btn');
+      const subFileInput = watchRoot.querySelector('#atv-sub-file-input');
       const timeNow = watchRoot.querySelector('#fx-time-now');
       const timeRemaining = watchRoot.querySelector('#fx-time-remaining');
       const scrubWrap = watchRoot.querySelector('.fx-scrub-wrap');
@@ -1803,7 +2035,15 @@
       let hideTimeout = null;
       let statusTimeout = null;
       let resumePillTimeout = null;
+      let singleTapTimer = null;
+      let holdBoostTimer = null;
+      let rippleHideTimer = null;
+      let upNextCountdownTimer = null;
       let isDestroyed = false;
+      let isAdjustingVolume = false;
+      let lastNonZeroVolume = 0.8;
+      let upNextDismissed = false;
+      let upNextVisible = false;
 
       // Continue Watching tracking & auto-resume state
       const canonicalWatchUrl = isAnimeRoute
@@ -1820,7 +2060,10 @@
       const savedResumeSeconds = urlParams.get('restart') === '1'
         ? 0
         : getResumeTimeForEntry(existingProgressEntry, seasonNum, episodeNum);
-      let hasAppliedResume = false;
+      let resumeTargetSeconds = savedResumeSeconds;
+      let hasAppliedResume = resumeTargetSeconds < CONTINUE_WATCHING_MIN_SECONDS;
+      let hasShownResumePill = false;
+      let resumeAttemptCount = 0;
       let lastProgressSaveAt = 0;
 
       function hideResumePill() {
@@ -1840,6 +2083,44 @@
         resumePillTimeout = setTimeout(hideResumePill, 7500);
       }
 
+      function tryApplyResumePosition(showPill = true) {
+        if (isDestroyed || isEmbedMode || hasAppliedResume || resumeTargetSeconds < CONTINUE_WATCHING_MIN_SECONDS) {
+          return false;
+        }
+        const dur = Number.isFinite(videoEl.duration) ? videoEl.duration : 0;
+        if (dur > 0 && resumeTargetSeconds >= dur * CONTINUE_WATCHING_COMPLETE_RATIO) {
+          hasAppliedResume = true;
+          resumeTargetSeconds = 0;
+          return false;
+        }
+        const target = dur > 0 ? Math.min(resumeTargetSeconds, Math.max(0, dur - 5)) : resumeTargetSeconds;
+        const cur = Number(videoEl.currentTime) || 0;
+        if (Math.abs(cur - target) <= 5) {
+          hasAppliedResume = true;
+          if (showPill && !hasShownResumePill) {
+            hasShownResumePill = true;
+            showResumePill(target);
+          }
+          updateTimeDisplay();
+          return true;
+        }
+        if (videoEl.readyState < 1) return false;
+        resumeAttemptCount += 1;
+        try {
+          videoEl.currentTime = target;
+        } catch {}
+        const afterCur = Number(videoEl.currentTime) || 0;
+        if (Math.abs(afterCur - target) <= 5 || resumeAttemptCount >= 4) {
+          hasAppliedResume = true;
+          if (showPill && !hasShownResumePill && Math.abs(afterCur - target) <= 10) {
+            hasShownResumePill = true;
+            showResumePill(target);
+          }
+        }
+        updateTimeDisplay();
+        return hasAppliedResume;
+      }
+
       function persistPlaybackProgress(force, modeOverride) {
         const mode = modeOverride || (isEmbedMode ? 'embed' : 'direct');
         const now = Date.now();
@@ -1849,6 +2130,10 @@
         const dur = mode === 'embed' ? 0 : (Number.isFinite(videoEl.duration) ? videoEl.duration : 0);
 
         if (mode === 'direct') {
+          // Never clobber saved progress while waiting for auto-resume to settle
+          if (!hasAppliedResume && resumeTargetSeconds >= CONTINUE_WATCHING_MIN_SECONDS && cur < resumeTargetSeconds - 5) {
+            return;
+          }
           const metrics = computeProgressMetrics(cur, dur, 'direct');
           if (!metrics.shouldTrack && !metrics.isCompleted) return;
         }
@@ -1879,7 +2164,10 @@
         resumeRestartBtn.onclick = (e) => {
           e.stopPropagation();
           hideResumePill();
+          resumeTargetSeconds = 0;
+          hasAppliedResume = true;
           try { videoEl.currentTime = 0; } catch {}
+          removeContinueWatchingBySlug(titleSlug);
           updateTimeDisplay();
           showPlayerStatus('Started from beginning');
           wakeControls();
@@ -2030,10 +2318,20 @@
         }
       }
 
-      async function applySubtitleSelection(option) {
+      async function applySubtitleSelection(option, isUserInitiated = false) {
         subtitleFetchToken += 1;
         const reqToken = subtitleFetchToken;
         selectedSubtitleId = option.id;
+
+        if (isUserInitiated && option.source !== 'Local') {
+          if (option.id === 'off') {
+            savePreferredSubtitleLang('off');
+          } else if (option.id === 'auto') {
+            savePreferredSubtitleLang('auto');
+          } else if (option.language) {
+            savePreferredSubtitleLang(option.language);
+          }
+        }
 
         // Disable native textTracks so cues never double-render or get overridden by hls.js
         Array.from(videoEl.querySelectorAll('track[data-atv-sub="1"]')).forEach(tr => tr.remove());
@@ -2049,7 +2347,19 @@
           return;
         }
 
-        if (!option.src) {
+        if (Array.isArray(option.localCues) && option.localCues.length > 0) {
+          activeSubtitleCues = option.localCues;
+          renderActiveSubtitleCue();
+          showPlayerStatus(`Subtitles: ${option.label}`);
+          renderSubtitleMenu();
+          return;
+        }
+
+        const candidates = (Array.isArray(option.candidates) && option.candidates.length > 0)
+          ? option.candidates
+          : (option.src ? [option.src] : []);
+
+        if (candidates.length === 0) {
           activeSubtitleCues = [];
           renderActiveSubtitleCue();
           showPlayerStatus('No subtitle track available');
@@ -2060,22 +2370,30 @@
         renderSubtitleMenu();
         showPlayerStatus(`Loading ${option.label}…`);
 
-        try {
-          const res = await fetch(option.src);
-          if (isDestroyed || reqToken !== subtitleFetchToken) return;
-          if (!res.ok) throw new Error(`HTTP ${res.status}`);
-          const rawText = await res.text();
-          if (isDestroyed || reqToken !== subtitleFetchToken) return;
-
-          const cues = parseSubtitleText(rawText);
-          if (cues.length === 0) {
-            throw new Error('Empty subtitle track');
+        let loadedCues = null;
+        for (const candidateUrl of candidates) {
+          try {
+            const res = await fetch(candidateUrl);
+            if (isDestroyed || reqToken !== subtitleFetchToken) return;
+            if (!res.ok) continue;
+            const rawText = await res.text();
+            if (isDestroyed || reqToken !== subtitleFetchToken) return;
+            const cues = parseSubtitleText(rawText);
+            if (cues.length > 0) {
+              loadedCues = cues;
+              break;
+            }
+          } catch {
+            // Try next backup mirror URL
           }
-          activeSubtitleCues = cues;
+        }
+
+        if (isDestroyed || reqToken !== subtitleFetchToken) return;
+        if (loadedCues) {
+          activeSubtitleCues = loadedCues;
           renderActiveSubtitleCue();
           showPlayerStatus(`Subtitles: ${option.label}`);
-        } catch (err) {
-          if (isDestroyed || reqToken !== subtitleFetchToken) return;
+        } else {
           activeSubtitleCues = [];
           renderActiveSubtitleCue();
           showPlayerStatus(`Could not load ${option.label} subtitles`);
@@ -2086,9 +2404,13 @@
         if (!subsListEl) return;
         subsListEl.innerHTML = subtitleOptions.map(opt => {
           const isSelected = opt.id === selectedSubtitleId;
+          const metaBadge = opt.source === 'Local' ? '<span class="atv-pop-meta">Local</span>' : '';
           return `
             <button type="button" class="atv-pop-item atv-sub-item" data-sub-id="${escapeAttr(opt.id)}" role="menuitemradio" aria-checked="${isSelected}">
-              <span class="atv-pop-item-label">${escapeHtml(opt.label)}</span>
+              <span class="atv-pop-item-label">
+                <span>${escapeHtml(opt.label)}</span>
+                ${metaBadge}
+              </span>
               <span class="atv-pop-check" aria-hidden="true">${isSelected ? CHECK_SVG : ''}</span>
             </button>
           `;
@@ -2099,24 +2421,142 @@
             e.stopPropagation();
             const id = btn.getAttribute('data-sub-id');
             const found = subtitleOptions.find(o => o.id === id);
-            if (found) applySubtitleSelection(found);
+            if (found) applySubtitleSelection(found, true);
             wakeControls();
           };
         });
       }
 
-      // Fetch real subtitle tracks for this IMDb ID (local API + OpenSubtitles Stremio CORS fallback)
+      function mergeExternalSubtitleTracks(newTracks) {
+        const localTracks = subtitleOptions.filter(o => o.source === 'Local');
+        const existingRemote = [];
+        subtitleOptions.forEach(o => {
+          if (o.id === 'off' || o.id === 'auto' || o.source === 'Local') return;
+          const urls = (Array.isArray(o.candidates) && o.candidates.length > 0) ? o.candidates : (o.src ? [o.src] : []);
+          urls.forEach(src => existingRemote.push({ language: o.language, src, sdh: Boolean(o.sdh), source: o.source }));
+        });
+        const merged = deduplicateSubtitles([...existingRemote, ...(Array.isArray(newTracks) ? newTracks : [])]);
+        if (localTracks.length > 0) {
+          merged.splice(2, 0, ...localTracks);
+        }
+        subtitleOptions = merged;
+      }
+
+      if (subSearchInput) {
+        subSearchInput.addEventListener('click', (e) => e.stopPropagation());
+        subSearchInput.addEventListener('keydown', (e) => e.stopPropagation());
+      }
+
+      if (subSearchForm && subSearchInput) {
+        subSearchForm.onsubmit = async (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          const query = (subSearchInput.value || '').trim();
+          if (!query) {
+            subSearchInput.focus();
+            return;
+          }
+          const btn = subSearchForm.querySelector('#atv-sub-search-btn');
+          const prevLabel = btn ? btn.textContent : 'Find';
+          if (btn) {
+            btn.disabled = true;
+            btn.textContent = '…';
+          }
+          try {
+            const found = await searchOpenSubtitlesByQuery(query, isShow, seasonNum, episodeNum);
+            if (isDestroyed) return;
+            if (found.length > 0) {
+              mergeExternalSubtitleTracks(found);
+              renderSubtitleMenu();
+              showPlayerStatus(`Found ${found.length} OpenSubtitles tracks`);
+            } else {
+              showPlayerStatus('No OpenSubtitles matches found');
+            }
+          } catch {
+            if (!isDestroyed) showPlayerStatus('OpenSubtitles search failed');
+          } finally {
+            if (btn) {
+              btn.disabled = false;
+              btn.textContent = prevLabel;
+            }
+            wakeControls();
+          }
+        };
+      }
+
+      if (subFileBtn && subFileInput) {
+        subFileBtn.onclick = (e) => {
+          e.stopPropagation();
+          subFileInput.click();
+          wakeControls();
+        };
+        subFileInput.onclick = (e) => e.stopPropagation();
+        subFileInput.onchange = async (e) => {
+          e.stopPropagation();
+          const file = subFileInput.files && subFileInput.files[0];
+          if (!file) return;
+          try {
+            const rawText = await file.text();
+            if (isDestroyed) return;
+            const cues = parseSubtitleText(rawText);
+            if (cues.length === 0) {
+              showPlayerStatus('No readable captions in file');
+              return;
+            }
+            const cleanName = (file.name || 'Local File').replace(/\.(srt|vtt)$/i, '').trim().slice(0, 28) || 'Local File';
+            const localOption = {
+              id: `local:${Date.now()}`,
+              language: 'local',
+              label: cleanName,
+              src: 'local',
+              candidates: [],
+              localCues: cues,
+              source: 'Local'
+            };
+            subtitleOptions = [
+              ...subtitleOptions.slice(0, 2),
+              localOption,
+              ...subtitleOptions.slice(2).filter(o => o.source !== 'Local')
+            ];
+            applySubtitleSelection(localOption, false);
+          } catch {
+            if (!isDestroyed) showPlayerStatus('Could not read subtitle file');
+          } finally {
+            subFileInput.value = '';
+            wakeControls();
+          }
+        };
+      }
+
+      // Fetch real subtitle tracks for this IMDb ID (local API + OpenSubtitles v3 + REST + Title fallback)
       (async function loadSubtitles() {
         try {
-          const tracks = await resolveSubtitlesForImdb(imdbId, isShow, seasonNum, episodeNum);
+          const tracks = await resolveSubtitlesForImdb(imdbId, isShow, seasonNum, episodeNum, cleanTitle);
           if (isDestroyed) return;
           if (Array.isArray(tracks) && tracks.length > 0) {
-            subtitleOptions = deduplicateSubtitles(tracks);
+            mergeExternalSubtitleTracks(tracks);
             // If user selected Auto while tracks were still loading, activate it immediately
             if (selectedSubtitleId === 'auto' && activeSubtitleCues.length === 0) {
               const autoOpt = subtitleOptions.find(o => o.id === 'auto');
               if (autoOpt && autoOpt.src) {
-                applySubtitleSelection(autoOpt);
+                applySubtitleSelection(autoOpt, false);
+                return;
+              }
+            }
+            // Auto-apply remembered subtitle language preference if set and not 'off'
+            const preferredLang = loadPreferredSubtitleLang();
+            if (preferredLang && preferredLang !== 'off' && selectedSubtitleId === 'off' && activeSubtitleCues.length === 0) {
+              let match = null;
+              if (preferredLang === 'auto') {
+                match = subtitleOptions.find(o => o.id === 'auto' && o.src);
+              } else {
+                const prefBase = preferredLang.split('-')[0];
+                match = subtitleOptions.find(o => o.id !== 'off' && o.id !== 'auto' && o.src && o.language.toLowerCase() === preferredLang && !o.sdh)
+                  || subtitleOptions.find(o => o.id !== 'off' && o.id !== 'auto' && o.src && o.language.toLowerCase() === preferredLang)
+                  || subtitleOptions.find(o => o.id !== 'off' && o.id !== 'auto' && o.src && o.language.toLowerCase().startsWith(prefBase));
+              }
+              if (match) {
+                applySubtitleSelection(match, false);
                 return;
               }
             }
@@ -2254,6 +2694,11 @@
           showPausedCenterPlay(reason || 'Stream unavailable — try another server');
           return false;
         }
+        if (!isEmbedMode && Number.isFinite(videoEl.currentTime) && videoEl.currentTime >= CONTINUE_WATCHING_MIN_SECONDS) {
+          resumeTargetSeconds = Math.floor(videoEl.currentTime);
+          hasAppliedResume = false;
+          resumeAttemptCount = 0;
+        }
         triedServerIndices.add(nextIdx);
         currentServerIndex = nextIdx;
         currentServer = servers[nextIdx];
@@ -2380,7 +2825,11 @@
           if (isDestroyed || token !== activeStreamToken || !videoEl.isConnected) return;
           if (window.Hls && window.Hls.isSupported()) {
             videoEl.setAttribute('crossorigin', 'anonymous');
+            const hlsStartPosition = (!hasAppliedResume && resumeTargetSeconds >= CONTINUE_WATCHING_MIN_SECONDS)
+              ? resumeTargetSeconds
+              : -1;
             const hls = new window.Hls({
+              startPosition: hlsStartPosition,
               capLevelToPlayerSize: isTouchMobile,
               enableWorker: true,
               maxBufferLength: isTouchMobile ? 20 : 30,
@@ -2443,19 +2892,287 @@
         wakeControls();
       }
 
+      // TV & Anime "Up Next" episode card logic
+      const nextEpisodeNum = episodeNum + 1;
+      const nextEpisodeUrl = isAnimeRoute
+        ? `/watch/anime/${encodeURIComponent(animeId)}/${nextEpisodeNum}`
+        : isShow
+          ? `/watch/${encodeURIComponent(titleSlug)}/s${seasonNum}e${nextEpisodeNum}`
+          : null;
+
+      function hideUpNextCard() {
+        clearInterval(upNextCountdownTimer);
+        upNextCountdownTimer = null;
+        upNextVisible = false;
+        if (upNextCardEl) {
+          upNextCardEl.classList.remove('atv-visible');
+          upNextCardEl.setAttribute('aria-hidden', 'true');
+        }
+      }
+
+      function showUpNextCard(countdownSec) {
+        if (!upNextCardEl || !nextEpisodeUrl || isEmbedMode || upNextDismissed) return;
+        upNextVisible = true;
+        if (upNextKickerEl) {
+          upNextKickerEl.textContent = Number.isFinite(countdownSec) ? `Up Next in ${countdownSec}s` : 'Up Next';
+        }
+        upNextCardEl.classList.add('atv-visible');
+        upNextCardEl.setAttribute('aria-hidden', 'false');
+      }
+
+      function startUpNextCountdown() {
+        if (!upNextCardEl || !nextEpisodeUrl || isEmbedMode || upNextDismissed) return;
+        clearInterval(upNextCountdownTimer);
+        let remainingSec = 10;
+        showUpNextCard(remainingSec);
+        upNextCountdownTimer = setInterval(() => {
+          if (isDestroyed || upNextDismissed) {
+            clearInterval(upNextCountdownTimer);
+            upNextCountdownTimer = null;
+            return;
+          }
+          remainingSec -= 1;
+          if (remainingSec <= 0) {
+            clearInterval(upNextCountdownTimer);
+            upNextCountdownTimer = null;
+            navigateTo(nextEpisodeUrl);
+            return;
+          }
+          if (upNextKickerEl) {
+            upNextKickerEl.textContent = `Up Next in ${remainingSec}s`;
+          }
+        }, 1000);
+      }
+
+      if (upNextPlayBtn && nextEpisodeUrl) {
+        upNextPlayBtn.onclick = (e) => {
+          e.stopPropagation();
+          hideUpNextCard();
+          navigateTo(nextEpisodeUrl);
+        };
+      }
+      if (upNextDismissBtn) {
+        upNextDismissBtn.onclick = (e) => {
+          e.stopPropagation();
+          upNextDismissed = true;
+          hideUpNextCard();
+          wakeControls();
+        };
+      }
+
       playBtn.onclick = (e) => { e.stopPropagation(); togglePlay(); };
       if (centerPlayBtn) centerPlayBtn.onclick = (e) => { e.stopPropagation(); togglePlay(); };
       if (back10Btn) back10Btn.onclick = (e) => {
         e.stopPropagation();
+        resumeTargetSeconds = 0;
+        hasAppliedResume = true;
         videoEl.currentTime = Math.max(0, (videoEl.currentTime || 0) - 10);
+        updateTimeDisplay();
+        persistPlaybackProgress(true);
         wakeControls();
       };
       if (fwd10Btn) fwd10Btn.onclick = (e) => {
         e.stopPropagation();
+        resumeTargetSeconds = 0;
+        hasAppliedResume = true;
         videoEl.currentTime = Math.min(videoEl.duration || 1e9, (videoEl.currentTime || 0) + 10);
+        updateTimeDisplay();
+        persistPlaybackProgress(true);
         wakeControls();
       };
+
+      // Unified Stage Gesture Arbiter: Mobile stacked double-tap skip (±10s/±20s/±30s) + Press-and-hold 2x speed
+      let gestureStartX = 0;
+      let gestureStartY = 0;
+      let gestureMoved = false;
+      let mouseDownActive = false;
+      let holdBoostActive = false;
+      let preBoostRate = 1;
+      let suppressNextMouseClick = false;
+      let tapSide = null;
+      let tapCount = 0;
+      let lastTapTime = 0;
+      let lastTouchGestureEndAt = 0;
+
+      function triggerSeekRipple(side, totalDeltaSeconds) {
+        const activeEl = side === 'left' ? seekRippleLeftEl : seekRippleRightEl;
+        const otherEl = side === 'left' ? seekRippleRightEl : seekRippleLeftEl;
+        const labelEl = side === 'left' ? seekLabelLeftEl : seekLabelRightEl;
+        if (!activeEl) return;
+        if (otherEl) {
+          otherEl.classList.remove('atv-ripple-active');
+          otherEl.setAttribute('aria-hidden', 'true');
+        }
+        if (labelEl) {
+          const abs = Math.abs(Math.round(totalDeltaSeconds));
+          labelEl.textContent = side === 'left' ? `-${abs}s` : `+${abs}s`;
+        }
+        activeEl.classList.remove('atv-ripple-active');
+        void activeEl.offsetWidth;
+        activeEl.classList.add('atv-ripple-active');
+        activeEl.setAttribute('aria-hidden', 'false');
+        clearTimeout(rippleHideTimer);
+        rippleHideTimer = setTimeout(() => {
+          activeEl.classList.remove('atv-ripple-active');
+          activeEl.setAttribute('aria-hidden', 'true');
+        }, 720);
+      }
+
+      function startHoldSpeedBoost() {
+        if (isDestroyed || isEmbedMode || videoEl.paused || activePopover || activeDrawer || holdBoostActive) return;
+        holdBoostActive = true;
+        preBoostRate = videoEl.playbackRate || 1;
+        videoEl.playbackRate = 2;
+        if (speedBoostPillEl) {
+          speedBoostPillEl.classList.add('atv-visible');
+          speedBoostPillEl.setAttribute('aria-hidden', 'false');
+        }
+      }
+
+      function stopHoldSpeedBoost() {
+        clearTimeout(holdBoostTimer);
+        holdBoostTimer = null;
+        if (!holdBoostActive) return;
+        holdBoostActive = false;
+        try { videoEl.playbackRate = preBoostRate || 1; } catch {}
+        if (speedBoostPillEl) {
+          speedBoostPillEl.classList.remove('atv-visible');
+          speedBoostPillEl.setAttribute('aria-hidden', 'true');
+        }
+      }
+
+      function executeSingleTouchTap() {
+        tapSide = null;
+        tapCount = 0;
+        if (isDestroyed || isEmbedMode) return;
+        if (!videoEl.paused && !uiEl.hasAttribute('data-chrome')) {
+          wakeControls();
+          return;
+        }
+        togglePlay();
+      }
+
+      videoEl.addEventListener('touchstart', (e) => {
+        if (isEmbedMode || !e.touches || e.touches.length !== 1) {
+          stopHoldSpeedBoost();
+          return;
+        }
+        const touch = e.touches[0];
+        gestureStartX = touch.clientX;
+        gestureStartY = touch.clientY;
+        gestureMoved = false;
+        clearTimeout(holdBoostTimer);
+        holdBoostTimer = setTimeout(startHoldSpeedBoost, 420);
+      }, { passive: true });
+
+      videoEl.addEventListener('touchmove', (e) => {
+        if (!e.touches || e.touches.length !== 1) {
+          gestureMoved = true;
+          clearTimeout(holdBoostTimer);
+          return;
+        }
+        if (!gestureMoved) {
+          const touch = e.touches[0];
+          const dist = Math.hypot(touch.clientX - gestureStartX, touch.clientY - gestureStartY);
+          if (dist > 12) {
+            gestureMoved = true;
+            clearTimeout(holdBoostTimer);
+          }
+        }
+      }, { passive: true });
+
+      videoEl.addEventListener('touchend', (e) => {
+        lastTouchGestureEndAt = Date.now();
+        clearTimeout(holdBoostTimer);
+        if (holdBoostActive) {
+          stopHoldSpeedBoost();
+          if (e.cancelable) e.preventDefault();
+          return;
+        }
+        if (isEmbedMode || gestureMoved) return;
+        if (activePopover || activeDrawer) {
+          closeAllPopovers();
+          closeAllDrawers();
+          wakeControls();
+          if (e.cancelable) e.preventDefault();
+          return;
+        }
+
+        const rect = videoEl.getBoundingClientRect();
+        const relX = rect.width > 0 ? (gestureStartX - rect.left) / rect.width : 0.5;
+        const zone = relX < 0.35 ? 'left' : relX > 0.65 ? 'right' : 'center';
+        const now = Date.now();
+
+        if (zone !== 'center' && tapSide === zone && (now - lastTapTime) <= 650) {
+          clearTimeout(singleTapTimer);
+          tapCount = tapCount < 1 ? 2 : tapCount + 1;
+          lastTapTime = now;
+          resumeTargetSeconds = 0;
+          hasAppliedResume = true;
+          const step = zone === 'left' ? -10 : 10;
+          const dur = Number.isFinite(videoEl.duration) && videoEl.duration > 0 ? videoEl.duration : 1e9;
+          videoEl.currentTime = Math.max(0, Math.min(dur, (videoEl.currentTime || 0) + step));
+          updateTimeDisplay();
+          persistPlaybackProgress(true);
+          triggerSeekRipple(zone, (tapCount - 1) * step);
+          if (e.cancelable) e.preventDefault();
+          return;
+        }
+
+        lastTapTime = now;
+        if (zone === 'center') {
+          clearTimeout(singleTapTimer);
+          executeSingleTouchTap();
+          if (e.cancelable) e.preventDefault();
+        } else {
+          tapSide = zone;
+          tapCount = 1;
+          clearTimeout(singleTapTimer);
+          singleTapTimer = setTimeout(executeSingleTouchTap, 260);
+          if (e.cancelable) e.preventDefault();
+        }
+      }, { passive: false });
+
+      videoEl.addEventListener('touchcancel', () => {
+        clearTimeout(holdBoostTimer);
+        stopHoldSpeedBoost();
+      });
+
+      videoEl.addEventListener('mousedown', (e) => {
+        if (isEmbedMode || e.button !== 0 || (Date.now() - lastTouchGestureEndAt < 450)) return;
+        mouseDownActive = true;
+        gestureStartX = e.clientX;
+        gestureStartY = e.clientY;
+        gestureMoved = false;
+        clearTimeout(holdBoostTimer);
+        holdBoostTimer = setTimeout(startHoldSpeedBoost, 420);
+      });
+
+      videoEl.addEventListener('mousemove', (e) => {
+        if (!mouseDownActive || gestureMoved) return;
+        if (Math.hypot(e.clientX - gestureStartX, e.clientY - gestureStartY) > 12) {
+          gestureMoved = true;
+          clearTimeout(holdBoostTimer);
+        }
+      });
+
+      const onWindowGestureMouseUp = () => {
+        if (!mouseDownActive) return;
+        mouseDownActive = false;
+        clearTimeout(holdBoostTimer);
+        if (holdBoostActive) {
+          suppressNextMouseClick = true;
+          stopHoldSpeedBoost();
+        }
+      };
+      window.addEventListener('mouseup', onWindowGestureMouseUp);
+
       videoEl.onclick = () => {
+        if (Date.now() - lastTouchGestureEndAt < 450) return;
+        if (suppressNextMouseClick) {
+          suppressNextMouseClick = false;
+          return;
+        }
         if (activePopover || activeDrawer) {
           closeAllPopovers();
           closeAllDrawers();
@@ -2471,6 +3188,11 @@
       };
 
       videoEl.onplay = () => {
+        if (upNextCountdownTimer) {
+          clearInterval(upNextCountdownTimer);
+          upNextCountdownTimer = null;
+          if (upNextKickerEl) upNextKickerEl.textContent = 'Up Next';
+        }
         iconPlay.style.display = 'none';
         iconPause.style.display = 'block';
         if (centerPlayBtn) {
@@ -2480,11 +3202,14 @@
         wakeControls();
       };
       videoEl.onpause = () => {
+        stopHoldSpeedBoost();
         persistPlaybackProgress(true);
         showPausedCenterPlay();
       };
       videoEl.onended = () => {
+        stopHoldSpeedBoost();
         persistPlaybackProgress(true);
+        startUpNextCountdown();
       };
       videoEl.onwaiting = () => { bufferingEl.style.display = 'block'; };
       videoEl.onplaying = () => {
@@ -2496,6 +3221,7 @@
           centerPlayBtn.classList.remove('atv-visible');
           centerPlayBtn.setAttribute('aria-hidden', 'true');
         }
+        tryApplyResumePosition(true);
       };
 
       function updateTimeDisplay() {
@@ -2507,12 +3233,13 @@
           const pct = Math.max(0, Math.min(100, (cur / dur) * 100));
           scrubPlayed.style.width = pct + '%';
           scrubThumb.style.left = pct + '%';
-          // Position elapsed timestamp cleanly beneath the playhead without clipping edges or remaining time
-          const clampedPct = Math.max(2, Math.min(86, pct));
-          timeNow.style.left = clampedPct + '%';
-          timeNow.style.transform = pct < 4 ? 'translateX(0)' : 'translateX(-50%)';
           if (scrubWrap) scrubWrap.setAttribute('aria-valuenow', String(Math.round(pct)));
           if (activeDrawer === 'chapters') highlightActiveChapter();
+          if ((isShow || isAnimeRoute) && nextEpisodeUrl && !isEmbedMode && !upNextDismissed && dur >= 45 && cur >= 10 && (dur - cur) <= 25) {
+            if (!upNextVisible) showUpNextCard(null);
+          } else if (upNextVisible && !upNextCountdownTimer && (dur - cur) > 30) {
+            hideUpNextCard();
+          }
         }
         if (videoEl.buffered && videoEl.buffered.length > 0 && dur > 0) {
           const bufEnd = videoEl.buffered.end(videoEl.buffered.length - 1);
@@ -2528,17 +3255,15 @@
         persistPlaybackProgress(true);
       };
       videoEl.onloadedmetadata = () => {
-        if (!hasAppliedResume && savedResumeSeconds >= 5 && Number.isFinite(videoEl.duration) && videoEl.duration > 0) {
-          if (savedResumeSeconds < videoEl.duration * 0.92) {
-            hasAppliedResume = true;
-            try {
-              videoEl.currentTime = savedResumeSeconds;
-              showResumePill(savedResumeSeconds);
-            } catch {}
-          }
-        }
+        tryApplyResumePosition(true);
         updateTimeDisplay();
         if (activeDrawer === 'chapters') renderChaptersIfReady();
+      };
+      videoEl.onloadeddata = () => {
+        tryApplyResumePosition(true);
+      };
+      videoEl.oncanplay = () => {
+        tryApplyResumePosition(true);
       };
 
       if (timeRemaining) {
@@ -2556,6 +3281,8 @@
         const clientX = e.clientX || (e.touches && e.touches[0]?.clientX) || 0;
         const pos = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
         if (videoEl.duration) {
+          resumeTargetSeconds = 0;
+          hasAppliedResume = true;
           videoEl.currentTime = pos * videoEl.duration;
           updateTimeDisplay();
         }
@@ -2563,8 +3290,11 @@
 
       const onWindowMouseMove = (e) => { if (isScrubbing) seekAtEvent(e); };
       const onWindowMouseUp = () => {
-        isScrubbing = false;
-        if (scrubWrap) scrubWrap.classList.remove('atv-scrubbing');
+        if (isScrubbing) {
+          isScrubbing = false;
+          if (scrubWrap) scrubWrap.classList.remove('atv-scrubbing');
+          persistPlaybackProgress(true);
+        }
       };
       const onWindowTouchMove = (e) => {
         if (!isScrubbing) return;
@@ -2572,8 +3302,11 @@
         seekAtEvent(e);
       };
       const onWindowTouchEnd = () => {
-        isScrubbing = false;
-        if (scrubWrap) scrubWrap.classList.remove('atv-scrubbing');
+        if (isScrubbing) {
+          isScrubbing = false;
+          if (scrubWrap) scrubWrap.classList.remove('atv-scrubbing');
+          persistPlaybackProgress(true);
+        }
       };
 
       scrubWrap.addEventListener('mousedown', (e) => {
@@ -2597,35 +3330,108 @@
       window.addEventListener('touchend', onWindowTouchEnd);
       window.addEventListener('touchcancel', onWindowTouchEnd);
 
-      // Volume & Mute inside Audio popover
+      // Bidirectional Volume & Mute (Inline Transport + Audio Popover + Keyboard)
       function updateVolumeUI() {
         const isMuted = videoEl.muted || videoEl.volume === 0;
+        const effectiveVol = isMuted ? 0 : Math.max(0, Math.min(1, videoEl.volume));
+        const pct = Math.round(effectiveVol * 100);
+        if (!isMuted && effectiveVol > 0) {
+          lastNonZeroVolume = effectiveVol;
+        }
         if (iconVol) iconVol.style.display = isMuted ? 'none' : 'block';
         if (iconMuted) iconMuted.style.display = isMuted ? 'block' : 'none';
-        if (volPctEl) volPctEl.textContent = isMuted ? '0%' : `${Math.round(videoEl.volume * 100)}%`;
-        if (volSlider) volSlider.value = isMuted ? '0' : String(videoEl.volume);
+        if (volPctEl) volPctEl.textContent = `${pct}%`;
+        if (volSlider) volSlider.value = String(effectiveVol);
+        if (muteBtn) {
+          muteBtn.setAttribute('aria-label', isMuted ? 'Unmute' : 'Mute');
+          muteBtn.setAttribute('aria-pressed', String(isMuted));
+        }
+
+        if (inlineVolSlider) {
+          inlineVolSlider.value = String(effectiveVol);
+          inlineVolSlider.style.setProperty('--vol-pct', `${pct}%`);
+          inlineVolSlider.setAttribute('aria-valuetext', `${pct}%`);
+        }
+        if (inlineMuteBtn) {
+          inlineMuteBtn.setAttribute('aria-label', isMuted ? 'Unmute' : 'Mute');
+          inlineMuteBtn.setAttribute('aria-pressed', String(isMuted));
+        }
+        if (inlineIconVolHigh) inlineIconVolHigh.style.display = (!isMuted && effectiveVol >= 0.5) ? 'block' : 'none';
+        if (inlineIconVolLow) inlineIconVolLow.style.display = (!isMuted && effectiveVol > 0 && effectiveVol < 0.5) ? 'block' : 'none';
+        if (inlineIconVolMuted) inlineIconVolMuted.style.display = isMuted ? 'block' : 'none';
+      }
+
+      function applyVolume(nextVal) {
+        const clamped = Math.max(0, Math.min(1, Number.isFinite(nextVal) ? nextVal : 1));
+        videoEl.volume = clamped;
+        videoEl.muted = clamped === 0;
+        if (clamped > 0) lastNonZeroVolume = clamped;
+        updateVolumeUI();
+        wakeControls();
+      }
+
+      function toggleMuteStateUI() {
+        if (videoEl.muted || videoEl.volume === 0) {
+          videoEl.muted = false;
+          if (videoEl.volume === 0) {
+            videoEl.volume = lastNonZeroVolume > 0 ? lastNonZeroVolume : 0.8;
+          }
+        } else {
+          if (videoEl.volume > 0) lastNonZeroVolume = videoEl.volume;
+          videoEl.muted = true;
+        }
+        updateVolumeUI();
+        wakeControls();
       }
 
       if (volSlider) {
         volSlider.oninput = (e) => {
           e.stopPropagation();
-          const val = parseFloat(e.target.value);
-          videoEl.volume = val;
-          videoEl.muted = val === 0;
-          updateVolumeUI();
-          wakeControls();
+          applyVolume(parseFloat(e.target.value));
         };
       }
 
       if (muteBtn) {
         muteBtn.onclick = (e) => {
           e.stopPropagation();
-          videoEl.muted = !videoEl.muted;
-          if (!videoEl.muted && videoEl.volume === 0) videoEl.volume = 0.8;
-          updateVolumeUI();
+          toggleMuteStateUI();
+        };
+      }
+
+      const onWindowVolumePointerUp = () => {
+        if (!isAdjustingVolume) return;
+        isAdjustingVolume = false;
+        wakeControls();
+      };
+      window.addEventListener('pointerup', onWindowVolumePointerUp);
+      window.addEventListener('pointercancel', onWindowVolumePointerUp);
+
+      if (inlineVolSlider) {
+        inlineVolSlider.addEventListener('click', (e) => e.stopPropagation());
+        inlineVolSlider.addEventListener('pointerdown', (e) => {
+          e.stopPropagation();
+          isAdjustingVolume = true;
+          wakeControls();
+        });
+        inlineVolSlider.oninput = (e) => {
+          e.stopPropagation();
+          applyVolume(parseFloat(e.target.value));
+        };
+        inlineVolSlider.onchange = (e) => {
+          e.stopPropagation();
+          isAdjustingVolume = false;
           wakeControls();
         };
       }
+
+      if (inlineMuteBtn) {
+        inlineMuteBtn.onclick = (e) => {
+          e.stopPropagation();
+          toggleMuteStateUI();
+        };
+      }
+
+      updateVolumeUI();
 
       // Playback speed buttons inside Audio popover
       watchRoot.querySelectorAll('.atv-speed-item').forEach(btn => {
@@ -3161,6 +3967,11 @@
             const qualityEl = watchRoot.querySelector('#fx-active-quality');
             if (qualityEl) qualityEl.textContent = currentServer.quality || 'HD';
 
+            if (!isEmbedMode && Number.isFinite(videoEl.currentTime) && videoEl.currentTime >= CONTINUE_WATCHING_MIN_SECONDS) {
+              resumeTargetSeconds = Math.floor(videoEl.currentTime);
+              hasAppliedResume = false;
+              resumeAttemptCount = 0;
+            }
             try { localStorage.setItem('flicx:player:server', currentServer.name); } catch {}
             attachStream(currentServer);
             closeAllPopovers();
@@ -3187,7 +3998,7 @@
         clearTimeout(hideTimeout);
         if (isEmbedMode) return;
         hideTimeout = setTimeout(() => {
-          if (!isDestroyed && !isEmbedMode && !activePopover && !activeDrawer && !videoEl.paused && !isPointerOverControls && !isScrubbing) {
+          if (!isDestroyed && !isEmbedMode && !activePopover && !activeDrawer && !videoEl.paused && !isPointerOverControls && !isScrubbing && !isAdjustingVolume) {
             uiEl.removeAttribute('data-chrome');
             uiEl.style.opacity = '0';
             playerEl.classList.remove('atv-chrome-visible');
@@ -3227,29 +4038,29 @@
           togglePiP();
         } else if (e.key === 'm' || e.key === 'M') {
           e.preventDefault();
-          videoEl.muted = !videoEl.muted;
-          updateVolumeUI();
-          wakeControls();
+          toggleMuteStateUI();
         } else if (e.key === 'ArrowLeft') {
           e.preventDefault();
+          resumeTargetSeconds = 0;
+          hasAppliedResume = true;
           videoEl.currentTime = Math.max(0, videoEl.currentTime - 10);
           updateTimeDisplay();
+          persistPlaybackProgress(true);
           wakeControls();
         } else if (e.key === 'ArrowRight') {
           e.preventDefault();
+          resumeTargetSeconds = 0;
+          hasAppliedResume = true;
           videoEl.currentTime = Math.min(videoEl.duration || 1e9, videoEl.currentTime + 10);
           updateTimeDisplay();
+          persistPlaybackProgress(true);
           wakeControls();
         } else if (e.key === 'ArrowUp') {
           e.preventDefault();
-          videoEl.volume = Math.min(1, videoEl.volume + 0.1);
-          updateVolumeUI();
-          wakeControls();
+          applyVolume(Math.min(1, (videoEl.muted ? 0 : videoEl.volume) + 0.1));
         } else if (e.key === 'ArrowDown') {
           e.preventDefault();
-          videoEl.volume = Math.max(0, videoEl.volume - 0.1);
-          updateVolumeUI();
-          wakeControls();
+          applyVolume(Math.max(0, (videoEl.muted ? 0 : videoEl.volume) - 0.1));
         } else if (e.key === 'Escape') {
           if (activePopover || activeDrawer) {
             closeAllPopovers();
@@ -3279,10 +4090,16 @@
         isDestroyed = true;
         subtitleFetchToken += 1;
         activeSubtitleCues = [];
+        stopHoldSpeedBoost();
         clearTimeout(hideTimeout);
         clearTimeout(statusTimeout);
         clearTimeout(resumePillTimeout);
         clearTimeout(streamLoadTimer);
+        clearTimeout(singleTapTimer);
+        clearTimeout(holdBoostTimer);
+        clearTimeout(rippleHideTimer);
+        clearInterval(upNextCountdownTimer);
+        upNextCountdownTimer = null;
         window.removeEventListener('pagehide', onPageHideSave);
         document.removeEventListener('visibilitychange', onVisibilitySave);
         clearNativeStreamListeners();
@@ -3314,6 +4131,9 @@
         } catch {}
         window.removeEventListener('mousemove', onWindowMouseMove);
         window.removeEventListener('mouseup', onWindowMouseUp);
+        window.removeEventListener('mouseup', onWindowGestureMouseUp);
+        window.removeEventListener('pointerup', onWindowVolumePointerUp);
+        window.removeEventListener('pointercancel', onWindowVolumePointerUp);
         window.removeEventListener('touchmove', onWindowTouchMove);
         window.removeEventListener('touchend', onWindowTouchEnd);
         window.removeEventListener('touchcancel', onWindowTouchEnd);
@@ -3720,7 +4540,8 @@
   }
 
   // --- 6a. Continue Watching (Per-Browser Playback Progress Engine & UI Rails) ---
-  const CONTINUE_WATCHING_KEY = 'flicx:player:progress';
+  const CONTINUE_WATCHING_KEY = 'kaira:continue-watching:v1';
+  const LEGACY_CONTINUE_WATCHING_KEY = 'flicx:player:progress';
   const CONTINUE_WATCHING_MIN_SECONDS = 5;
   const CONTINUE_WATCHING_COMPLETE_RATIO = 0.92;
   const CONTINUE_WATCHING_MAX_ITEMS = 24;
@@ -3790,34 +4611,131 @@
     if (entry.kind === 'show') {
       if (typeof season === 'number' && typeof entry.season === 'number' && entry.season !== season) return 0;
       if (typeof episode === 'number' && typeof entry.episode === 'number' && entry.episode !== episode) return 0;
+    } else if (entry.kind === 'anime') {
+      if (typeof episode === 'number' && typeof entry.episode === 'number' && entry.episode !== episode) return 0;
     }
     const metrics = computeProgressMetrics(entry.currentTime, entry.duration, 'direct');
     if (!metrics.shouldTrack || metrics.isCompleted) return 0;
     return Math.floor(entry.currentTime);
   }
 
+  function normalizeContinueWatchingRecord(rawItem, fallbackSlug) {
+    if (!rawItem || typeof rawItem !== 'object') return null;
+    const clean = normalizeWatchSlug(rawItem.slug || fallbackSlug);
+    if (!clean) return null;
+
+    const isLegacyNext = typeof rawItem.t === 'number' || typeof rawItem.d === 'number' || typeof rawItem.at === 'number';
+    const currentTime = Number(isLegacyNext ? (rawItem.currentTime ?? rawItem.t) : rawItem.currentTime) || 0;
+    const duration = Number(isLegacyNext ? (rawItem.duration ?? rawItem.d) : rawItem.duration) || 0;
+    const updatedAt = Number(isLegacyNext ? (rawItem.updatedAt ?? rawItem.at) : rawItem.updatedAt) || 0;
+
+    const seasonNum = Number(rawItem.season);
+    const episodeNum = Number(rawItem.episode);
+    const season = Number.isFinite(seasonNum) && seasonNum > 0 ? Math.floor(seasonNum) : undefined;
+    const episode = Number.isFinite(episodeNum) && episodeNum > 0 ? Math.floor(episodeNum) : undefined;
+
+    const kind =
+      rawItem.kind === 'anime'
+        ? 'anime'
+        : rawItem.kind === 'show' || rawItem.show === true || (season !== undefined && episode !== undefined)
+          ? 'show'
+          : 'movie';
+    const mode = rawItem.mode === 'embed' ? 'embed' : 'direct';
+    const metrics = computeProgressMetrics(currentTime, duration, mode);
+    if (metrics.isCompleted) return null;
+    if (mode === 'direct' && !metrics.shouldTrack) return null;
+
+    const defaultTitle = clean
+      .replace(/-\d{4}$/, '')
+      .split('-')
+      .filter(Boolean)
+      .map(w => w.charAt(0).toUpperCase() + w.slice(1))
+      .join(' ');
+    const defaultWatchUrl = kind === 'show' && season && episode
+      ? `/watch/${encodeURIComponent(clean)}/s${season}e${episode}`
+      : `/watch/${encodeURIComponent(clean)}`;
+    const defaultDetailUrl = kind === 'anime'
+      ? '/anime'
+      : kind === 'show'
+        ? `/tv/${encodeURIComponent(clean)}`
+        : `/movie/${encodeURIComponent(clean)}`;
+
+    return {
+      ...rawItem,
+      slug: clean,
+      title: (typeof rawItem.title === 'string' && rawItem.title.trim()) ? rawItem.title.trim() : defaultTitle,
+      kind,
+      watchUrl: (typeof rawItem.watchUrl === 'string' && rawItem.watchUrl) ? rawItem.watchUrl : defaultWatchUrl,
+      detailUrl: (typeof rawItem.detailUrl === 'string' && rawItem.detailUrl) ? rawItem.detailUrl : defaultDetailUrl,
+      season,
+      episode,
+      mode,
+      currentTime: mode === 'embed' ? 0 : Math.floor(currentTime),
+      duration: mode === 'embed' ? 0 : Math.floor(Math.max(0, duration)),
+      progressPercent: (Number(rawItem.progressPercent) > 0)
+        ? Math.min(99, Math.round(Number(rawItem.progressPercent)))
+        : metrics.progressPercent,
+      updatedAt
+    };
+  }
+
+  function parseContinueWatchingRaw(raw) {
+    if (!raw || typeof raw !== 'object') return [];
+    const parsed = [];
+    if (Array.isArray(raw)) {
+      for (const item of raw) {
+        const rec = normalizeContinueWatchingRecord(item);
+        if (rec) parsed.push(rec);
+      }
+    } else if (Array.isArray(raw.items)) {
+      for (const item of raw.items) {
+        const rec = normalizeContinueWatchingRecord(item);
+        if (rec) parsed.push(rec);
+      }
+    } else {
+      for (const [key, val] of Object.entries(raw)) {
+        if (key === 'items' || !val || typeof val !== 'object' || Array.isArray(val)) continue;
+        const rec = normalizeContinueWatchingRecord(val, key);
+        if (rec) parsed.push(rec);
+      }
+    }
+    return parsed;
+  }
+
   function getContinueWatchingItems() {
     let list = [];
     try {
-      const raw = JSON.parse(localStorage.getItem(CONTINUE_WATCHING_KEY) || 'null');
-      const arr = Array.isArray(raw) ? raw : (raw && Array.isArray(raw.items) ? raw.items : []);
-      const seen = new Set();
-      for (const item of arr) {
-        if (!item || !item.slug) continue;
-        const clean = normalizeWatchSlug(item.slug);
-        if (!clean || seen.has(clean)) continue;
-        seen.add(clean);
-        list.push({
-          ...item,
-          slug: clean,
-          mode: item.mode === 'embed' ? 'embed' : 'direct',
-          currentTime: Number(item.currentTime) || 0,
-          duration: Number(item.duration) || 0,
-          progressPercent: Number(item.progressPercent) || 0,
-          updatedAt: Number(item.updatedAt) || 0
-        });
+      const primaryRaw = JSON.parse(localStorage.getItem(CONTINUE_WATCHING_KEY) || 'null');
+      const primaryItems = parseContinueWatchingRaw(primaryRaw);
+
+      let legacyItems = [];
+      let hadLegacyKey = false;
+      try {
+        const legacyStr = localStorage.getItem(LEGACY_CONTINUE_WATCHING_KEY);
+        if (legacyStr) {
+          hadLegacyKey = true;
+          legacyItems = parseContinueWatchingRaw(JSON.parse(legacyStr));
+        }
+      } catch {}
+
+      const bySlug = new Map();
+      for (const item of [...primaryItems, ...legacyItems]) {
+        const prev = bySlug.get(item.slug);
+        if (!prev || (item.updatedAt || 0) > (prev.updatedAt || 0)) {
+          bySlug.set(item.slug, item);
+        }
       }
-      list.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+
+      list = Array.from(bySlug.values())
+        .sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))
+        .slice(0, CONTINUE_WATCHING_MAX_ITEMS);
+
+      if (hadLegacyKey) {
+        if (list.length > 0) {
+          localStorage.setItem(CONTINUE_WATCHING_KEY, JSON.stringify({ items: list }));
+        }
+        localStorage.removeItem(LEGACY_CONTINUE_WATCHING_KEY);
+      }
     } catch {}
     document.documentElement.classList.toggle('has-progress', list.length > 0);
     return list;
@@ -3831,6 +4749,7 @@
       } else {
         localStorage.setItem(CONTINUE_WATCHING_KEY, JSON.stringify({ items: cleanList }));
       }
+      localStorage.removeItem(LEGACY_CONTINUE_WATCHING_KEY);
     } catch {}
     document.documentElement.classList.toggle('has-progress', cleanList.length > 0);
     return cleanList;
@@ -3846,6 +4765,7 @@
     const cleanSlug = normalizeWatchSlug(incoming?.slug);
     if (!cleanSlug) return [];
     const existing = getContinueWatchingItems();
+    const prevMatch = existing.find(item => item.slug === cleanSlug);
     const mode = incoming.mode === 'embed' ? 'embed' : 'direct';
     const metrics = computeProgressMetrics(incoming.currentTime, incoming.duration, mode);
     const filtered = existing.filter(item => item.slug !== cleanSlug);
@@ -3857,15 +4777,42 @@
       return existing;
     }
 
-    const nextEntry = {
-      ...incoming,
-      slug: cleanSlug,
-      mode,
-      currentTime: mode === 'embed' ? 0 : Math.floor(incoming.currentTime || 0),
-      duration: mode === 'embed' ? 0 : Math.floor(Math.max(0, incoming.duration || 0)),
-      progressPercent: metrics.progressPercent,
-      updatedAt: typeof incoming.updatedAt === 'number' ? incoming.updatedAt : Date.now()
-    };
+    const sameEpisode =
+      !prevMatch ||
+      (prevMatch.kind === 'show'
+        ? prevMatch.season === incoming.season && prevMatch.episode === incoming.episode
+        : prevMatch.kind === 'anime'
+          ? prevMatch.episode === incoming.episode
+          : true);
+
+    const shouldPreserveDirect =
+      mode === 'embed' &&
+      Boolean(prevMatch) &&
+      sameEpisode &&
+      prevMatch.mode === 'direct' &&
+      prevMatch.currentTime >= CONTINUE_WATCHING_MIN_SECONDS &&
+      prevMatch.duration > 0;
+
+    const nextEntry = shouldPreserveDirect
+      ? {
+          ...prevMatch,
+          ...incoming,
+          slug: cleanSlug,
+          mode: 'direct',
+          currentTime: prevMatch.currentTime,
+          duration: prevMatch.duration,
+          progressPercent: prevMatch.progressPercent,
+          updatedAt: typeof incoming.updatedAt === 'number' ? incoming.updatedAt : Date.now()
+        }
+      : {
+          ...incoming,
+          slug: cleanSlug,
+          mode,
+          currentTime: mode === 'embed' ? 0 : Math.floor(incoming.currentTime || 0),
+          duration: mode === 'embed' ? 0 : Math.floor(Math.max(0, incoming.duration || 0)),
+          progressPercent: metrics.progressPercent,
+          updatedAt: typeof incoming.updatedAt === 'number' ? incoming.updatedAt : Date.now()
+        };
 
     const updated = [nextEntry, ...filtered]
       .sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))
@@ -3882,8 +4829,18 @@
   }
 
   function clearAllContinueWatching() {
+    try { localStorage.removeItem(LEGACY_CONTINUE_WATCHING_KEY); } catch {}
     saveContinueWatchingItems([]);
     refreshContinueWatchingUI();
+  }
+
+  function markLoadedContinueWatchingImages(container) {
+    if (!container) return;
+    container.querySelectorAll('img[data-fade="true"]').forEach(img => {
+      if (img.complete && img.naturalWidth > 0) {
+        img.setAttribute('data-loaded', '');
+      }
+    });
   }
 
   function renderContinueWatchingCardHtml(entry) {
@@ -3900,7 +4857,7 @@
         <div class="card-art card-poster">
           <span class="card-pic">
             ${posterUrl
-              ? `<img data-fade="true" src="${escapeAttr(posterUrl)}" alt="" width="500" height="750" loading="lazy" decoding="async" draggable="false" />`
+              ? `<img data-fade="true" src="${escapeAttr(posterUrl)}" alt="" width="500" height="750" loading="lazy" decoding="async" draggable="false" onload="this.setAttribute('data-loaded','')" onerror="this.setAttribute('data-failed','true')" />`
               : `<img data-fade="true" data-failed="true" alt="" width="500" height="750" />`}
           </span>
           <span class="card-fallback" aria-hidden="true">${escapeHtml(title)}</span>
@@ -3971,6 +4928,7 @@
         main.insertAdjacentHTML('afterbegin', html);
       }
     }
+    markLoadedContinueWatchingImages(document.getElementById('kaira-continue-watching-section'));
     try { initRailScroll(); } catch {}
   }
 
@@ -3995,6 +4953,7 @@
         firstSection.insertAdjacentHTML('beforebegin', html);
       }
     }
+    markLoadedContinueWatchingImages(document.getElementById('kaira-library-cw-section'));
     try { initRailScroll(); } catch {}
   }
 
@@ -4038,8 +4997,31 @@
   let continueWatchingBound = false;
   function initContinueWatching() {
     refreshContinueWatchingUI();
+    // Guard against late Next.js hydration removing the home rail or leaving skeletons
+    const cleanPath = normalizeRoutePath(window.location.pathname);
+    if (cleanPath === '/' || cleanPath === '/index.html') {
+      setTimeout(() => {
+        try {
+          if (normalizeRoutePath(window.location.pathname) === '/' && getContinueWatchingItems().length > 0 && !document.getElementById('kaira-continue-watching-section')) {
+            renderContinueWatchingHomeRail();
+          } else {
+            document.querySelectorAll('.continue-outline').forEach(el => el.remove());
+          }
+        } catch {}
+      }, 600);
+    }
     if (continueWatchingBound) return;
     continueWatchingBound = true;
+    window.addEventListener('storage', (e) => {
+      if (!e.key || e.key === CONTINUE_WATCHING_KEY || e.key === LEGACY_CONTINUE_WATCHING_KEY) {
+        refreshContinueWatchingUI();
+      }
+    });
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible' && !normalizeRoutePath(window.location.pathname).startsWith('/watch/')) {
+        refreshContinueWatchingUI();
+      }
+    });
     document.addEventListener('click', (e) => {
       const removeBtn = e.target.closest('button.kaira-cw-remove');
       if (removeBtn) {
@@ -7760,6 +8742,7 @@
       .atv-time-elapsed {
         position: absolute;
         top: 0;
+        left: 0;
         color: rgba(255, 255, 255, 0.86);
         white-space: nowrap;
         text-shadow: 0 1px 6px rgba(0, 0, 0, 0.6);
@@ -7845,6 +8828,328 @@
       }
       .atv-transport-btn:active {
         transform: scale(0.92);
+      }
+
+      /* Inline Transport Volume Control (Always visible on desktop, mute-only on narrow mobile) */
+      .atv-inline-vol {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.3rem;
+        margin-left: 0.15rem;
+        margin-right: 0.25rem;
+      }
+      .atv-inline-vol-slider {
+        -webkit-appearance: none;
+        appearance: none;
+        width: 82px;
+        height: 4px;
+        border-radius: 999px;
+        background: linear-gradient(
+          to right,
+          #ffffff 0%,
+          #ffffff var(--vol-pct, 100%),
+          rgba(255, 255, 255, 0.28) var(--vol-pct, 100%),
+          rgba(255, 255, 255, 0.28) 100%
+        );
+        outline: none;
+        cursor: pointer;
+        transition: height 0.15s ease;
+      }
+      .atv-inline-vol-slider:hover {
+        height: 5px;
+      }
+      .atv-inline-vol-slider::-webkit-slider-thumb {
+        -webkit-appearance: none;
+        appearance: none;
+        width: 12px;
+        height: 12px;
+        border-radius: 50%;
+        background: #ffffff;
+        box-shadow: 0 1px 6px rgba(0, 0, 0, 0.55);
+        cursor: pointer;
+        transition: transform 0.14s ease;
+      }
+      .atv-inline-vol-slider:hover::-webkit-slider-thumb,
+      .atv-inline-vol-slider:active::-webkit-slider-thumb {
+        transform: scale(1.22);
+      }
+      .atv-inline-vol-slider::-moz-range-thumb {
+        width: 12px;
+        height: 12px;
+        border: none;
+        border-radius: 50%;
+        background: #ffffff;
+        box-shadow: 0 1px 6px rgba(0, 0, 0, 0.55);
+        cursor: pointer;
+        transition: transform 0.14s ease;
+      }
+      .atv-inline-vol-slider:focus-visible {
+        outline: 2px solid #ffffff;
+        outline-offset: 4px;
+      }
+
+      /* Subtitle Popover Tools (OpenSubtitles Search + Local .srt/.vtt Picker) */
+      .atv-sub-tools {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        padding: 4px 6px 2px;
+      }
+      .atv-sub-search-row {
+        display: flex;
+        align-items: center;
+        gap: 5px;
+      }
+      .atv-sub-search-input {
+        flex: 1;
+        min-width: 0;
+        height: 32px;
+        padding: 0 10px;
+        border-radius: 8px;
+        border: 1px solid rgba(18, 18, 22, 0.18);
+        background: rgba(255, 255, 255, 0.72);
+        color: #111114;
+        font-family: inherit;
+        font-size: 12.5px;
+        font-weight: 500;
+        outline: none;
+      }
+      .atv-sub-search-input::placeholder {
+        color: rgba(18, 18, 22, 0.52);
+      }
+      .atv-sub-search-input:focus {
+        border-color: rgba(18, 18, 22, 0.52);
+        background: rgba(255, 255, 255, 0.94);
+      }
+      .atv-sub-tool-btn {
+        height: 32px;
+        padding: 0 10px;
+        border-radius: 8px;
+        border: none;
+        background: #141418;
+        color: #ffffff;
+        font-family: inherit;
+        font-size: 12px;
+        font-weight: 600;
+        cursor: pointer;
+        flex: none;
+        transition: opacity 0.15s ease, transform 0.14s ease;
+      }
+      .atv-sub-tool-btn:hover {
+        opacity: 0.88;
+      }
+      .atv-sub-tool-btn:disabled {
+        opacity: 0.5;
+        cursor: default;
+      }
+      .atv-sub-file-btn {
+        width: 100%;
+        min-height: 34px;
+        padding: 6px 10px;
+        border-radius: 8px;
+        border: 1px dashed rgba(18, 18, 22, 0.28);
+        background: rgba(255, 255, 255, 0.34);
+        color: #111114;
+        font-family: inherit;
+        font-size: 12.5px;
+        font-weight: 600;
+        text-align: center;
+        cursor: pointer;
+        transition: background-color 0.15s ease;
+      }
+      .atv-sub-file-btn:hover {
+        background: rgba(255, 255, 255, 0.68);
+      }
+
+      /* Press-and-Hold 2x Speed Pill */
+      .atv-speed-boost-pill {
+        position: absolute;
+        top: calc(1.75rem + env(safe-area-inset-top, 0px));
+        left: 50%;
+        transform: translate3d(-50%, -8px, 0) scale(0.94);
+        opacity: 0;
+        visibility: hidden;
+        display: inline-flex;
+        align-items: center;
+        gap: 0.4rem;
+        padding: 0.45rem 0.95rem;
+        border-radius: 999px;
+        background: rgba(18, 18, 22, 0.78);
+        border: 1px solid rgba(255, 255, 255, 0.18);
+        -webkit-backdrop-filter: blur(22px) saturate(1.6);
+        backdrop-filter: blur(22px) saturate(1.6);
+        color: #ffffff;
+        font-size: 0.82rem;
+        font-weight: 650;
+        letter-spacing: 0.01em;
+        box-shadow: 0 12px 30px rgba(0, 0, 0, 0.48);
+        z-index: 26;
+        pointer-events: none;
+        white-space: nowrap;
+        transition: opacity 0.18s ease, transform 0.2s cubic-bezier(0.22, 1, 0.36, 1), visibility 0.2s;
+      }
+      .atv-speed-boost-pill.atv-visible {
+        opacity: 1;
+        visibility: visible;
+        transform: translate3d(-50%, 0, 0) scale(1);
+      }
+
+      /* Stacked Touch Double-Tap Skip Ripple Zones */
+      .atv-seek-ripple {
+        position: absolute;
+        top: -8%;
+        height: 116%;
+        width: 40%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: rgba(255, 255, 255, 0.13);
+        -webkit-backdrop-filter: blur(6px);
+        backdrop-filter: blur(6px);
+        pointer-events: none;
+        z-index: 9;
+        opacity: 0;
+        visibility: hidden;
+        transition: opacity 0.22s ease, visibility 0.22s ease;
+      }
+      .atv-seek-ripple-left {
+        left: 0;
+        border-radius: 0 50% 50% 0;
+      }
+      .atv-seek-ripple-right {
+        right: 0;
+        border-radius: 50% 0 0 50%;
+      }
+      .atv-seek-ripple.atv-ripple-active {
+        opacity: 1;
+        visibility: visible;
+        animation: atvRipplePulse 0.42s cubic-bezier(0.22, 1, 0.36, 1);
+      }
+      .atv-seek-ripple-inner {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 0.35rem;
+        color: #ffffff;
+        text-shadow: 0 2px 12px rgba(0, 0, 0, 0.72);
+      }
+      .atv-seek-chevrons {
+        display: inline-flex;
+        align-items: center;
+        gap: 1px;
+      }
+      .atv-seek-chevrons svg {
+        opacity: 0.35;
+      }
+      .atv-seek-ripple.atv-ripple-active .atv-seek-chevrons-right svg:nth-child(1) { animation: atvChevFade 0.55s ease 0s infinite; }
+      .atv-seek-ripple.atv-ripple-active .atv-seek-chevrons-right svg:nth-child(2) { animation: atvChevFade 0.55s ease 0.11s infinite; }
+      .atv-seek-ripple.atv-ripple-active .atv-seek-chevrons-right svg:nth-child(3) { animation: atvChevFade 0.55s ease 0.22s infinite; }
+      .atv-seek-ripple.atv-ripple-active .atv-seek-chevrons-left svg:nth-child(3) { animation: atvChevFade 0.55s ease 0s infinite; }
+      .atv-seek-ripple.atv-ripple-active .atv-seek-chevrons-left svg:nth-child(2) { animation: atvChevFade 0.55s ease 0.11s infinite; }
+      .atv-seek-ripple.atv-ripple-active .atv-seek-chevrons-left svg:nth-child(1) { animation: atvChevFade 0.55s ease 0.22s infinite; }
+      .atv-seek-label {
+        font-size: 0.95rem;
+        font-weight: 700;
+        font-variant-numeric: tabular-nums;
+        letter-spacing: -0.01em;
+      }
+      @keyframes atvRipplePulse {
+        0% { transform: scale(0.92); opacity: 0.45; }
+        50% { transform: scale(1); opacity: 1; }
+        100% { transform: scale(1); opacity: 1; }
+      }
+      @keyframes atvChevFade {
+        0%, 100% { opacity: 0.28; }
+        45% { opacity: 1; }
+      }
+
+      /* TV & Anime Up Next Episode Card */
+      .atv-upnext-card {
+        position: absolute;
+        right: calc(2.5rem + env(safe-area-inset-right, 0px));
+        bottom: calc(2.25rem + env(safe-area-inset-bottom, 0px));
+        width: min(300px, calc(100vw - 2rem));
+        padding: 1rem 1.15rem;
+        border-radius: 16px;
+        background: rgba(20, 20, 26, 0.82);
+        -webkit-backdrop-filter: blur(32px) saturate(1.7);
+        backdrop-filter: blur(32px) saturate(1.7);
+        border: 1px solid rgba(255, 255, 255, 0.16);
+        box-shadow: 0 22px 54px rgba(0, 0, 0, 0.62);
+        color: #ffffff;
+        z-index: 18;
+        opacity: 0;
+        visibility: hidden;
+        pointer-events: none;
+        transform: translate3d(0, 14px, 0) scale(0.96);
+        transition: bottom 0.28s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.24s ease, transform 0.28s cubic-bezier(0.22, 1, 0.36, 1), visibility 0.28s;
+      }
+      .atv-upnext-card.atv-visible {
+        opacity: 1;
+        visibility: visible;
+        pointer-events: auto;
+        transform: translate3d(0, 0, 0) scale(1);
+      }
+      .fx-player.atv-chrome-visible .atv-upnext-card {
+        bottom: calc(14.75rem + env(safe-area-inset-bottom, 0px));
+      }
+      .atv-upnext-kicker {
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: rgba(255, 255, 255, 0.68);
+        font-variant-numeric: tabular-nums;
+      }
+      .atv-upnext-title {
+        margin-top: 0.22rem;
+        font-size: 1.02rem;
+        font-weight: 700;
+        color: #ffffff;
+        line-height: 1.25;
+      }
+      .atv-upnext-sub {
+        margin-top: 0.12rem;
+        font-size: 0.82rem;
+        color: rgba(255, 255, 255, 0.72);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .atv-upnext-actions {
+        display: flex;
+        align-items: center;
+        gap: 0.55rem;
+        margin-top: 0.85rem;
+      }
+      .atv-upnext-btn {
+        flex: 1;
+        min-height: 36px;
+        padding: 0.48rem 0.85rem;
+        border-radius: 10px;
+        border: 1px solid rgba(255, 255, 255, 0.18);
+        background: rgba(255, 255, 255, 0.12);
+        color: #ffffff;
+        font-family: inherit;
+        font-size: 0.84rem;
+        font-weight: 600;
+        cursor: pointer;
+        transition: background-color 0.16s ease, transform 0.14s ease;
+      }
+      .atv-upnext-btn:hover {
+        background: rgba(255, 255, 255, 0.22);
+      }
+      .atv-upnext-primary {
+        background: #ffffff;
+        border-color: #ffffff;
+        color: #111114;
+      }
+      .atv-upnext-primary:hover {
+        background: rgba(255, 255, 255, 0.9);
+      }
+      .atv-upnext-btn:focus-visible {
+        outline: 2px solid #ffffff;
+        outline-offset: 2px;
       }
 
       /* Expandable Info & Chapters Frosted Panels (Smooth Spring Reveal) */
@@ -8144,7 +9449,10 @@
       }
       .fx-player.atv-mode-embed .fx-bottom,
       .fx-player.atv-mode-embed .kaira-center-play,
-      .fx-player.atv-mode-embed .atv-subtitle-cue {
+      .fx-player.atv-mode-embed .atv-subtitle-cue,
+      .fx-player.atv-mode-embed .atv-seek-ripple,
+      .fx-player.atv-mode-embed .atv-speed-boost-pill,
+      .fx-player.atv-mode-embed .atv-upnext-card {
         display: none !important;
       }
       .fx-player.atv-mode-embed .fx-ui {
@@ -8271,6 +9579,20 @@
         .atv-transport {
           gap: 0.1rem;
         }
+        .atv-inline-vol {
+          margin-left: 0;
+          margin-right: 0;
+        }
+        .atv-inline-vol-slider {
+          display: none;
+        }
+        .atv-upnext-card {
+          right: calc(1rem + env(safe-area-inset-right, 0px));
+          width: calc(100vw - 2rem);
+        }
+        .fx-player.atv-chrome-visible .atv-upnext-card {
+          bottom: calc(16.25rem + env(safe-area-inset-bottom, 0px));
+        }
         .atv-glass-panel.atv-open {
           padding: 0.9rem 1rem;
         }
@@ -8348,6 +9670,17 @@
         .atv-pop-item {
           min-height: 34px !important;
           padding: 6px 10px !important;
+        }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .atv-seek-ripple.atv-ripple-active,
+        .atv-seek-ripple.atv-ripple-active .atv-seek-chevrons svg {
+          animation: none !important;
+        }
+        .atv-speed-boost-pill,
+        .atv-upnext-card,
+        .atv-seek-ripple {
+          transition: opacity 0.12s ease !important;
         }
       }
 
@@ -8928,6 +10261,7 @@
 
     window.addEventListener('pageshow', () => {
       updateActiveNavTabs(window.location.pathname);
+      refreshContinueWatchingUI();
     });
 
     document.addEventListener('mouseover', (e) => {

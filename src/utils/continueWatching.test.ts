@@ -1,7 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  CONTINUE_WATCHING_STORAGE_KEY,
+  LEGACY_CONTINUE_WATCHING_STORAGE_KEY,
   computeProgressMetrics,
+  parseContinueWatchingStorage,
   upsertContinueWatchingList,
   removeContinueWatchingEntry,
   getResumeTimeForEntry,
@@ -9,6 +12,32 @@ import {
   formatResumeTimestamp,
   type ContinueWatchingEntry,
 } from './continueWatching.ts';
+
+test('storage keys are isolated from legacy Next.js key', () => {
+  assert.equal(CONTINUE_WATCHING_STORAGE_KEY, 'kaira:continue-watching:v1');
+  assert.equal(LEGACY_CONTINUE_WATCHING_STORAGE_KEY, 'flicx:player:progress');
+  assert.notEqual(CONTINUE_WATCHING_STORAGE_KEY, LEGACY_CONTINUE_WATCHING_STORAGE_KEY);
+});
+
+test('parseContinueWatchingStorage migrates legacy Next.js object map, array, and items wrapper', () => {
+  const legacyMap = {
+    'the-odyssey-2026': { t: 912, d: 10380, at: 2000 },
+    'mobland-2025': { t: 600, d: 3000, at: 3000, show: true, season: 1, episode: 2 },
+    'finished-movie-2025': { t: 7000, d: 7200, at: 4000 },
+    'too-short-2025': { t: 2, d: 5000, at: 5000 },
+  };
+  const parsed = parseContinueWatchingStorage(legacyMap);
+  assert.equal(parsed.length, 2);
+  assert.equal(parsed[0].slug, 'mobland-2025');
+  assert.equal(parsed[0].kind, 'show');
+  assert.equal(parsed[0].season, 1);
+  assert.equal(parsed[0].episode, 2);
+  assert.equal(parsed[0].watchUrl, '/watch/mobland-2025/s1e2');
+  assert.equal(parsed[0].progressPercent, 20);
+  assert.equal(parsed[1].slug, 'the-odyssey-2026');
+  assert.equal(parsed[1].currentTime, 912);
+  assert.equal(parsed[1].title, 'The Odyssey');
+});
 
 test('computeProgressMetrics tracks direct playback past 5s and auto-completes past 92%', () => {
   assert.deepEqual(computeProgressMetrics(2, 6000, 'direct'), {
@@ -35,7 +64,7 @@ test('computeProgressMetrics tracks direct playback past 5s and auto-completes p
   assert.equal(embed.progressPercent, 0);
 });
 
-test('upsertContinueWatchingList deduplicates by slug, sorts newest first, and clears on completion', () => {
+test('upsertContinueWatchingList deduplicates by slug, sorts newest first, preserves direct progress on embed switch, and clears on completion', () => {
   const movieA = {
     slug: 'the-odyssey-2026',
     title: 'The Odyssey',
@@ -75,6 +104,21 @@ test('upsertContinueWatchingList deduplicates by slug, sorts newest first, and c
   assert.equal(list[0].slug, 'the-odyssey-2026');
   assert.equal(list[0].currentTime, 2400);
 
+  // Switching to an embed server for the same movie must NOT wipe direct timestamp progress
+  list = upsertContinueWatchingList(list, {
+    ...movieA,
+    currentTime: 0,
+    duration: 0,
+    mode: 'embed',
+    serverName: 'VidSrc',
+    updatedAt: 3500,
+  });
+  assert.equal(list[0].slug, 'the-odyssey-2026');
+  assert.equal(list[0].mode, 'direct');
+  assert.equal(list[0].currentTime, 2400);
+  assert.equal(list[0].duration, 10380);
+  assert.equal(list[0].serverName, 'VidSrc');
+
   // Finishing movieA (>92%) automatically removes it
   list = upsertContinueWatchingList(list, { ...movieA, currentTime: 9800, updatedAt: 4000 });
   assert.equal(list.length, 1);
@@ -97,7 +141,7 @@ test('removeContinueWatchingEntry removes matching slug cleanly', () => {
   assert.equal(after.length, 0);
 });
 
-test('getResumeTimeForEntry validates mode and TV episode match', () => {
+test('getResumeTimeForEntry validates mode, TV episode match, and anime episode match', () => {
   const directMovie: ContinueWatchingEntry = {
     slug: 'the-odyssey-2026',
     title: 'The Odyssey',
@@ -124,6 +168,18 @@ test('getResumeTimeForEntry validates mode and TV episode match', () => {
   };
   assert.equal(getResumeTimeForEntry(directShow, 2, 4), 725);
   assert.equal(getResumeTimeForEntry(directShow, 2, 5), 0);
+
+  const directAnime: ContinueWatchingEntry = {
+    ...directMovie,
+    slug: 'anime-1234',
+    kind: 'anime',
+    episode: 3,
+    currentTime: 410,
+    duration: 1420,
+    progressPercent: 29,
+  };
+  assert.equal(getResumeTimeForEntry(directAnime, 1, 3), 410);
+  assert.equal(getResumeTimeForEntry(directAnime, 1, 4), 0);
 
   const embedMovie: ContinueWatchingEntry = {
     ...directMovie,

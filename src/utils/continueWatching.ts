@@ -31,7 +31,8 @@ export interface ProgressMetrics {
   remainingSeconds: number;
 }
 
-export const CONTINUE_WATCHING_STORAGE_KEY = 'flicx:player:progress';
+export const CONTINUE_WATCHING_STORAGE_KEY = 'kaira:continue-watching:v1';
+export const LEGACY_CONTINUE_WATCHING_STORAGE_KEY = 'flicx:player:progress';
 export const CONTINUE_WATCHING_MIN_SECONDS = 5;
 export const CONTINUE_WATCHING_COMPLETE_RATIO = 0.92;
 export const CONTINUE_WATCHING_MAX_ITEMS = 24;
@@ -43,6 +44,120 @@ export function normalizeProgressSlug(raw: string | undefined | null): string {
     .replace(/\/.*$/, '')
     .replace(/\?.*$/, '')
     .toLowerCase();
+}
+
+function humanizeSlugTitle(slug: string): string {
+  return slug
+    .replace(/-\d{4}$/, '')
+    .split('-')
+    .filter(Boolean)
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(' ');
+}
+
+function normalizeEntryRecord(rawItem: Record<string, unknown>, fallbackSlug?: string): ContinueWatchingEntry | null {
+  const cleanSlug = normalizeProgressSlug(
+    typeof rawItem.slug === 'string' && rawItem.slug ? rawItem.slug : fallbackSlug
+  );
+  if (!cleanSlug) return null;
+
+  const isLegacyNextShape =
+    typeof rawItem.t === 'number' || typeof rawItem.d === 'number' || typeof rawItem.at === 'number';
+  const currentTime = Number(isLegacyNextShape ? (rawItem.currentTime ?? rawItem.t) : rawItem.currentTime) || 0;
+  const duration = Number(isLegacyNextShape ? (rawItem.duration ?? rawItem.d) : rawItem.duration) || 0;
+  const updatedAt = Number(isLegacyNextShape ? (rawItem.updatedAt ?? rawItem.at) : rawItem.updatedAt) || 0;
+
+  const seasonVal = Number(rawItem.season);
+  const episodeVal = Number(rawItem.episode);
+  const season = Number.isFinite(seasonVal) && seasonVal > 0 ? Math.floor(seasonVal) : undefined;
+  const episode = Number.isFinite(episodeVal) && episodeVal > 0 ? Math.floor(episodeVal) : undefined;
+
+  const kind: ContinueWatchingKind =
+    rawItem.kind === 'anime'
+      ? 'anime'
+      : rawItem.kind === 'show' || rawItem.show === true || (season !== undefined && episode !== undefined)
+        ? 'show'
+        : 'movie';
+
+  const mode: ContinueWatchingMode = rawItem.mode === 'embed' ? 'embed' : 'direct';
+  const metrics = computeProgressMetrics(currentTime, duration, mode);
+  if (metrics.isCompleted) return null;
+  if (mode === 'direct' && !metrics.shouldTrack) return null;
+
+  const defaultWatchUrl =
+    kind === 'show' && season && episode
+      ? `/watch/${encodeURIComponent(cleanSlug)}/s${season}e${episode}`
+      : `/watch/${encodeURIComponent(cleanSlug)}`;
+  const defaultDetailUrl =
+    kind === 'anime'
+      ? '/anime'
+      : kind === 'show'
+        ? `/tv/${encodeURIComponent(cleanSlug)}`
+        : `/movie/${encodeURIComponent(cleanSlug)}`;
+
+  return {
+    slug: cleanSlug,
+    title: typeof rawItem.title === 'string' && rawItem.title.trim() ? rawItem.title.trim() : humanizeSlugTitle(cleanSlug),
+    kind,
+    imdbId: typeof rawItem.imdbId === 'string' && rawItem.imdbId ? rawItem.imdbId : undefined,
+    year: typeof rawItem.year === 'string' ? rawItem.year : undefined,
+    poster: typeof rawItem.poster === 'string' ? rawItem.poster : undefined,
+    still: typeof rawItem.still === 'string' ? rawItem.still : undefined,
+    rating: typeof rawItem.rating === 'string' ? rawItem.rating : undefined,
+    genre: typeof rawItem.genre === 'string' ? rawItem.genre : undefined,
+    tone: typeof rawItem.tone === 'string' ? rawItem.tone : undefined,
+    watchUrl: typeof rawItem.watchUrl === 'string' && rawItem.watchUrl ? rawItem.watchUrl : defaultWatchUrl,
+    detailUrl: typeof rawItem.detailUrl === 'string' && rawItem.detailUrl ? rawItem.detailUrl : defaultDetailUrl,
+    season,
+    episode,
+    currentTime: mode === 'embed' ? 0 : Math.floor(currentTime),
+    duration: mode === 'embed' ? 0 : Math.floor(Math.max(0, duration)),
+    progressPercent:
+      typeof rawItem.progressPercent === 'number' && rawItem.progressPercent > 0
+        ? Math.min(99, Math.round(rawItem.progressPercent))
+        : metrics.progressPercent,
+    mode,
+    serverName: typeof rawItem.serverName === 'string' ? rawItem.serverName : undefined,
+    updatedAt,
+  };
+}
+
+export function parseContinueWatchingStorage(raw: unknown): ContinueWatchingEntry[] {
+  if (!raw || typeof raw !== 'object') return [];
+
+  const list: ContinueWatchingEntry[] = [];
+  const seen = new Set<string>();
+
+  const pushEntry = (candidate: ContinueWatchingEntry | null) => {
+    if (!candidate || seen.has(candidate.slug)) return;
+    seen.add(candidate.slug);
+    list.push(candidate);
+  };
+
+  if (Array.isArray(raw)) {
+    for (const item of raw) {
+      if (item && typeof item === 'object') {
+        pushEntry(normalizeEntryRecord(item as Record<string, unknown>));
+      }
+    }
+  } else {
+    const obj = raw as Record<string, unknown>;
+    if (Array.isArray(obj.items)) {
+      for (const item of obj.items) {
+        if (item && typeof item === 'object') {
+          pushEntry(normalizeEntryRecord(item as Record<string, unknown>));
+        }
+      }
+    } else {
+      // Legacy Next.js map format: { [slug]: { t, d, at, show, season, episode } }
+      for (const [key, val] of Object.entries(obj)) {
+        if (key === 'items' || !val || typeof val !== 'object' || Array.isArray(val)) continue;
+        pushEntry(normalizeEntryRecord(val as Record<string, unknown>, key));
+      }
+    }
+  }
+
+  return list.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0)).slice(0, CONTINUE_WATCHING_MAX_ITEMS);
 }
 
 export function computeProgressMetrics(
@@ -107,12 +222,14 @@ export function upsertContinueWatchingList(
   const cleanSlug = normalizeProgressSlug(incoming.slug);
   if (!cleanSlug) return Array.isArray(existing) ? existing.slice(0, maxItems) : [];
 
+  const prevList = Array.isArray(existing) ? existing : [];
+  const prevMatch = prevList.find((item) => item && normalizeProgressSlug(item.slug) === cleanSlug);
   const metrics = computeProgressMetrics(
     incoming.currentTime,
     incoming.duration,
     incoming.mode
   );
-  const filtered = (Array.isArray(existing) ? existing : []).filter(
+  const filtered = prevList.filter(
     (item) => item && normalizeProgressSlug(item.slug) !== cleanSlug
   );
 
@@ -122,17 +239,44 @@ export function upsertContinueWatchingList(
 
   if (!metrics.shouldTrack) {
     // Do not overwrite an already-tracked item with a <5s restart unless explicitly cleared
-    return Array.isArray(existing) ? existing.slice(0, maxItems) : [];
+    return prevList.slice(0, maxItems);
   }
 
-  const nextEntry: ContinueWatchingEntry = {
-    ...incoming,
-    slug: cleanSlug,
-    currentTime: incoming.mode === 'embed' ? 0 : Math.floor(incoming.currentTime),
-    duration: incoming.mode === 'embed' ? 0 : Math.floor(Math.max(0, incoming.duration)),
-    progressPercent: metrics.progressPercent,
-    updatedAt: typeof incoming.updatedAt === 'number' ? incoming.updatedAt : Date.now(),
-  };
+  const sameEpisode =
+    !prevMatch ||
+    (prevMatch.kind === 'show'
+      ? prevMatch.season === incoming.season && prevMatch.episode === incoming.episode
+      : prevMatch.kind === 'anime'
+        ? prevMatch.episode === incoming.episode
+        : true);
+
+  const shouldPreserveDirectProgress =
+    incoming.mode === 'embed' &&
+    Boolean(prevMatch) &&
+    sameEpisode &&
+    prevMatch!.mode === 'direct' &&
+    prevMatch!.currentTime >= CONTINUE_WATCHING_MIN_SECONDS &&
+    prevMatch!.duration > 0;
+
+  const nextEntry: ContinueWatchingEntry = shouldPreserveDirectProgress
+    ? {
+        ...prevMatch!,
+        ...incoming,
+        slug: cleanSlug,
+        mode: 'direct',
+        currentTime: prevMatch!.currentTime,
+        duration: prevMatch!.duration,
+        progressPercent: prevMatch!.progressPercent,
+        updatedAt: typeof incoming.updatedAt === 'number' ? incoming.updatedAt : Date.now(),
+      }
+    : {
+        ...incoming,
+        slug: cleanSlug,
+        currentTime: incoming.mode === 'embed' ? 0 : Math.floor(incoming.currentTime),
+        duration: incoming.mode === 'embed' ? 0 : Math.floor(Math.max(0, incoming.duration)),
+        progressPercent: metrics.progressPercent,
+        updatedAt: typeof incoming.updatedAt === 'number' ? incoming.updatedAt : Date.now(),
+      };
 
   return [nextEntry, ...filtered]
     .sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))
@@ -164,6 +308,14 @@ export function getResumeTimeForEntry(
     ) {
       return 0;
     }
+    if (
+      typeof episode === 'number' &&
+      typeof entry.episode === 'number' &&
+      entry.episode !== episode
+    ) {
+      return 0;
+    }
+  } else if (entry.kind === 'anime') {
     if (
       typeof episode === 'number' &&
       typeof entry.episode === 'number' &&
