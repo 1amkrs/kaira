@@ -171,7 +171,7 @@ function sanitizeDirectSources(rawSources) {
   const seen = new Set();
   const out = [];
   for (const s of Array.isArray(rawSources) ? rawSources : []) {
-    if (!s || !s.name || typeof s.src !== 'string' || !/^https:\/\//i.test(s.src)) continue;
+    if (!s || !s.name || s.has === false || typeof s.src !== 'string' || !/^https:\/\//i.test(s.src)) continue;
     const name = s.name === 'Flicx' ? 'Kaira' : s.name;
     const key = `${name.toLowerCase()}:${s.kind || 'hls'}`;
     if (seen.has(key)) continue;

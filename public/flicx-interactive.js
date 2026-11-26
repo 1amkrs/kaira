@@ -215,7 +215,7 @@
         { name: 'VidSrc Pro', kind: 'embed', src: `https://vidsrc.to/embed/tv/${encodeURIComponent(cleanImdb)}/${s}/${e}`, quality: 'HD', group: 'embed' },
         { name: 'VidFast', kind: 'embed', src: `https://vidfast.pro/tv/${encodeURIComponent(cleanImdb)}/${s}/${e}`, quality: 'HD', group: 'embed' },
         { name: 'VidPrime', kind: 'embed', src: `https://vidprime.top/tv/${encodeURIComponent(cleanImdb)}/${s}/${e}`, quality: 'HD', group: 'embed' },
-        { name: '2Embed', kind: 'embed', src: `https://www.2embed.cc/embedtv/${encodeURIComponent(cleanImdb)}&s=${s}&e=${e}`, quality: 'HD', group: 'embed' }
+        { name: '2Embed', kind: 'embed', src: `https://www.2embed.cc/embedtv/${encodeURIComponent(cleanImdb)}?s=${s}&e=${e}`, quality: 'HD', group: 'embed' }
       ];
     }
     return [
@@ -584,6 +584,7 @@
           ...rawSources.filter(s => s && typeof s.src === 'string' && !/^https:\/\//i.test(s.src))
         ];
         for (const s of orderedSources) {
+          if (s.has === false) continue;
           const srcStr = String(s.src || '').trim();
           if (!srcStr) continue;
           if (srcStr.startsWith('/api/')) {
@@ -1182,8 +1183,8 @@
       const browseEndpoint = isTv ? '/api/browse?kind=show&sort=release_date' : '/api/browse?kind=movie&sort=release_date';
 
       const [trendingRes, browseRes] = await Promise.all([
-        fetch(endpoint).then(r => (r.ok ? r.json() : null)).catch(() => null),
-        fetch(browseEndpoint).then(r => (r.ok ? r.json() : null)).catch(() => null)
+        fetchApiJsonWithMeta(endpoint).then(r => (r ? r.data : null)).catch(() => null),
+        fetchApiJsonWithMeta(browseEndpoint).then(r => (r ? r.data : null)).catch(() => null)
       ]);
 
       const candidates = [];
@@ -1834,7 +1835,8 @@
 
       const rawTitle = String(titleInfo.title || titleSlug.replace(/-\d{4}$/, '').split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')).trim();
       const yearStr = titleInfo.year ? String(titleInfo.year).trim() : '';
-      const cleanTitle = yearStr && rawTitle.endsWith(yearStr) ? rawTitle.slice(0, -yearStr.length).trim() : rawTitle;
+      const strippedYearTitle = yearStr ? rawTitle.replace(new RegExp(`(?:\\s*\\(${yearStr}\\)|\\s+${yearStr})$`), '').trim() : rawTitle;
+      const cleanTitle = strippedYearTitle || rawTitle;
       const synopsisText = String(titleInfo.description || '').trim();
       const ratingText = titleInfo.rating ? String(titleInfo.rating).trim() : '';
       const genresList = Array.isArray(titleInfo.genres) ? titleInfo.genres.filter(Boolean) : [];
@@ -6847,8 +6849,8 @@
           if (n.nodeType === 3) { n.nodeValue = `All ${selectedOpt.label}`; break; }
         }
       }
-      fetchPromise = fetch(`/api/browse?genre=${encodeURIComponent(genreVal)}&kind=${kindParam}`)
-        .then(r => (r.ok ? r.json() : Promise.reject(new Error('HTTP ' + r.status))))
+      fetchPromise = fetchApiJsonWithMeta(`/api/browse?genre=${encodeURIComponent(genreVal)}&kind=${kindParam}`)
+        .then(r => (r && r.data ? r.data : Promise.reject(new Error('No API data'))))
         .then(data => data?.films || data?.results || [])
         .catch(async () => {
           // Static GitHub Pages fallback via Cinemeta catalog by genre
@@ -6877,8 +6879,8 @@
       };
       const key = timeKeyMap[selectedOpt.value] || 'week';
       const kindParam = isTv ? 'show' : 'movie';
-      fetchPromise = fetch(`/api/trending?kind=${kindParam}`)
-        .then(r => (r.ok ? r.json() : Promise.reject(new Error('HTTP ' + r.status))))
+      fetchPromise = fetchApiJsonWithMeta(`/api/trending?kind=${kindParam}`)
+        .then(r => (r && r.data ? r.data : Promise.reject(new Error('No API data'))))
         .then(data => data?.lists?.[key] || data?.lists?.week || [])
         .catch(() => {
           // Graceful static fallback: re-order existing rail cards deterministically by chosen window
@@ -7088,8 +7090,8 @@
     railTrack.style.opacity = '0.35';
     railTrack.style.transition = 'opacity 0.2s ease-out';
 
-    fetch(`/api/trending?kind=${isTv ? 'show' : 'movie'}`)
-      .then(res => (res.ok ? res.json() : Promise.reject(new Error('HTTP ' + res.status))))
+    fetchApiJsonWithMeta(`/api/trending?kind=${isTv ? 'show' : 'movie'}`)
+      .then(res => (res && res.data ? res.data : Promise.reject(new Error('No API data'))))
       .then(data => {
         railTrack.style.opacity = '1';
         const list = data?.lists?.[timeKey] || data?.lists?.week || [];
@@ -7464,9 +7466,9 @@
       if (state.source === 'library') params.set('source', 'library');
 
       try {
-        const res = await fetch(`/api/browse?${params.toString()}`);
-        if (!res.ok) throw new Error('HTTP ' + res.status);
-        const data = await res.json();
+        const apiRes = await fetchApiJsonWithMeta(`/api/browse?${params.toString()}`);
+        if (!apiRes || !apiRes.data) throw new Error('No API data');
+        const data = apiRes.data;
         if (currentReq !== reqId) return;
 
         let items = data?.films || data?.results || [];
@@ -11477,13 +11479,10 @@
       const primaryGenre = label.split('&')[0].trim();
       const apiSlug = primaryGenre.toLowerCase().replace(/[^a-z0-9]+/g, '-');
       try {
-        const res = await fetch(`/api/browse?genre=${encodeURIComponent(apiSlug)}&kind=movie`);
-        if (res.ok) {
-          const ct = res.headers.get('content-type') || '';
-          if (ct.includes('json')) {
-            const data = await res.json().catch(() => null);
-            items = data?.films || data?.results || [];
-          }
+        const apiRes = await fetchApiJsonWithMeta(`/api/browse?genre=${encodeURIComponent(apiSlug)}&kind=movie`);
+        const data = apiRes && apiRes.data;
+        if (data) {
+          items = data?.films || data?.results || [];
         }
       } catch {}
       if (!items.length) {
@@ -11511,13 +11510,10 @@
     } else {
       const query = formatLabelFromSlug(route.slug, route.type === 'collection' ? 'collection' : '');
       try {
-        const res = await fetch(`/api/search?q=${encodeURIComponent(query)}`);
-        if (res.ok) {
-          const ct = res.headers.get('content-type') || '';
-          if (ct.includes('json')) {
-            const data = await res.json().catch(() => null);
-            items = data?.results || data?.films || [];
-          }
+        const apiRes = await fetchApiJsonWithMeta(`/api/search?q=${encodeURIComponent(query)}`);
+        const data = apiRes && apiRes.data;
+        if (data) {
+          items = data?.results || data?.films || [];
         }
       } catch {}
       if (!items.length) {

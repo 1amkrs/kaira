@@ -77,6 +77,7 @@ test('buildEmbedFallbackServers builds IMDb-native movie and TV embed URLs clean
   assert.equal(tvServers.length, 5);
   assert.match(tvServers[0].src, /^https:\/\/vidsrc\.me\/embed\/tv\?imdb=tt7631058&season=2&episode=4$/);
   assert.match(tvServers[1].src, /^https:\/\/vidsrc\.to\/embed\/tv\/tt7631058\/2\/4$/);
+  assert.match(tvServers[4].src, /^https:\/\/www\.2embed\.cc\/embedtv\/tt7631058\?s=2&e=4$/);
 
   assert.deepEqual(buildEmbedFallbackServers('invalid', false), []);
 });

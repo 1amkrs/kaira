@@ -155,7 +155,7 @@ export function buildEmbedFallbackServers(
       {
         name: '2Embed',
         kind: 'embed',
-        src: `https://www.2embed.cc/embedtv/${encodeURIComponent(cleanImdb)}&s=${s}&e=${e}`,
+        src: `https://www.2embed.cc/embedtv/${encodeURIComponent(cleanImdb)}?s=${s}&e=${e}`,
         quality: 'HD',
         group: 'embed'
       }
