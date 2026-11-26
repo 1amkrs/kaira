@@ -9939,11 +9939,11 @@
       .atv-upnext-badge {
         padding: 0.12rem 0.36rem;
         border-radius: 5px;
-        border: 1px solid rgba(255, 255, 255, 0.34);
-        background: rgba(16, 16, 22, 0.52);
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        background: rgba(16, 16, 22, 0.38);
         -webkit-backdrop-filter: blur(8px);
         backdrop-filter: blur(8px);
-        color: rgba(255, 255, 255, 0.94);
+        color: rgba(255, 255, 255, 0.68);
         font-size: 0.66rem;
         font-weight: 700;
         letter-spacing: 0.03em;
