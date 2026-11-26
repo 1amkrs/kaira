@@ -2003,13 +2003,31 @@
               </div>
               ${(isShow || isAnimeRoute) ? `
               <div id="atv-upnext-card" class="atv-upnext-card" role="region" aria-label="Up Next episode" aria-hidden="true">
-                <div class="atv-upnext-kicker" id="atv-upnext-kicker">Up Next</div>
-                <div class="atv-upnext-title" id="atv-upnext-title">${isAnimeRoute ? `Episode ${episodeNum + 1}` : `Season ${seasonNum} &middot; Episode ${episodeNum + 1}`}</div>
-                <div class="atv-upnext-sub" id="atv-upnext-sub">${escapeHtml(cleanTitle)}</div>
-                <div class="atv-upnext-actions">
-                  <button type="button" id="atv-upnext-play" class="atv-upnext-btn atv-upnext-primary">Play Next</button>
-                  <button type="button" id="atv-upnext-dismiss" class="atv-upnext-btn">Dismiss</button>
+                <div class="atv-upnext-head">
+                  <span class="atv-upnext-kicker" id="atv-upnext-kicker">Up Next</span>
+                  <button type="button" id="atv-upnext-dismiss" class="atv-upnext-hide-btn">Hide</button>
                 </div>
+                <button type="button" id="atv-upnext-play" class="atv-upnext-preview" aria-label="Play next episode">
+                  <img id="atv-upnext-thumb" class="atv-upnext-thumb" src="${escapeAttr(safeImageUrl(titleInfo.still || posterUrl || ''))}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" style="${(titleInfo.still || posterUrl) ? '' : 'display:none;'}" />
+                  <span class="atv-upnext-scrim" aria-hidden="true"></span>
+                  <span class="atv-upnext-play-circle" aria-hidden="true">
+                    <svg class="atv-upnext-ring-svg" viewBox="0 0 60 60" width="60" height="60">
+                      <circle class="atv-upnext-ring-track" cx="30" cy="30" r="27" fill="none" stroke-width="3"></circle>
+                      <circle id="atv-upnext-ring" class="atv-upnext-ring-fill" cx="30" cy="30" r="27" fill="none" stroke-width="3" stroke-dasharray="169.65" stroke-dashoffset="169.65"></circle>
+                    </svg>
+                    <svg class="atv-upnext-play-icon" viewBox="0 0 24 24" fill="currentColor" width="22" height="22"><path d="M8 5.14v14l11-7-11-7z"/></svg>
+                  </span>
+                  <span class="atv-upnext-overlay-bottom">
+                    <span class="atv-upnext-meta">
+                      <span class="atv-upnext-title" id="atv-upnext-title">${isAnimeRoute ? `E${episodeNum + 1}` : `S${seasonNum} &middot; E${episodeNum + 1}`}</span>
+                      <span class="atv-upnext-ep-title" id="atv-upnext-ep-title">${escapeHtml(cleanTitle)}</span>
+                    </span>
+                    <span class="atv-upnext-badges" id="atv-upnext-badges">
+                      <span class="atv-upnext-badge" id="atv-upnext-cc-badge" style="display:none;">CC</span>
+                      <span class="atv-upnext-badge" id="atv-upnext-q-badge">${escapeHtml(currentServer.quality || 'HD')}</span>
+                    </span>
+                  </span>
+                </button>
               </div>
               ` : ''}
             </div>
@@ -2328,6 +2346,11 @@
       const upNextKickerEl = watchRoot.querySelector('#atv-upnext-kicker');
       const upNextPlayBtn = watchRoot.querySelector('#atv-upnext-play');
       const upNextDismissBtn = watchRoot.querySelector('#atv-upnext-dismiss');
+      const upNextRingEl = watchRoot.querySelector('#atv-upnext-ring');
+      const upNextThumbEl = watchRoot.querySelector('#atv-upnext-thumb');
+      const upNextEpTitleEl = watchRoot.querySelector('#atv-upnext-ep-title');
+      const upNextCcBadgeEl = watchRoot.querySelector('#atv-upnext-cc-badge');
+      const upNextQBadgeEl = watchRoot.querySelector('#atv-upnext-q-badge');
       const subSearchForm = watchRoot.querySelector('#atv-sub-search-form');
       const subSearchInput = watchRoot.querySelector('#atv-sub-search-input');
       const subFileBtn = watchRoot.querySelector('#atv-sub-file-btn');
@@ -3236,22 +3259,39 @@
 
       function applyNextEpisodeFromVideos(videos) {
         if (!isShow || isAnimeRoute || !Array.isArray(videos) || videos.length === 0) return;
-        const epPairs = videos
-          .map(v => ({ s: Number(v.season), e: Number(v.episode || v.number) }))
+        const epList = videos
+          .map(v => ({
+            s: Number(v.season),
+            e: Number(v.episode || v.number),
+            title: v.name || v.title || '',
+            thumb: v.thumbnail || ''
+          }))
           .filter(v => Number.isFinite(v.s) && v.s > 0 && Number.isFinite(v.e) && v.e > 0);
-        if (epPairs.length === 0) return;
-        const sameSeasonNext = epPairs.some(v => v.s === seasonNum && v.e === episodeNum + 1);
-        if (sameSeasonNext) return;
-        const nextSeasonEps = epPairs.filter(v => v.s === seasonNum + 1).map(v => v.e).sort((a, b) => a - b);
-        if (nextSeasonEps.length > 0) {
-          nextSeasonNum = seasonNum + 1;
-          nextEpisodeNum = nextSeasonEps[0];
-          nextEpisodeUrl = withBasePath(`/watch/${encodeURIComponent(titleSlug)}/s${nextSeasonNum}e${nextEpisodeNum}`);
-          const upNextTitleEl = watchRoot.querySelector('#atv-upnext-title');
-          if (upNextTitleEl) upNextTitleEl.textContent = `Season ${nextSeasonNum} · Episode ${nextEpisodeNum}`;
-        } else {
-          nextEpisodeUrl = null;
-          hideUpNextCard();
+        if (epList.length === 0) return;
+        let targetEp = epList.find(v => v.s === seasonNum && v.e === episodeNum + 1) || null;
+        if (!targetEp) {
+          const nextSeasonEps = epList.filter(v => v.s === seasonNum + 1).sort((a, b) => a.e - b.e);
+          if (nextSeasonEps.length > 0) {
+            targetEp = nextSeasonEps[0];
+            nextSeasonNum = seasonNum + 1;
+            nextEpisodeNum = targetEp.e;
+            nextEpisodeUrl = withBasePath(`/watch/${encodeURIComponent(titleSlug)}/s${nextSeasonNum}e${nextEpisodeNum}`);
+            const upNextTitleEl = watchRoot.querySelector('#atv-upnext-title');
+            if (upNextTitleEl) upNextTitleEl.textContent = `S${nextSeasonNum} · E${nextEpisodeNum}`;
+          } else {
+            nextEpisodeUrl = null;
+            hideUpNextCard();
+            return;
+          }
+        }
+        if (targetEp) {
+          if (upNextEpTitleEl && targetEp.title) {
+            upNextEpTitleEl.textContent = targetEp.title;
+          }
+          if (upNextThumbEl && targetEp.thumb && /^https?:\/\//i.test(targetEp.thumb)) {
+            upNextThumbEl.src = targetEp.thumb;
+            upNextThumbEl.style.display = '';
+          }
         }
       }
 
@@ -3270,10 +3310,22 @@
         }
       }
 
+      const UPNEXT_RING_CIRCUMFERENCE = 169.65;
+      function updateUpNextRing(remainingSec, totalSec = 10) {
+        if (!upNextRingEl) return;
+        if (!Number.isFinite(remainingSec)) {
+          upNextRingEl.style.strokeDashoffset = String(UPNEXT_RING_CIRCUMFERENCE);
+          return;
+        }
+        const progress = Math.max(0, Math.min(1, (totalSec - remainingSec) / totalSec));
+        upNextRingEl.style.strokeDashoffset = String(UPNEXT_RING_CIRCUMFERENCE * (1 - progress));
+      }
+
       function hideUpNextCard() {
         clearInterval(upNextCountdownTimer);
         upNextCountdownTimer = null;
         upNextVisible = false;
+        updateUpNextRing(null);
         if (upNextCardEl) {
           upNextCardEl.classList.remove('atv-visible');
           upNextCardEl.setAttribute('aria-hidden', 'true');
@@ -3284,8 +3336,15 @@
         if (!upNextCardEl || !nextEpisodeUrl || isEmbedMode || upNextDismissed) return;
         upNextVisible = true;
         if (upNextKickerEl) {
-          upNextKickerEl.textContent = Number.isFinite(countdownSec) ? `Up Next in ${countdownSec}s` : 'Up Next';
+          upNextKickerEl.textContent = Number.isFinite(countdownSec) ? `Up Next · ${countdownSec}s` : 'Up Next';
         }
+        if (upNextCcBadgeEl) {
+          upNextCcBadgeEl.style.display = selectedSubtitleId && selectedSubtitleId !== 'off' ? '' : 'none';
+        }
+        if (upNextQBadgeEl && currentServer?.quality) {
+          upNextQBadgeEl.textContent = currentServer.quality;
+        }
+        updateUpNextRing(countdownSec);
         upNextCardEl.classList.add('atv-visible');
         upNextCardEl.setAttribute('aria-hidden', 'false');
       }
@@ -3293,7 +3352,8 @@
       function startUpNextCountdown() {
         if (!upNextCardEl || !nextEpisodeUrl || isEmbedMode || upNextDismissed) return;
         clearInterval(upNextCountdownTimer);
-        let remainingSec = 10;
+        const totalSec = 10;
+        let remainingSec = totalSec;
         showUpNextCard(remainingSec);
         upNextCountdownTimer = setInterval(() => {
           if (isDestroyed || upNextDismissed) {
@@ -3303,13 +3363,15 @@
           }
           remainingSec -= 1;
           if (remainingSec <= 0) {
+            updateUpNextRing(0, totalSec);
             clearInterval(upNextCountdownTimer);
             upNextCountdownTimer = null;
             navigateTo(nextEpisodeUrl);
             return;
           }
+          updateUpNextRing(remainingSec, totalSec);
           if (upNextKickerEl) {
-            upNextKickerEl.textContent = `Up Next in ${remainingSec}s`;
+            upNextKickerEl.textContent = `Up Next · ${remainingSec}s`;
           }
         }, 1000);
       }
@@ -9689,19 +9751,19 @@
         45% { opacity: 1; }
       }
 
-      /* TV & Anime Up Next Episode Card */
+      /* TV & Anime Up Next Episode Card (Apple TV Glass Preview) */
       .atv-upnext-card {
         position: absolute;
         right: calc(2.5rem + env(safe-area-inset-right, 0px));
         bottom: calc(2.25rem + env(safe-area-inset-bottom, 0px));
-        width: min(300px, calc(100vw - 2rem));
-        padding: 1rem 1.15rem;
-        border-radius: 16px;
-        background: rgba(20, 20, 26, 0.82);
+        width: min(336px, calc(100vw - 2rem));
+        padding: 0.72rem;
+        border-radius: 18px;
+        background: rgba(20, 20, 26, 0.78);
         -webkit-backdrop-filter: blur(32px) saturate(1.7);
         backdrop-filter: blur(32px) saturate(1.7);
         border: 1px solid rgba(255, 255, 255, 0.16);
-        box-shadow: 0 22px 54px rgba(0, 0, 0, 0.62);
+        box-shadow: 0 24px 56px rgba(0, 0, 0, 0.65);
         color: #ffffff;
         z-index: 18;
         opacity: 0;
@@ -9720,63 +9782,172 @@
       .fx-player.atv-chrome-visible .atv-upnext-card {
         bottom: calc(14.75rem + env(safe-area-inset-bottom, 0px));
       }
+      .atv-upnext-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.5rem;
+        padding: 0.05rem 0.2rem 0.52rem;
+      }
       .atv-upnext-kicker {
-        font-size: 11px;
-        font-weight: 700;
-        letter-spacing: 0.08em;
-        text-transform: uppercase;
-        color: rgba(255, 255, 255, 0.68);
+        font-size: 0.85rem;
+        font-weight: 650;
+        letter-spacing: -0.01em;
+        color: rgba(255, 255, 255, 0.94);
         font-variant-numeric: tabular-nums;
       }
+      .atv-upnext-hide-btn {
+        border: 0;
+        background: transparent;
+        color: rgba(255, 255, 255, 0.62);
+        font-family: inherit;
+        font-size: 0.82rem;
+        font-weight: 550;
+        padding: 0.15rem 0.45rem;
+        border-radius: 999px;
+        cursor: pointer;
+        transition: color 0.16s ease, background-color 0.16s ease;
+      }
+      .atv-upnext-hide-btn:hover {
+        color: #ffffff;
+        background: rgba(255, 255, 255, 0.12);
+      }
+      .atv-upnext-hide-btn:focus-visible {
+        outline: 2px solid #ffffff;
+        outline-offset: 2px;
+      }
+      .atv-upnext-preview {
+        position: relative;
+        display: block;
+        width: 100%;
+        aspect-ratio: 16 / 9;
+        padding: 0;
+        border: 1px solid rgba(255, 255, 255, 0.14);
+        border-radius: 12px;
+        overflow: hidden;
+        background: linear-gradient(135deg, rgba(44, 44, 54, 0.9), rgba(18, 18, 24, 0.95));
+        color: #ffffff;
+        text-align: left;
+        cursor: pointer;
+        transition: transform 0.2s cubic-bezier(0.22, 1, 0.36, 1), border-color 0.2s ease;
+      }
+      .atv-upnext-preview:hover {
+        border-color: rgba(255, 255, 255, 0.34);
+      }
+      .atv-upnext-preview:hover .atv-upnext-play-circle {
+        transform: translate(-50%, -50%) scale(1.08);
+        background: rgba(28, 28, 34, 0.72);
+      }
+      .atv-upnext-preview:active {
+        transform: scale(0.985);
+      }
+      .atv-upnext-preview:focus-visible {
+        outline: 2px solid #ffffff;
+        outline-offset: 2px;
+      }
+      .atv-upnext-thumb {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        display: block;
+      }
+      .atv-upnext-scrim {
+        position: absolute;
+        inset: 0;
+        background: linear-gradient(to top, rgba(0, 0, 0, 0.84) 0%, rgba(0, 0, 0, 0.22) 48%, rgba(0, 0, 0, 0.08) 100%);
+        pointer-events: none;
+      }
+      .atv-upnext-play-circle {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        width: 58px;
+        height: 58px;
+        transform: translate(-50%, -50%);
+        border-radius: 50%;
+        background: rgba(18, 18, 24, 0.54);
+        -webkit-backdrop-filter: blur(14px);
+        backdrop-filter: blur(14px);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: transform 0.2s cubic-bezier(0.22, 1, 0.36, 1), background-color 0.2s ease;
+        pointer-events: none;
+      }
+      .atv-upnext-ring-svg {
+        position: absolute;
+        inset: -1px;
+        width: 60px;
+        height: 60px;
+        transform: rotate(-90deg);
+      }
+      .atv-upnext-ring-track {
+        stroke: rgba(255, 255, 255, 0.24);
+      }
+      .atv-upnext-ring-fill {
+        stroke: #ffffff;
+        stroke-linecap: round;
+        transition: stroke-dashoffset 0.9s linear;
+      }
+      .atv-upnext-play-icon {
+        position: relative;
+        left: 1px;
+        color: #ffffff;
+        filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.45));
+      }
+      .atv-upnext-overlay-bottom {
+        position: absolute;
+        left: 0.72rem;
+        right: 0.72rem;
+        bottom: 0.62rem;
+        display: flex;
+        align-items: flex-end;
+        justify-content: space-between;
+        gap: 0.55rem;
+        pointer-events: none;
+      }
+      .atv-upnext-meta {
+        min-width: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 0.08rem;
+      }
       .atv-upnext-title {
-        margin-top: 0.22rem;
-        font-size: 1.02rem;
+        font-size: 0.95rem;
         font-weight: 700;
         color: #ffffff;
-        line-height: 1.25;
+        line-height: 1.15;
+        text-shadow: 0 2px 8px rgba(0, 0, 0, 0.85);
       }
-      .atv-upnext-sub {
-        margin-top: 0.12rem;
-        font-size: 0.82rem;
-        color: rgba(255, 255, 255, 0.72);
+      .atv-upnext-ep-title {
+        font-size: 0.75rem;
+        font-weight: 500;
+        color: rgba(255, 255, 255, 0.8);
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
+        text-shadow: 0 1px 6px rgba(0, 0, 0, 0.85);
       }
-      .atv-upnext-actions {
-        display: flex;
+      .atv-upnext-badges {
+        display: inline-flex;
         align-items: center;
-        gap: 0.55rem;
-        margin-top: 0.85rem;
+        gap: 0.28rem;
+        flex-shrink: 0;
       }
-      .atv-upnext-btn {
-        flex: 1;
-        min-height: 36px;
-        padding: 0.48rem 0.85rem;
-        border-radius: 10px;
-        border: 1px solid rgba(255, 255, 255, 0.18);
-        background: rgba(255, 255, 255, 0.12);
-        color: #ffffff;
-        font-family: inherit;
-        font-size: 0.84rem;
-        font-weight: 600;
-        cursor: pointer;
-        transition: background-color 0.16s ease, transform 0.14s ease;
-      }
-      .atv-upnext-btn:hover {
-        background: rgba(255, 255, 255, 0.22);
-      }
-      .atv-upnext-primary {
-        background: #ffffff;
-        border-color: #ffffff;
-        color: #111114;
-      }
-      .atv-upnext-primary:hover {
-        background: rgba(255, 255, 255, 0.9);
-      }
-      .atv-upnext-btn:focus-visible {
-        outline: 2px solid #ffffff;
-        outline-offset: 2px;
+      .atv-upnext-badge {
+        padding: 0.12rem 0.36rem;
+        border-radius: 5px;
+        border: 1px solid rgba(255, 255, 255, 0.34);
+        background: rgba(16, 16, 22, 0.52);
+        -webkit-backdrop-filter: blur(8px);
+        backdrop-filter: blur(8px);
+        color: rgba(255, 255, 255, 0.94);
+        font-size: 0.66rem;
+        font-weight: 700;
+        letter-spacing: 0.03em;
+        line-height: 1.2;
       }
 
       /* Expandable Info & Chapters Frosted Panels (Smooth Spring Reveal) */
