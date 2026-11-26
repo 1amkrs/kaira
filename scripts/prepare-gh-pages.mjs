@@ -190,18 +190,25 @@ function sanitizeDirectSources(rawSources) {
 async function fetchDirectSourcesFromUpstream(imdbId, season, episode) {
   const query = season && episode ? `?s=${season}&e=${episode}` : '';
   const url = `https://fli.cx/api/sources/${encodeURIComponent(imdbId)}${query}`;
-  const res = await fetch(url, {
-    headers: { 'User-Agent': BROWSER_UA, Referer: 'https://fli.cx/' },
-    signal: AbortSignal.timeout(5000)
-  });
-  if (!res.ok) return [];
-  const data = await res.json().catch(() => null);
-  return sanitizeDirectSources(data?.sources);
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const res = await fetch(url, {
+      headers: { 'User-Agent': BROWSER_UA, Referer: 'https://fli.cx/' },
+      signal: AbortSignal.timeout(8000)
+    });
+    if (res.status === 429 || res.status === 503) {
+      await new Promise(r => setTimeout(r, 600 * (attempt + 1)));
+      continue;
+    }
+    if (!res.ok) return [];
+    const data = await res.json().catch(() => null);
+    return sanitizeDirectSources(data?.sources);
+  }
+  return [];
 }
 
 function collectExtraCatalogImdbIds() {
   const ids = new Set();
-  const pages = ['index.html', '4k.html', 'discover.html', 'just-added.html', 'new.html', 'top-rated.html'];
+  const pages = ['index.html', '4k.html', 'discover.html', 'just-added.html', 'new.html', 'top-rated.html', 'tv/index.html', 'movies/index.html'];
   for (const rel of pages) {
     const filePath = path.join(distDir, rel);
     if (!fs.existsSync(filePath)) continue;
@@ -304,7 +311,8 @@ async function buildCatalogIndex() {
       }
     }
 
-    const CONCURRENCY = 10;
+    const discoveredShows = new Set();
+    const CONCURRENCY = 4;
     let cursor = 0;
     async function worker() {
       while (cursor < jobs.length) {
@@ -316,9 +324,11 @@ async function buildCatalogIndex() {
             const epList = await fetchDirectSourcesFromUpstream(job.imdbId, 1, 1);
             if (epList.length > 0) {
               sources[`${job.imdbId}:1:1`] = epList;
+              discoveredShows.add(job.imdbId);
             }
           } else if (list.length > 0) {
             sources[job.cacheKey] = list;
+            if (job.season && job.episode) discoveredShows.add(job.imdbId);
           }
         } catch {
           // Keep any previously cached sources on transient upstream failure
@@ -326,6 +336,59 @@ async function buildCatalogIndex() {
       }
     }
     await Promise.all(Array.from({ length: Math.min(CONCURRENCY, jobs.length || 1) }, () => worker()));
+
+    // Also hydrate remaining episodes (up to 24 episodes across S1-S2) for all discovered catalog TV shows
+    for (const k of Object.keys(sources)) {
+      if (k.includes(':')) discoveredShows.add(k.split(':')[0]);
+    }
+    if (discoveredShows.size > 0) {
+      const epJobs = [];
+      await Promise.all(Array.from(discoveredShows).map(async (showImdb) => {
+        try {
+          const cmRes = await fetch(`https://v3-cinemeta.strem.io/meta/series/${encodeURIComponent(showImdb)}.json`, {
+            signal: AbortSignal.timeout(5000)
+          });
+          if (!cmRes.ok) return;
+          const cmData = await cmRes.json().catch(() => null);
+          const videos = Array.isArray(cmData?.meta?.videos) ? cmData.meta.videos : [];
+          const eps = videos
+            .map(v => ({ s: Number(v.season), e: Number(v.episode || v.number) }))
+            .filter(v => Number.isFinite(v.s) && v.s >= 1 && v.s <= 2 && Number.isFinite(v.e) && v.e >= 1)
+            .sort((a, b) => a.s - b.s || a.e - b.e)
+            .slice(0, 24);
+          for (const ep of eps) {
+            const key = `${showImdb}:${ep.s}:${ep.e}`;
+            if (!queuedKeys.has(key)) {
+              queuedKeys.add(key);
+              epJobs.push({ cacheKey: key, imdbId: showImdb, season: ep.s, episode: ep.e });
+            }
+          }
+        } catch {}
+      }));
+      let epCursor = 0;
+      let epOk = 0;
+      let epEmpty = 0;
+      let epErr = 0;
+      async function epWorker() {
+        while (epCursor < epJobs.length) {
+          const job = epJobs[epCursor++];
+          try {
+            const list = await fetchDirectSourcesFromUpstream(job.imdbId, job.season, job.episode);
+            if (list.length > 0) {
+              sources[job.cacheKey] = list;
+              epOk += 1;
+            } else {
+              epEmpty += 1;
+            }
+          } catch {
+            epErr += 1;
+          }
+        }
+      }
+      console.log(`[prepare-gh-pages] Hydrating ${epJobs.length} episodes across ${discoveredShows.size} TV shows...`);
+      await Promise.all(Array.from({ length: Math.min(CONCURRENCY, epJobs.length || 1) }, () => epWorker()));
+      console.log(`[prepare-gh-pages] Episode hydration result: ${epOk} ok, ${epEmpty} empty, ${epErr} errors`);
+    }
   }
 
   const indexPayload = {
