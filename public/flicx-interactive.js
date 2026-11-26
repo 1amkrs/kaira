@@ -9756,14 +9756,11 @@
         position: absolute;
         right: calc(2.5rem + env(safe-area-inset-right, 0px));
         bottom: calc(2.25rem + env(safe-area-inset-bottom, 0px));
-        width: min(336px, calc(100vw - 2rem));
-        padding: 0.72rem;
-        border-radius: 18px;
-        background: rgba(20, 20, 26, 0.78);
-        -webkit-backdrop-filter: blur(32px) saturate(1.7);
-        backdrop-filter: blur(32px) saturate(1.7);
-        border: 1px solid rgba(255, 255, 255, 0.16);
-        box-shadow: 0 24px 56px rgba(0, 0, 0, 0.65);
+        width: min(328px, calc(100vw - 2rem));
+        padding: 0;
+        background: transparent;
+        border: 0;
+        box-shadow: none;
         color: #ffffff;
         z-index: 18;
         opacity: 0;
@@ -9787,30 +9784,32 @@
         align-items: center;
         justify-content: space-between;
         gap: 0.5rem;
-        padding: 0.05rem 0.2rem 0.52rem;
+        padding: 0 0.15rem 0.5rem;
       }
       .atv-upnext-kicker {
-        font-size: 0.85rem;
+        font-size: 0.92rem;
         font-weight: 650;
         letter-spacing: -0.01em;
-        color: rgba(255, 255, 255, 0.94);
+        color: rgba(255, 255, 255, 0.96);
+        text-shadow: 0 2px 10px rgba(0, 0, 0, 0.85);
         font-variant-numeric: tabular-nums;
       }
       .atv-upnext-hide-btn {
         border: 0;
         background: transparent;
-        color: rgba(255, 255, 255, 0.62);
+        color: rgba(255, 255, 255, 0.68);
         font-family: inherit;
-        font-size: 0.82rem;
+        font-size: 0.88rem;
         font-weight: 550;
         padding: 0.15rem 0.45rem;
         border-radius: 999px;
+        text-shadow: 0 2px 10px rgba(0, 0, 0, 0.85);
         cursor: pointer;
         transition: color 0.16s ease, background-color 0.16s ease;
       }
       .atv-upnext-hide-btn:hover {
         color: #ffffff;
-        background: rgba(255, 255, 255, 0.12);
+        background: rgba(255, 255, 255, 0.14);
       }
       .atv-upnext-hide-btn:focus-visible {
         outline: 2px solid #ffffff;
@@ -9822,10 +9821,11 @@
         width: 100%;
         aspect-ratio: 16 / 9;
         padding: 0;
-        border: 1px solid rgba(255, 255, 255, 0.14);
-        border-radius: 12px;
+        border: 1px solid rgba(255, 255, 255, 0.16);
+        border-radius: 14px;
         overflow: hidden;
         background: linear-gradient(135deg, rgba(44, 44, 54, 0.9), rgba(18, 18, 24, 0.95));
+        box-shadow: 0 20px 50px rgba(0, 0, 0, 0.68);
         color: #ffffff;
         text-align: left;
         cursor: pointer;
