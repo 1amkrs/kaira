@@ -3294,7 +3294,13 @@
         tt2085059: { start: 50, end: 80 },
         tt4786824: { start: 85, end: 175 },
         tt8772296: { start: 60, end: 120 },
-        tt2356777: { start: 90, end: 185 }
+        tt2356777: { start: 90, end: 185 },
+        tt14218830: { start: 110, end: 150 },
+        tt0121955: { start: 0, end: 30 },
+        tt1442437: { start: 244, end: 256 },
+        tt7587890: { start: 87, end: 159 },
+        tt7631058: { start: 86, end: 179 },
+        tt31510819: { start: 340, end: 400 }
       };
 
       let introSegment = null;
@@ -3367,33 +3373,21 @@
           } else if (imdbId && /^tt\d+$/i.test(imdbId)) {
             const cleanImdb = imdbId.toLowerCase();
             try {
-              const r = await fetch(`https://api.introdb.app/segments?imdb_id=${encodeURIComponent(cleanImdb)}&season=${seasonNum}&episode=${episodeNum}`, {
-                headers: { Accept: 'application/json' },
-                signal: AbortSignal.timeout(3000)
-              });
-              if (r.ok) {
-                const d = await r.json().catch(() => null);
-                if (d?.intro && typeof d.intro.start_sec === 'number' && typeof d.intro.end_sec === 'number' && d.intro.end_sec > d.intro.start_sec) {
-                  resolved = { start: Math.round(d.intro.start_sec), end: Math.round(d.intro.end_sec) };
-                }
+              const introRes = await fetchApiJsonWithMeta(
+                `/api/introdb?imdb_id=${encodeURIComponent(cleanImdb)}&season=${seasonNum}&episode=${episodeNum}`
+              );
+              const d = introRes && introRes.data;
+              if (d?.intro && typeof d.intro.start_sec === 'number' && typeof d.intro.end_sec === 'number' && d.intro.end_sec > d.intro.start_sec) {
+                resolved = { start: Math.round(d.intro.start_sec), end: Math.round(d.intro.end_sec) };
               }
             } catch {}
-            if (!resolved) {
-              try {
-                const r2 = await fetch(`https://api.introdb.app/intro?imdb_id=${encodeURIComponent(cleanImdb)}&season=${seasonNum}&episode=${episodeNum}`, {
-                  headers: { Accept: 'application/json' },
-                  signal: AbortSignal.timeout(3000)
-                });
-                if (r2.ok) {
-                  const d2 = await r2.json().catch(() => null);
-                  if (d2 && typeof d2.start_sec === 'number' && typeof d2.end_sec === 'number' && d2.end_sec > d2.start_sec) {
-                    resolved = { start: Math.round(d2.start_sec), end: Math.round(d2.end_sec) };
-                  }
-                }
-              } catch {}
-            }
             if (!resolved && VERIFIED_INTRO_FALLBACKS[cleanImdb]) {
               resolved = VERIFIED_INTRO_FALLBACKS[cleanImdb];
+            }
+            if (!resolved) {
+              const dur = Number.isFinite(videoEl.duration) && videoEl.duration >= 300 ? videoEl.duration : 2700;
+              const isShort = dur < 1800;
+              resolved = { start: isShort ? 40 : 75, end: isShort ? 90 : 160 };
             }
           }
           if (!isDestroyed && resolved) {

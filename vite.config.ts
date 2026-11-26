@@ -218,6 +218,34 @@ function createKairaMiddleware(rootDir: string) {
       }
     }
 
+    // 1b-2. CORS-safe IntroDB proxy (api.introdb.app restricts ACAO to introdb.app)
+    if (reqUrl.startsWith('/api/introdb')) {
+      try {
+        const parsed = new URL(reqUrl, 'http://localhost');
+        const imdb = parsed.searchParams.get('imdb_id') || '';
+        const s = parsed.searchParams.get('season') || '1';
+        const e = parsed.searchParams.get('episode') || '1';
+        if (!/^tt\d+$/i.test(imdb)) {
+          res.statusCode = 400;
+          res.setHeader('Content-Type', 'application/json');
+          return res.end(JSON.stringify({ error: 'Invalid imdb_id' }));
+        }
+        const upstream = await fetch(
+          `https://api.introdb.app/segments?imdb_id=${encodeURIComponent(imdb)}&season=${encodeURIComponent(s)}&episode=${encodeURIComponent(e)}`,
+          { headers: { Accept: 'application/json', 'User-Agent': BROWSER_UA }, signal: AbortSignal.timeout(4000) }
+        );
+        const buf = Buffer.from(await upstream.arrayBuffer());
+        res.statusCode = upstream.status;
+        res.setHeader('Content-Type', 'application/json');
+        res.setHeader('Access-Control-Allow-Origin', '*');
+        return res.end(buf);
+      } catch {
+        res.statusCode = 502;
+        res.setHeader('Content-Type', 'application/json');
+        return res.end(JSON.stringify({ intro: null }));
+      }
+    }
+
     // 1c. Binary-safe, status-preserving API proxy directly to fli.cx
     if (reqUrl.startsWith('/api/')) {
       try {

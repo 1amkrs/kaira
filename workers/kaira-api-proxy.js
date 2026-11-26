@@ -23,7 +23,11 @@ export default {
 
     const url = new URL(request.url);
     let targetUrl = null;
-    if (url.pathname.startsWith('/api/')) {
+    let customReferer = `${UPSTREAM_ORIGIN}/`;
+    if (url.pathname === '/api/introdb') {
+      targetUrl = `https://api.introdb.app/segments${url.search}`;
+      customReferer = 'https://introdb.app/';
+    } else if (url.pathname.startsWith('/api/')) {
       targetUrl = `${UPSTREAM_ORIGIN}${url.pathname}${url.search}`;
     } else if (url.pathname.startsWith('/s/')) {
       targetUrl = `${STREAM_CDN_ORIGIN}${url.pathname}${url.search}`;
@@ -38,7 +42,7 @@ export default {
       method: request.method,
       headers: {
         'User-Agent': BROWSER_UA,
-        Referer: `${UPSTREAM_ORIGIN}/`,
+        Referer: customReferer,
       },
     });
 
