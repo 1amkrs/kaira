@@ -2002,6 +2002,10 @@
                 <button type="button" id="atv-resume-restart" class="atv-resume-restart-btn">Start Over</button>
               </div>
               ${(isShow || isAnimeRoute) ? `
+              <button type="button" id="atv-skip-intro-btn" class="atv-skip-intro-btn" aria-label="Skip Intro" aria-hidden="true">
+                <span>Skip Intro</span>
+                <svg viewBox="0 0 24 24" fill="currentColor" width="15" height="15" aria-hidden="true"><path d="M5 5.5v13l9-6.5-9-6.5zm10.5 0v13h2.5v-13h-2.5z"/></svg>
+              </button>
               <div id="atv-upnext-card" class="atv-upnext-card" role="region" aria-label="Up Next episode" aria-hidden="true">
                 <div class="atv-upnext-head">
                   <span class="atv-upnext-kicker" id="atv-upnext-kicker">Up Next</span>
@@ -2351,6 +2355,7 @@
       const upNextEpTitleEl = watchRoot.querySelector('#atv-upnext-ep-title');
       const upNextCcBadgeEl = watchRoot.querySelector('#atv-upnext-cc-badge');
       const upNextQBadgeEl = watchRoot.querySelector('#atv-upnext-q-badge');
+      const skipIntroBtnEl = watchRoot.querySelector('#atv-skip-intro-btn');
       const subSearchForm = watchRoot.querySelector('#atv-sub-search-form');
       const subSearchInput = watchRoot.querySelector('#atv-sub-search-input');
       const subFileBtn = watchRoot.querySelector('#atv-sub-file-btn');
@@ -3248,6 +3253,156 @@
         wakeControls();
       }
 
+      // Skip Intro resolution (IntroDB / AniSkip / Verified Series Intros)
+      const VERIFIED_INTRO_FALLBACKS = {
+        tt4574334: { start: 155, end: 232 },
+        tt11280740: { start: 95, end: 175 },
+        tt12637874: { start: 110, end: 185 },
+        tt11198330: { start: 80, end: 165 },
+        tt3581920: { start: 110, end: 185 },
+        tt11126994: { start: 125, end: 215 },
+        tt0903747: { start: 180, end: 200 },
+        tt3032476: { start: 120, end: 140 },
+        tt0944947: { start: 70, end: 168 },
+        tt2442560: { start: 90, end: 150 },
+        tt1475582: { start: 120, end: 175 },
+        tt7366338: { start: 85, end: 145 },
+        tt14452776: { start: 60, end: 110 },
+        tt7660850: { start: 90, end: 175 },
+        tt2788316: { start: 75, end: 155 },
+        tt5753856: { start: 80, end: 155 },
+        tt2560140: { start: 90, end: 180 },
+        tt12590266: { start: 85, end: 175 },
+        tt0460649: { start: 95, end: 115 },
+        tt0475784: { start: 85, end: 165 },
+        tt0141842: { start: 75, end: 155 },
+        tt0306414: { start: 65, end: 150 },
+        tt2861424: { start: 105, end: 165 },
+        tt0979432: { start: 70, end: 145 },
+        tt0455275: { start: 60, end: 125 },
+        tt0411008: { start: 50, end: 85 },
+        tt0108778: { start: 45, end: 95 },
+        tt0386676: { start: 60, end: 95 },
+        tt10986410: { start: 60, end: 90 },
+        tt2306299: { start: 80, end: 145 },
+        tt8111088: { start: 60, end: 110 },
+        tt9140554: { start: 60, end: 115 },
+        tt6741278: { start: 120, end: 170 },
+        tt2707408: { start: 90, end: 175 },
+        tt4236770: { start: 80, end: 160 },
+        tt8707010: { start: 50, end: 85 },
+        tt2085059: { start: 50, end: 80 },
+        tt4786824: { start: 85, end: 175 },
+        tt8772296: { start: 60, end: 120 },
+        tt2356777: { start: 90, end: 185 }
+      };
+
+      let introSegment = null;
+      let introSkippedForPlay = false;
+      let skipIntroVisible = false;
+
+      function hideSkipIntroBtn() {
+        skipIntroVisible = false;
+        if (skipIntroBtnEl) {
+          skipIntroBtnEl.classList.remove('atv-visible');
+          skipIntroBtnEl.setAttribute('aria-hidden', 'true');
+        }
+      }
+
+      function updateSkipIntroVisibility(cur) {
+        if (!skipIntroBtnEl || !introSegment || isEmbedMode) {
+          if (skipIntroVisible) hideSkipIntroBtn();
+          return;
+        }
+        if (cur < introSegment.start) {
+          introSkippedForPlay = false;
+        }
+        const shouldShow = !introSkippedForPlay && cur >= introSegment.start && cur < (introSegment.end - 1);
+        if (shouldShow && !skipIntroVisible) {
+          skipIntroVisible = true;
+          skipIntroBtnEl.classList.add('atv-visible');
+          skipIntroBtnEl.setAttribute('aria-hidden', 'false');
+        } else if (!shouldShow && skipIntroVisible) {
+          hideSkipIntroBtn();
+        }
+      }
+
+      function performSkipIntro() {
+        if (!introSegment || isEmbedMode) return;
+        introSkippedForPlay = true;
+        resumeTargetSeconds = 0;
+        hasAppliedResume = true;
+        const dur = Number.isFinite(videoEl.duration) && videoEl.duration > 0 ? videoEl.duration : 1e9;
+        videoEl.currentTime = Math.min(dur, introSegment.end);
+        hideSkipIntroBtn();
+        updateTimeDisplay();
+        persistPlaybackProgress(true);
+        showPlayerStatus('Skipped Intro');
+        wakeControls();
+      }
+
+      if (skipIntroBtnEl) {
+        skipIntroBtnEl.onclick = (e) => {
+          e.stopPropagation();
+          performSkipIntro();
+        };
+      }
+
+      if ((isShow || isAnimeRoute) && skipIntroBtnEl) {
+        (async () => {
+          let resolved = null;
+          if (isAnimeRoute && animeId) {
+            try {
+              const r = await fetch(`https://api.aniskip.com/v2/skip-times/${encodeURIComponent(animeId)}/${episodeNum}?types[]=op`, {
+                signal: AbortSignal.timeout(3000)
+              });
+              if (r.ok) {
+                const d = await r.json().catch(() => null);
+                const op = d && d.found && Array.isArray(d.results) ? d.results[0] : null;
+                if (op && op.interval && op.interval.endTime > op.interval.startTime) {
+                  resolved = { start: Math.round(op.interval.startTime), end: Math.round(op.interval.endTime) };
+                }
+              }
+            } catch {}
+          } else if (imdbId && /^tt\d+$/i.test(imdbId)) {
+            const cleanImdb = imdbId.toLowerCase();
+            try {
+              const r = await fetch(`https://api.introdb.app/segments?imdb_id=${encodeURIComponent(cleanImdb)}&season=${seasonNum}&episode=${episodeNum}`, {
+                headers: { Accept: 'application/json' },
+                signal: AbortSignal.timeout(3000)
+              });
+              if (r.ok) {
+                const d = await r.json().catch(() => null);
+                if (d?.intro && typeof d.intro.start_sec === 'number' && typeof d.intro.end_sec === 'number' && d.intro.end_sec > d.intro.start_sec) {
+                  resolved = { start: Math.round(d.intro.start_sec), end: Math.round(d.intro.end_sec) };
+                }
+              }
+            } catch {}
+            if (!resolved) {
+              try {
+                const r2 = await fetch(`https://api.introdb.app/intro?imdb_id=${encodeURIComponent(cleanImdb)}&season=${seasonNum}&episode=${episodeNum}`, {
+                  headers: { Accept: 'application/json' },
+                  signal: AbortSignal.timeout(3000)
+                });
+                if (r2.ok) {
+                  const d2 = await r2.json().catch(() => null);
+                  if (d2 && typeof d2.start_sec === 'number' && typeof d2.end_sec === 'number' && d2.end_sec > d2.start_sec) {
+                    resolved = { start: Math.round(d2.start_sec), end: Math.round(d2.end_sec) };
+                  }
+                }
+              } catch {}
+            }
+            if (!resolved && VERIFIED_INTRO_FALLBACKS[cleanImdb]) {
+              resolved = VERIFIED_INTRO_FALLBACKS[cleanImdb];
+            }
+          }
+          if (!isDestroyed && resolved) {
+            introSegment = resolved;
+            updateSkipIntroVisibility(videoEl.currentTime || 0);
+          }
+        })();
+      }
+
       // TV & Anime "Up Next" episode card logic
       let nextSeasonNum = seasonNum;
       let nextEpisodeNum = episodeNum + 1;
@@ -3679,6 +3834,7 @@
           scrubBuffered.style.width = Math.min(100, (bufEnd / dur) * 100) + '%';
         }
         renderActiveSubtitleCue();
+        updateSkipIntroVisibility(cur);
         persistPlaybackProgress(false);
       }
 
@@ -4479,6 +4635,9 @@
         } else if (e.key === 'p' || e.key === 'P') {
           e.preventDefault();
           togglePiP();
+        } else if ((e.key === 's' || e.key === 'S') && skipIntroVisible) {
+          e.preventDefault();
+          performSkipIntro();
         } else if (e.key === 'm' || e.key === 'M') {
           e.preventDefault();
           toggleMuteStateUI();
@@ -9749,6 +9908,59 @@
       @keyframes atvChevFade {
         0%, 100% { opacity: 0.28; }
         45% { opacity: 1; }
+      }
+
+      .atv-skip-intro-btn {
+        position: absolute;
+        right: calc(2.5rem + env(safe-area-inset-right, 0px));
+        bottom: calc(2.5rem + env(safe-area-inset-bottom, 0px));
+        display: inline-flex;
+        align-items: center;
+        gap: 0.45rem;
+        padding: 0.56rem 1.05rem;
+        border-radius: 999px;
+        background: rgba(24, 24, 30, 0.72);
+        -webkit-backdrop-filter: blur(24px) saturate(1.7);
+        backdrop-filter: blur(24px) saturate(1.7);
+        border: 1px solid rgba(255, 255, 255, 0.24);
+        box-shadow: 0 14px 36px rgba(0, 0, 0, 0.55);
+        color: #ffffff;
+        font-family: inherit;
+        font-size: 0.88rem;
+        font-weight: 650;
+        letter-spacing: -0.01em;
+        z-index: 19;
+        cursor: pointer;
+        opacity: 0;
+        visibility: hidden;
+        pointer-events: none;
+        transform: translate3d(0, 10px, 0) scale(0.96);
+        transition: bottom 0.28s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.2s cubic-bezier(0.4, 0, 1, 1), transform 0.22s cubic-bezier(0.4, 0, 1, 1), background-color 0.16s ease, color 0.16s ease, visibility 0s linear 0.22s;
+      }
+      .atv-skip-intro-btn.atv-visible {
+        opacity: 1;
+        visibility: visible;
+        pointer-events: auto;
+        transform: translate3d(0, 0, 0) scale(1);
+        transition: bottom 0.28s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.24s cubic-bezier(0.22, 1, 0.36, 1), transform 0.28s cubic-bezier(0.16, 1, 0.3, 1), background-color 0.16s ease, color 0.16s ease, visibility 0s linear 0s;
+      }
+      .fx-player.atv-chrome-visible .atv-skip-intro-btn {
+        bottom: calc(14.25rem + env(safe-area-inset-bottom, 0px));
+      }
+      .atv-skip-intro-btn:hover {
+        background: rgba(255, 255, 255, 0.94);
+        border-color: #ffffff;
+        color: #111114;
+      }
+      .atv-skip-intro-btn:active {
+        transform: scale(0.96);
+      }
+      .atv-skip-intro-btn:focus-visible {
+        outline: 2px solid #ffffff;
+        outline-offset: 2px;
+      }
+      .fx-player.atv-mode-embed .atv-skip-intro-btn {
+        display: none !important;
       }
 
       /* TV & Anime Up Next Episode Card (Apple TV Glass Preview) */
