@@ -1951,7 +1951,7 @@
 
             <!-- Video Stage -->
             <div class="fx-video-wrap" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:#000;">
-              <video id="flicx-video" class="fx-video" playsinline webkit-playsinline="true" preload="auto"${posterUrl ? ` poster="${escapeAttr(posterUrl)}"` : ''} crossorigin="anonymous" x-webkit-airplay="allow" style="width:100%;height:100%;object-fit:contain;background:#000;display:block;"></video>
+              <video id="flicx-video" class="fx-video" playsinline webkit-playsinline="true" preload="auto"${posterUrl ? ` poster="${escapeAttr(posterUrl)}"` : ''} crossorigin="anonymous" x-webkit-airplay="allow" style="width:100%;height:100%;object-fit:contain;background:#000;display:block;position:relative;z-index:1;"></video>
               <iframe id="flicx-embed-frame" class="atv-embed-frame" title="${escapeAttr(cleanTitle)}" allow="autoplay; fullscreen; encrypted-media; picture-in-picture" referrerpolicy="origin" style="display:none;position:absolute;inset:0;width:100%;height:100%;border:0;background:#000;z-index:2;"></iframe>
               <div id="atv-cast-banner" class="atv-cast-banner" aria-live="polite" aria-hidden="true">
                 <div class="atv-cast-banner-icon" aria-hidden="true">
@@ -4266,6 +4266,16 @@
         }
       }
 
+      const onFullscreenChange = () => {
+        if (isDestroyed) return;
+        const isFs = Boolean(document.fullscreenElement || document.webkitFullscreenElement);
+        if (isFs) playerEl.setAttribute('data-fullscreen', '');
+        else playerEl.removeAttribute('data-fullscreen');
+        renderActiveSubtitleCue();
+      };
+      document.addEventListener('fullscreenchange', onFullscreenChange);
+      document.addEventListener('webkitfullscreenchange', onFullscreenChange);
+
       fsBtns.forEach(btn => {
         btn.onclick = (e) => { e.stopPropagation(); toggleFullscreen(); };
       });
@@ -4431,6 +4441,8 @@
         upNextCountdownTimer = null;
         window.removeEventListener('pagehide', onPageHideSave);
         document.removeEventListener('visibilitychange', onVisibilitySave);
+        document.removeEventListener('fullscreenchange', onFullscreenChange);
+        document.removeEventListener('webkitfullscreenchange', onFullscreenChange);
         clearNativeStreamListeners();
         if (currentHls) {
           try { currentHls.destroy(); } catch {}
@@ -9818,14 +9830,13 @@
         position: absolute;
         left: 50%;
         bottom: calc(2.75rem + env(safe-area-inset-bottom, 0px));
-        transform: translateX(-50%);
-        z-index: 8;
+        transform: translate3d(-50%, 0, 0);
+        will-change: transform, opacity;
+        z-index: 20;
         max-width: min(86vw, 48rem);
         padding: 0.42rem 0.9rem;
         border-radius: 10px;
-        background: rgba(10, 10, 14, 0.78);
-        -webkit-backdrop-filter: blur(10px);
-        backdrop-filter: blur(10px);
+        background: rgba(10, 10, 14, 0.84);
         color: #ffffff;
         font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", Roboto, sans-serif;
         font-size: clamp(1rem, 2.2vw, 1.55rem);
