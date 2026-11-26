@@ -65,19 +65,17 @@ Line two
   assert.equal(getActiveSubtitleText(cues, 17.0), '');
 });
 
-test('buildEmbedFallbackServers builds IMDb-native movie and TV embed URLs cleanly', () => {
+test('buildEmbedFallbackServers builds IMDb-native movie and TV 2Embed URLs cleanly', () => {
   const movieServers = buildEmbedFallbackServers('tt33764258', false);
-  assert.equal(movieServers.length, 5);
-  assert.equal(movieServers[0].name, 'VidSrc');
+  assert.equal(movieServers.length, 1);
+  assert.equal(movieServers[0].name, '2Embed');
   assert.equal(movieServers[0].kind, 'embed');
-  assert.match(movieServers[0].src, /^https:\/\/vidsrc\.me\/embed\/movie\?imdb=tt33764258$/);
-  assert.match(movieServers[1].src, /^https:\/\/vidsrc\.to\/embed\/movie\/tt33764258$/);
+  assert.match(movieServers[0].src, /^https:\/\/www\.2embed\.cc\/embed\/tt33764258$/);
 
   const tvServers = buildEmbedFallbackServers('tt7631058', true, 2, 4);
-  assert.equal(tvServers.length, 5);
-  assert.match(tvServers[0].src, /^https:\/\/vidsrc\.me\/embed\/tv\?imdb=tt7631058&season=2&episode=4$/);
-  assert.match(tvServers[1].src, /^https:\/\/vidsrc\.to\/embed\/tv\/tt7631058\/2\/4$/);
-  assert.match(tvServers[4].src, /^https:\/\/www\.2embed\.cc\/embedtv\/tt7631058\?s=2&e=4$/);
+  assert.equal(tvServers.length, 1);
+  assert.equal(tvServers[0].name, '2Embed');
+  assert.match(tvServers[0].src, /^https:\/\/www\.2embed\.cc\/embedtv\/tt7631058\?s=2&e=4$/);
 
   assert.deepEqual(buildEmbedFallbackServers('invalid', false), []);
 });

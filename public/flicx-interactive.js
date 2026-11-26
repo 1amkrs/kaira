@@ -211,18 +211,10 @@
     const e = Math.max(1, Number(episodeNum) || 1);
     if (isShow) {
       return [
-        { name: 'VidSrc', kind: 'embed', src: `https://vidsrc.me/embed/tv?imdb=${encodeURIComponent(cleanImdb)}&season=${s}&episode=${e}`, quality: 'HD', group: 'embed' },
-        { name: 'VidSrc Pro', kind: 'embed', src: `https://vidsrc.to/embed/tv/${encodeURIComponent(cleanImdb)}/${s}/${e}`, quality: 'HD', group: 'embed' },
-        { name: 'VidFast', kind: 'embed', src: `https://vidfast.pro/tv/${encodeURIComponent(cleanImdb)}/${s}/${e}`, quality: 'HD', group: 'embed' },
-        { name: 'VidPrime', kind: 'embed', src: `https://vidprime.top/tv/${encodeURIComponent(cleanImdb)}/${s}/${e}`, quality: 'HD', group: 'embed' },
         { name: '2Embed', kind: 'embed', src: `https://www.2embed.cc/embedtv/${encodeURIComponent(cleanImdb)}?s=${s}&e=${e}`, quality: 'HD', group: 'embed' }
       ];
     }
     return [
-      { name: 'VidSrc', kind: 'embed', src: `https://vidsrc.me/embed/movie?imdb=${encodeURIComponent(cleanImdb)}`, quality: 'HD', group: 'embed' },
-      { name: 'VidSrc Pro', kind: 'embed', src: `https://vidsrc.to/embed/movie/${encodeURIComponent(cleanImdb)}`, quality: 'HD', group: 'embed' },
-      { name: 'VidFast', kind: 'embed', src: `https://vidfast.pro/movie/${encodeURIComponent(cleanImdb)}`, quality: 'HD', group: 'embed' },
-      { name: 'VidPrime', kind: 'embed', src: `https://vidprime.top/movie/${encodeURIComponent(cleanImdb)}`, quality: 'HD', group: 'embed' },
       { name: '2Embed', kind: 'embed', src: `https://www.2embed.cc/embed/${encodeURIComponent(cleanImdb)}`, quality: 'HD', group: 'embed' }
     ];
   }
