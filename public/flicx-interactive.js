@@ -3814,9 +3814,9 @@
           scrubThumb.style.left = pct + '%';
           if (scrubWrap) scrubWrap.setAttribute('aria-valuenow', String(Math.round(pct)));
           if (activeDrawer === 'chapters') highlightActiveChapter();
-          if ((isShow || isAnimeRoute) && nextEpisodeUrl && !isEmbedMode && !upNextDismissed && dur >= 45 && cur >= 10 && (dur - cur) <= 25) {
+          if ((isShow || isAnimeRoute) && nextEpisodeUrl && !isEmbedMode && !upNextDismissed && dur >= 75 && cur >= 10 && (dur - cur) <= 60) {
             if (!upNextVisible) showUpNextCard(null);
-          } else if (upNextVisible && !upNextCountdownTimer && (dur - cur) > 30) {
+          } else if (upNextVisible && !upNextCountdownTimer && (dur - cur) > 65) {
             hideUpNextCard();
           }
         }
