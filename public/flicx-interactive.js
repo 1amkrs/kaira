@@ -3228,33 +3228,47 @@
       // TV & Anime "Up Next" episode card logic
       let nextSeasonNum = seasonNum;
       let nextEpisodeNum = episodeNum + 1;
-      let hasNextEpisode = true;
-      if (isShow && !isAnimeRoute && Array.isArray(titleInfo?.videos) && titleInfo.videos.length > 0) {
-        const epPairs = titleInfo.videos
+      let nextEpisodeUrl = isAnimeRoute
+        ? withBasePath(`/watch/anime/${encodeURIComponent(animeId)}/${nextEpisodeNum}`)
+        : isShow
+          ? withBasePath(`/watch/${encodeURIComponent(titleSlug)}/s${nextSeasonNum}e${nextEpisodeNum}`)
+          : null;
+
+      function applyNextEpisodeFromVideos(videos) {
+        if (!isShow || isAnimeRoute || !Array.isArray(videos) || videos.length === 0) return;
+        const epPairs = videos
           .map(v => ({ s: Number(v.season), e: Number(v.episode || v.number) }))
           .filter(v => Number.isFinite(v.s) && v.s > 0 && Number.isFinite(v.e) && v.e > 0);
-        if (epPairs.length > 0) {
-          const sameSeasonNext = epPairs.some(v => v.s === seasonNum && v.e === episodeNum + 1);
-          if (!sameSeasonNext) {
-            const nextSeasonEps = epPairs.filter(v => v.s === seasonNum + 1).map(v => v.e).sort((a, b) => a - b);
-            if (nextSeasonEps.length > 0) {
-              nextSeasonNum = seasonNum + 1;
-              nextEpisodeNum = nextSeasonEps[0];
-              const upNextTitleEl = watchRoot.querySelector('#atv-upnext-title');
-              if (upNextTitleEl) upNextTitleEl.textContent = `Season ${nextSeasonNum} · Episode ${nextEpisodeNum}`;
-            } else {
-              hasNextEpisode = false;
-            }
-          }
+        if (epPairs.length === 0) return;
+        const sameSeasonNext = epPairs.some(v => v.s === seasonNum && v.e === episodeNum + 1);
+        if (sameSeasonNext) return;
+        const nextSeasonEps = epPairs.filter(v => v.s === seasonNum + 1).map(v => v.e).sort((a, b) => a - b);
+        if (nextSeasonEps.length > 0) {
+          nextSeasonNum = seasonNum + 1;
+          nextEpisodeNum = nextSeasonEps[0];
+          nextEpisodeUrl = withBasePath(`/watch/${encodeURIComponent(titleSlug)}/s${nextSeasonNum}e${nextEpisodeNum}`);
+          const upNextTitleEl = watchRoot.querySelector('#atv-upnext-title');
+          if (upNextTitleEl) upNextTitleEl.textContent = `Season ${nextSeasonNum} · Episode ${nextEpisodeNum}`;
+        } else {
+          nextEpisodeUrl = null;
+          hideUpNextCard();
         }
       }
-      const nextEpisodeUrl = !hasNextEpisode
-        ? null
-        : isAnimeRoute
-          ? withBasePath(`/watch/anime/${encodeURIComponent(animeId)}/${nextEpisodeNum}`)
-          : isShow
-            ? withBasePath(`/watch/${encodeURIComponent(titleSlug)}/s${nextSeasonNum}e${nextEpisodeNum}`)
-            : null;
+
+      if (isShow && !isAnimeRoute) {
+        if (Array.isArray(titleInfo?.videos) && titleInfo.videos.length > 0) {
+          applyNextEpisodeFromVideos(titleInfo.videos);
+        } else if (imdbId && /^tt\d+$/i.test(imdbId)) {
+          fetch(`https://v3-cinemeta.strem.io/meta/series/${encodeURIComponent(imdbId)}.json`)
+            .then(r => (r.ok ? r.json() : null))
+            .then(d => {
+              if (!isDestroyed && Array.isArray(d?.meta?.videos)) {
+                applyNextEpisodeFromVideos(d.meta.videos);
+              }
+            })
+            .catch(() => {});
+        }
+      }
 
       function hideUpNextCard() {
         clearInterval(upNextCountdownTimer);
@@ -3300,9 +3314,10 @@
         }, 1000);
       }
 
-      if (upNextPlayBtn && nextEpisodeUrl) {
+      if (upNextPlayBtn) {
         upNextPlayBtn.onclick = (e) => {
           e.stopPropagation();
+          if (!nextEpisodeUrl) return;
           hideUpNextCard();
           navigateTo(nextEpisodeUrl);
         };
