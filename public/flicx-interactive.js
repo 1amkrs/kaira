@@ -1840,6 +1840,9 @@
       try { savedServerName = localStorage.getItem('flicx:player:server') || 'Kaira'; } catch {}
       let currentServerIndex = servers.findIndex(s => s.name === savedServerName);
       if (currentServerIndex === -1) currentServerIndex = 0;
+      if (servers[currentServerIndex]?.kind === 'embed' && servers.some(s => s.kind !== 'embed')) {
+        currentServerIndex = servers.findIndex(s => s.kind !== 'embed');
+      }
       let currentServer = servers[currentServerIndex];
 
       const SUBTITLE_LANG_NAMES = {
@@ -3296,6 +3299,7 @@
       };
 
       let introSegment = null;
+      let introIsHeuristic = false;
       let introSkippedForPlay = false;
       let skipIntroVisible = false;
 
@@ -3380,6 +3384,7 @@
               const dur = Number.isFinite(videoEl.duration) && videoEl.duration >= 300 ? videoEl.duration : 2700;
               const isShort = dur < 1800;
               resolved = { start: isShort ? 40 : 75, end: isShort ? 90 : 160 };
+              introIsHeuristic = true;
             }
           }
           if (!isDestroyed && resolved) {
@@ -3830,6 +3835,11 @@
         persistPlaybackProgress(true);
       };
       videoEl.onloadedmetadata = () => {
+        if (introIsHeuristic && Number.isFinite(videoEl.duration) && videoEl.duration >= 300) {
+          const isShort = videoEl.duration < 1800;
+          introSegment = { start: isShort ? 40 : 75, end: isShort ? 90 : 160 };
+          updateSkipIntroVisibility(videoEl.currentTime || 0);
+        }
         tryApplyResumePosition(true);
         updateTimeDisplay();
         if (activeDrawer === 'chapters') renderChaptersIfReady();
