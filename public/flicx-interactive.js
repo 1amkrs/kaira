@@ -9973,18 +9973,22 @@
         opacity: 0;
         visibility: hidden;
         pointer-events: none;
-        transform: translate3d(0, 14px, 0) scale(0.96);
-        transition: bottom 0.28s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.2s cubic-bezier(0.4, 0, 1, 1), transform 0.22s cubic-bezier(0.4, 0, 1, 1), visibility 0s linear 0.22s;
+        will-change: transform, opacity;
+        transform: translate3d(0, 22px, 0) scale(0.94);
+        transition: opacity 0.28s cubic-bezier(0.4, 0, 0.2, 1), transform 0.3s cubic-bezier(0.4, 0, 0.2, 1), visibility 0s linear 0.3s;
       }
       .atv-upnext-card.atv-visible {
         opacity: 1;
         visibility: visible;
         pointer-events: auto;
         transform: translate3d(0, 0, 0) scale(1);
-        transition: bottom 0.28s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.24s cubic-bezier(0.22, 1, 0.36, 1), transform 0.28s cubic-bezier(0.16, 1, 0.3, 1), visibility 0s linear 0s;
+        transition: opacity 0.38s cubic-bezier(0.22, 1, 0.36, 1), transform 0.46s cubic-bezier(0.16, 1, 0.3, 1), visibility 0s linear 0s;
       }
-      .fx-player.atv-chrome-visible .atv-upnext-card {
-        bottom: calc(14.75rem + env(safe-area-inset-bottom, 0px));
+      .fx-player.atv-chrome-visible .atv-upnext-card.atv-visible {
+        transform: translate3d(0, -12.5rem, 0) scale(1);
+      }
+      .fx-player.atv-chrome-visible .atv-upnext-card:not(.atv-visible) {
+        transform: translate3d(0, calc(-12.5rem + 22px), 0) scale(0.94);
       }
       .atv-upnext-head {
         display: flex;
