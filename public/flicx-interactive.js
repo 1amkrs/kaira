@@ -6974,6 +6974,79 @@
     ]
   };
 
+  const showSeasonsCache = new Map();
+
+  function extractSeasonsFromJsonLd() {
+    try {
+      const scripts = document.querySelectorAll('script[type="application/ld+json"]');
+      for (const s of scripts) {
+        const parsed = JSON.parse(s.textContent || 'null');
+        const nodes = Array.isArray(parsed) ? parsed : [parsed];
+        const tv = nodes.find(n => n && n['@type'] === 'TVSeries' && Array.isArray(n.containsSeason) && n.containsSeason.length > 0);
+        if (tv) {
+          const out = tv.containsSeason
+            .map(sec => {
+              const n = Number(sec.seasonNumber);
+              const count = Number(sec.numberOfEpisodes);
+              if (!Number.isFinite(n) || n <= 0) return null;
+              const subtitle = Number.isFinite(count) && count > 0
+                ? `${count} ${count === 1 ? 'episode' : 'episodes'}`
+                : (count === 0 ? 'Upcoming' : 'Episodes available');
+              return { n, label: `Season ${n}`, subtitle };
+            })
+            .filter(Boolean)
+            .sort((a, b) => a.n - b.n);
+          if (out.length > 0) return out;
+        }
+      }
+    } catch {}
+    return null;
+  }
+
+  async function resolveShowSeasons(showSlug) {
+    if (showSeasonsCache.has(showSlug)) return showSeasonsCache.get(showSlug);
+    const fromLd = extractSeasonsFromJsonLd();
+    if (fromLd && fromLd.length > 0) {
+      showSeasonsCache.set(showSlug, fromLd);
+      return fromLd;
+    }
+    if (KNOWN_SHOW_SEASONS[showSlug]) {
+      showSeasonsCache.set(showSlug, KNOWN_SHOW_SEASONS[showSlug]);
+      return KNOWN_SHOW_SEASONS[showSlug];
+    }
+    try {
+      let imdbId = document.querySelector('[id^="rate-tt"]')?.id?.replace(/^rate-/, '') || null;
+      if (!imdbId || !/^tt\d+$/i.test(imdbId)) {
+        const meta = await resolveTitleMeta(showSlug, 'show');
+        imdbId = meta?.imdbId || meta?.id || null;
+      }
+      if (imdbId && /^tt\d+$/i.test(imdbId)) {
+        const cmRes = await fetch(`https://v3-cinemeta.strem.io/meta/series/${encodeURIComponent(imdbId)}.json`);
+        const cmData = cmRes.ok ? await cmRes.json().catch(() => null) : null;
+        const videos = Array.isArray(cmData?.meta?.videos) ? cmData.meta.videos : [];
+        const counts = new Map();
+        for (const v of videos) {
+          const sNum = Number(v.season);
+          const eNum = Number(v.episode || v.number);
+          if (!Number.isFinite(sNum) || sNum <= 0 || !Number.isFinite(eNum) || eNum <= 0) continue;
+          counts.set(sNum, (counts.get(sNum) || 0) + 1);
+        }
+        if (counts.size > 0) {
+          const resolved = Array.from(counts.entries())
+            .sort((a, b) => a[0] - b[0])
+            .map(([n, count]) => ({
+              n,
+              label: `Season ${n}`,
+              subtitle: `${count} ${count === 1 ? 'episode' : 'episodes'}`
+            }));
+          showSeasonsCache.set(showSlug, resolved);
+          return resolved;
+        }
+      }
+    } catch {}
+    return null;
+  }
+
   let activePopupEl = null;
   let activeTriggerBtn = null;
   let popupOutsideHandler = null;
@@ -7126,7 +7199,12 @@
       const isSeasonSelect = isTvDetail || btnText.startsWith('Season') || (parentRow && parentRow.textContent.includes('Episodes'));
 
       if (isSeasonSelect) {
-        triggerBtn.onclick = (e) => {
+        // Pre-warm exact season & episode counts from JSON-LD or Cinemeta in background
+        if (pathSlug) {
+          resolveShowSeasons(pathSlug).catch(() => {});
+        }
+
+        triggerBtn.onclick = async (e) => {
           e.preventDefault();
           e.stopPropagation();
 
@@ -7135,26 +7213,35 @@
             return;
           }
 
-          let seasons = KNOWN_SHOW_SEASONS[pathSlug];
+          let seasons = await resolveShowSeasons(pathSlug);
           if (!seasons) {
-            const dlButtons = document.querySelectorAll('.dl-file-title');
-            const foundNums = new Set();
-            dlButtons.forEach(b => {
-              const m = b.textContent.match(/Season (\d+)/i);
-              if (m) foundNums.add(parseInt(m[1], 10));
+            const dlRows = document.querySelectorAll('.dl-file');
+            const foundMap = new Map();
+            dlRows.forEach(row => {
+              const titleEl = row.querySelector('.dl-file-title');
+              const metaEl = row.querySelector('.dl-file-meta');
+              const m = titleEl?.textContent.match(/Season (\d+)/i);
+              if (m) {
+                const sn = parseInt(m[1], 10);
+                const fileMatch = metaEl?.textContent.match(/(\d+)\s+files?/i);
+                const count = fileMatch ? parseInt(fileMatch[1], 10) : null;
+                foundMap.set(sn, count);
+              }
             });
 
-            if (foundNums.size > 0) {
-              const maxSeason = Math.max(...foundNums);
+            if (foundMap.size > 0) {
+              const maxSeason = Math.max(...foundMap.keys());
               seasons = [];
               for (let i = 1; i <= maxSeason; i++) {
-                seasons.push({ n: i, label: `Season ${i}`, subtitle: 'Episodes available' });
+                const c = foundMap.get(i);
+                seasons.push({
+                  n: i,
+                  label: `Season ${i}`,
+                  subtitle: c ? `${c} ${c === 1 ? 'episode' : 'episodes'}` : 'Episodes available'
+                });
               }
             } else {
-              seasons = [
-                { n: 1, label: 'Season 1', subtitle: '8 episodes' },
-                { n: 2, label: 'Season 2', subtitle: '8 episodes' }
-              ];
+              seasons = [{ n: 1, label: 'Season 1', subtitle: 'Episodes available' }];
             }
           }
 
