@@ -332,11 +332,6 @@ function createKairaMiddleware(rootDir: string) {
               pageHtml = pageHtml.replace(/<script[^>]*src="https:\/\/static\.cloudflareinsights\.com\/[^"]+"[^>]*><\/script>/g, '');
               pageHtml = prepareServedHtml(pageHtml);
 
-              if (isValidAppPageHtml(pageHtml, cleanPath)) {
-                fs.mkdirSync(safeTargetDir, { recursive: true });
-                fs.writeFileSync(path.join(safeTargetDir, 'index.html'), pageHtml, 'utf-8');
-              }
-
               res.setHeader('Content-Type', 'text/html; charset=utf-8');
               return res.end(pageHtml);
             }
