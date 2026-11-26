@@ -1696,7 +1696,9 @@
     const urlParams = new URLSearchParams(window.location.search);
     const isAnimeRoute = parts[0] === 'anime' && parts.length >= 2;
 
-    let titleSlug = isAnimeRoute ? `anime-${parts[1]}` : (parts[0] || '');
+    const rawPart0 = parts[0] || '';
+    const decodedPart0 = (() => { try { return decodeURIComponent(rawPart0); } catch { return rawPart0; } })();
+    let titleSlug = isAnimeRoute ? `anime-${parts[1]}` : decodedPart0;
     let animeId = isAnimeRoute ? parts[1] : null;
     let season = 1;
     let episode = 1;
@@ -3224,12 +3226,35 @@
       }
 
       // TV & Anime "Up Next" episode card logic
-      const nextEpisodeNum = episodeNum + 1;
-      const nextEpisodeUrl = isAnimeRoute
-        ? `/watch/anime/${encodeURIComponent(animeId)}/${nextEpisodeNum}`
-        : isShow
-          ? `/watch/${encodeURIComponent(titleSlug)}/s${seasonNum}e${nextEpisodeNum}`
-          : null;
+      let nextSeasonNum = seasonNum;
+      let nextEpisodeNum = episodeNum + 1;
+      let hasNextEpisode = true;
+      if (isShow && !isAnimeRoute && Array.isArray(titleInfo?.videos) && titleInfo.videos.length > 0) {
+        const epPairs = titleInfo.videos
+          .map(v => ({ s: Number(v.season), e: Number(v.episode || v.number) }))
+          .filter(v => Number.isFinite(v.s) && v.s > 0 && Number.isFinite(v.e) && v.e > 0);
+        if (epPairs.length > 0) {
+          const sameSeasonNext = epPairs.some(v => v.s === seasonNum && v.e === episodeNum + 1);
+          if (!sameSeasonNext) {
+            const nextSeasonEps = epPairs.filter(v => v.s === seasonNum + 1).map(v => v.e).sort((a, b) => a - b);
+            if (nextSeasonEps.length > 0) {
+              nextSeasonNum = seasonNum + 1;
+              nextEpisodeNum = nextSeasonEps[0];
+              const upNextTitleEl = watchRoot.querySelector('#atv-upnext-title');
+              if (upNextTitleEl) upNextTitleEl.textContent = `Season ${nextSeasonNum} · Episode ${nextEpisodeNum}`;
+            } else {
+              hasNextEpisode = false;
+            }
+          }
+        }
+      }
+      const nextEpisodeUrl = !hasNextEpisode
+        ? null
+        : isAnimeRoute
+          ? withBasePath(`/watch/anime/${encodeURIComponent(animeId)}/${nextEpisodeNum}`)
+          : isShow
+            ? withBasePath(`/watch/${encodeURIComponent(titleSlug)}/s${nextSeasonNum}e${nextEpisodeNum}`)
+            : null;
 
       function hideUpNextCard() {
         clearInterval(upNextCountdownTimer);
@@ -7344,15 +7369,20 @@
             const videos = Array.isArray(cmData?.meta?.videos) ? cmData.meta.videos : [];
             const seasonEps = videos
               .filter(v => Number(v.season) === Number(seasonNum))
-              .sort((a, b) => (Number(a.episode) || 0) - (Number(b.episode) || 0))
-              .map(v => ({
-                n: Number(v.episode) || 1,
-                title: v.name || v.title || `Episode ${v.episode}`,
-                overview: v.overview || v.description || '',
-                still: v.thumbnail || ''
-              }));
+              .sort((a, b) => (Number(a.episode || a.number) || 0) - (Number(b.episode || b.number) || 0))
+              .map(v => {
+                const epNum = Number(v.episode || v.number) || 1;
+                return {
+                  n: epNum,
+                  title: v.name || v.title || `Episode ${epNum}`,
+                  overview: v.overview || v.description || '',
+                  still: v.thumbnail || ''
+                };
+              });
             if (seasonEps.length > 0) {
               renderEpisodesList(seasonEps);
+            } else {
+              railTrack.innerHTML = `<div role="listitem" style="padding:1.25rem 0;color:rgba(255,255,255,0.62);font-size:0.95rem;">No aired episodes for Season ${escapeHtml(String(seasonNum))} yet.</div>`;
             }
           }
         } catch {}
