@@ -26,6 +26,8 @@ jobs:
         run: npm install --no-audit --no-fund
 
       - name: Build static bundle
+        env:
+          VITE_API_PROXY_URL: ${{ vars.KAIRA_API_PROXY_URL }}
         run: npm run build
 
       - uses: FirebaseExtended/action-hosting-deploy@v0

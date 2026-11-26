@@ -47,6 +47,44 @@
     return prefix + normalized;
   }
 
+  function getApiProxyBase() {
+    let raw = '';
+    if (typeof window.__KAIRA_API_PROXY__ === 'string' && window.__KAIRA_API_PROXY__.trim()) {
+      raw = window.__KAIRA_API_PROXY__.trim();
+    } else {
+      try {
+        raw = (localStorage.getItem('kaira:api-proxy') || '').trim();
+      } catch {}
+    }
+    if (!raw || !/^https?:\/\//i.test(raw)) return '';
+    return raw.replace(/\/+$/, '');
+  }
+
+  async function fetchApiJsonWithMeta(apiPath) {
+    const cleanPath = String(apiPath || '').startsWith('/') ? String(apiPath) : `/${apiPath}`;
+    const proxyBase = getApiProxyBase();
+    const candidates = [{ url: cleanPath, usedProxy: false }];
+    if (proxyBase) {
+      candidates.push({ url: `${proxyBase}${cleanPath}`, usedProxy: true });
+    }
+
+    for (const candidate of candidates) {
+      try {
+        const res = await fetch(candidate.url);
+        if (!res.ok) continue;
+        const ct = (res.headers.get('content-type') || '').toLowerCase();
+        const text = await res.text();
+        const trimmed = text.trim();
+        if (!trimmed.startsWith('{') && !trimmed.startsWith('[')) continue;
+        const data = JSON.parse(trimmed);
+        return { data, ct, usedProxy: candidate.usedProxy, proxyBase };
+      } catch {
+        // Try next candidate
+      }
+    }
+    return null;
+  }
+
   function normalizeWatchSlug(raw) {
     if (!raw || typeof raw !== 'string') return '';
     const prefix = getBasePrefix();
@@ -391,16 +429,12 @@
     if (!cleanSlug) return null;
     const kindHint = preferredKind === 'show' || preferredKind === 'tv' ? 'show' : (preferredKind === 'movie' ? 'movie' : '');
 
-    // 1. Try local Vite backend API first (returns rich metadata when hosted locally)
+    // 1. Try local Vite backend or configured CORS API proxy first
     try {
-      const apiRes = await fetch(`/api/title?slug=${encodeURIComponent(cleanSlug)}${kindHint ? `&kind=${encodeURIComponent(kindHint)}` : ''}`);
-      if (apiRes.ok) {
-        const ct = apiRes.headers.get('content-type') || '';
-        if (ct.includes('json')) {
-          const data = await apiRes.json().catch(() => null);
-          if (data && (data.imdbId || data.id || data.title)) return data;
-        }
-      }
+      const apiPath = `/api/title?slug=${encodeURIComponent(cleanSlug)}${kindHint ? `&kind=${encodeURIComponent(kindHint)}` : ''}`;
+      const apiResult = await fetchApiJsonWithMeta(apiPath);
+      const data = apiResult && apiResult.data;
+      if (data && (data.imdbId || data.id || data.title)) return data;
     } catch {}
 
     // 2. Try static build-time catalog-index.json (instant on GitHub Pages)
@@ -536,34 +570,44 @@
       serverList.push(normalized);
     };
 
-    // 1. Try local Vite /api/sources proxy first (serves direct 4K HLS streams locally)
+    // 1. Try local Vite /api/sources proxy or configured CORS API proxy first
     let gotLiveApi = false;
     try {
-      const apiUrl = `/api/sources/${encodeURIComponent(imdbId)}${isShow ? `?s=${seasonNum}&e=${episodeNum}` : ''}`;
-      const res = await fetch(apiUrl);
-      if (res.ok) {
-        const ct = (res.headers.get('content-type') || '').toLowerCase();
-        const text = await res.text();
-        // Verify genuine JSON (not a static HTML 404 shell)
-        if (text.trim().startsWith('{')) {
-          const parsed = JSON.parse(text);
-          const rawSources = Array.isArray(parsed?.sources) ? parsed.sources : [];
-          // If served as text/html on static Pages (/api/sources/tt.../index.html), skip relative /api/s/... proxy paths!
-          const isStaticJsonFile = ct.includes('text/html');
-          for (const s of rawSources) {
-            if (!s || !s.src) continue;
-            if (isStaticJsonFile && String(s.src).startsWith('/api/')) continue;
-            pushServer(s);
+      const apiPath = `/api/sources/${encodeURIComponent(imdbId)}${isShow ? `?s=${seasonNum}&e=${episodeNum}` : ''}`;
+      const apiResult = await fetchApiJsonWithMeta(apiPath);
+      if (apiResult && apiResult.data) {
+        const rawSources = Array.isArray(apiResult.data.sources) ? apiResult.data.sources : [];
+        const isStaticHtmlResponse = apiResult.ct.includes('text/html');
+        // Push direct HTTPS CDN streams (e.g. https://s.fli.cx/...) before relative /api/ proxy streams
+        const orderedSources = [
+          ...rawSources.filter(s => s && typeof s.src === 'string' && /^https:\/\//i.test(s.src)),
+          ...rawSources.filter(s => s && typeof s.src === 'string' && !/^https:\/\//i.test(s.src))
+        ];
+        for (const s of orderedSources) {
+          const srcStr = String(s.src || '').trim();
+          if (!srcStr) continue;
+          if (srcStr.startsWith('/api/')) {
+            if (isStaticHtmlResponse) continue;
+            if (apiResult.usedProxy && apiResult.proxyBase) {
+              pushServer({ ...s, src: `${apiResult.proxyBase}${srcStr}` });
+              continue;
+            }
+            // On static hosts without a local Node middleware, skip relative /api/s/... paths
+            if (window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
+              continue;
+            }
           }
-          if (serverList.length > 0) gotLiveApi = true;
+          pushServer(s);
         }
+        if (serverList.length > 0) gotLiveApi = true;
       }
     } catch {}
 
-    // 2. Check build-time static catalog-index.json for cached direct HTTPS HLS streams (e.g. s.fli.cx)
-    if (!gotLiveApi && !isShow) {
+    // 2. Check build-time static catalog-index.json for cached direct HTTPS HLS streams (movies & TV episodes)
+    if (!gotLiveApi) {
       const idx = await fetchStaticCatalogIndex();
-      const cached = idx && idx.sources && Array.isArray(idx.sources[imdbId]) ? idx.sources[imdbId] : [];
+      const cacheKey = isShow ? `${imdbId}:${seasonNum}:${episodeNum}` : imdbId;
+      const cached = idx && idx.sources && Array.isArray(idx.sources[cacheKey]) ? idx.sources[cacheKey] : [];
       for (const s of cached) {
         if (s && typeof s.src === 'string' && /^https:\/\//i.test(s.src)) {
           pushServer(s);
@@ -705,19 +749,14 @@
 
     const hasValidImdb = /^tt\d+$/i.test(String(imdbId || '').trim());
 
-    // 1. Local Vite / server /api/subtitles endpoint (when running with backend)
+    // 1. Local Vite / server /api/subtitles endpoint or configured CORS API proxy
     if (hasValidImdb) {
       try {
-        const subUrl = `/api/subtitles/${encodeURIComponent(imdbId)}${isShow ? `?s=${seasonNum}&e=${episodeNum}` : ''}`;
-        const res = await fetch(subUrl);
-        if (res.ok) {
-          const ct = (res.headers.get('content-type') || '').toLowerCase();
-          if (ct.includes('json')) {
-            const data = await res.json().catch(() => null);
-            if (data && Array.isArray(data.tracks) && data.tracks.length > 0) {
-              pushTracks(data.tracks, 'Kaira');
-            }
-          }
+        const subPath = `/api/subtitles/${encodeURIComponent(imdbId)}${isShow ? `?s=${seasonNum}&e=${episodeNum}` : ''}`;
+        const subResult = await fetchApiJsonWithMeta(subPath);
+        const data = subResult && subResult.data;
+        if (data && Array.isArray(data.tracks) && data.tracks.length > 0) {
+          pushTracks(data.tracks, 'Kaira');
         }
       } catch {}
     }
@@ -1710,13 +1749,19 @@
       try {
         if (isAnimeRoute) {
           const isDub = urlParams.get('dub') === '1';
-          const sourcesRes = await fetch(`/api/sources/anime/${encodeURIComponent(animeId)}/${episode}${isDub ? '?dub=1' : ''}`).catch(() => null);
-          const sourcesData = sourcesRes && sourcesRes.ok ? await sourcesRes.json().catch(() => null) : null;
+          const animeApiPath = `/api/sources/anime/${encodeURIComponent(animeId)}/${episode}${isDub ? '?dub=1' : ''}`;
+          const animeRes = await fetchApiJsonWithMeta(animeApiPath).catch(() => null);
+          const sourcesData = animeRes ? animeRes.data : null;
           if (sessionId !== activeWatchSessionId) return;
 
           const serverList = (sourcesData && Array.isArray(sourcesData.sources) ? sourcesData.sources : [])
             .filter(s => s && s.name && s.src)
-            .map(s => ({ ...s, name: s.name === 'Flicx' ? 'Kaira' : s.name }));
+            .map(s => {
+              const src = String(s.src).startsWith('/api/') && animeRes?.usedProxy && animeRes?.proxyBase
+                ? `${animeRes.proxyBase}${s.src}`
+                : s.src;
+              return { ...s, src, name: s.name === 'Flicx' ? 'Kaira' : s.name };
+            });
 
           if (serverList.length === 0) {
             renderPlayerError(
@@ -7177,8 +7222,8 @@
     }
 
     railTrack.style.opacity = '0.5';
-    fetch(`/api/tv/season?show=${encodeURIComponent(showSlug)}&n=${encodeURIComponent(seasonNum)}`)
-      .then(res => (res.ok ? res.json() : Promise.reject(new Error('HTTP ' + res.status))))
+    fetchApiJsonWithMeta(`/api/tv/season?show=${encodeURIComponent(showSlug)}&n=${encodeURIComponent(seasonNum)}`)
+      .then(res => (res && res.data ? res.data : Promise.reject(new Error('No API data'))))
       .then(data => {
         railTrack.style.opacity = '1';
         if (data && Array.isArray(data.episodes) && data.episodes.length > 0) {
@@ -7877,8 +7922,8 @@
         `;
       }
 
-      fetch(`/api/search?q=${encodeURIComponent(query)}&full=1`)
-        .then(res => (res.ok ? res.json() : Promise.reject(new Error('HTTP ' + res.status))))
+      fetchApiJsonWithMeta(`/api/search?q=${encodeURIComponent(query)}&full=1`)
+        .then(res => (res && res.data ? res.data : Promise.reject(new Error('No API data'))))
         .then(data => {
           if (reqId !== searchReqId) return;
           resultsContainer.classList.remove('search-results-stale');

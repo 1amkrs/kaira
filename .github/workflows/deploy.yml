@@ -39,6 +39,7 @@ jobs:
       - name: Build GitHub Pages Bundle
         env:
           VITE_BASE_PATH: ${{ steps.pages.outputs.base_path }}/
+          VITE_API_PROXY_URL: ${{ vars.KAIRA_API_PROXY_URL }}
         run: npm run build:pages
 
       - name: Upload artifact

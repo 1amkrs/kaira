@@ -13,6 +13,9 @@ function normalizeBasePath(raw) {
 }
 
 const basePath = normalizeBasePath(process.env.VITE_BASE_PATH || process.env.BASE_PATH || '/');
+const apiProxyBase = String(process.env.VITE_API_PROXY_URL || process.env.KAIRA_API_PROXY_URL || '').trim().replace(/\/$/, '');
+const BROWSER_UA =
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
 
 /**
  * Decodes Next.js image proxy URLs (/_next/image?url=...) directly to their upstream HTTPS URLs
@@ -35,23 +38,29 @@ function rewriteNextImageUrls(html) {
   );
 }
 
-function applyBasePath(html, base) {
-  if (base === '/') return html;
-  const prefix = base.slice(0, -1); // e.g. "/kaira"
+function injectRuntimeConfig(html, base, proxyBase) {
   let out = html;
-  // Prefix root-relative asset and route URLs cleanly (avoid double-prefixing or protocol-relative //)
-  out = out.replace(
-    /((?:href|src)=["'])\/(?!\/)([^"']*["'])/gi,
-    (_m, attrStart, rest) => {
-      if (rest.startsWith(prefix.slice(1) + '/')) return attrStart + '/' + rest;
-      return `${attrStart}${prefix}/${rest}`;
+  if (base !== '/') {
+    const prefix = base.slice(0, -1); // e.g. "/kaira"
+    // Prefix root-relative asset and route URLs cleanly (avoid double-prefixing or protocol-relative //)
+    out = out.replace(
+      /((?:href|src)=["'])\/(?!\/)([^"']*["'])/gi,
+      (_m, attrStart, rest) => {
+        if (rest.startsWith(prefix.slice(1) + '/')) return attrStart + '/' + rest;
+        return `${attrStart}${prefix}/${rest}`;
+      }
+    );
+    if (!out.includes('__KAIRA_BASE_PATH__')) {
+      out = out.replace(
+        '</head>',
+        `<script>window.__KAIRA_BASE_PATH__=${JSON.stringify(base)};</script></head>`
+      );
     }
-  );
-  // Inject runtime base path config before flicx-interactive.js
-  if (!out.includes('__KAIRA_BASE_PATH__')) {
+  }
+  if (proxyBase && !out.includes('__KAIRA_API_PROXY__')) {
     out = out.replace(
       '</head>',
-      `<script>window.__KAIRA_BASE_PATH__=${JSON.stringify(base)};</script></head>`
+      `<script>window.__KAIRA_API_PROXY__=${JSON.stringify(proxyBase)};</script></head>`
     );
   }
   return out;
@@ -83,8 +92,8 @@ function prepareStaticHtml(html, base) {
   }
   // Rewrite /_next/image proxy URLs to direct upstream image URLs for static hosting
   out = rewriteNextImageUrls(out);
-  // Apply project repo subpath if deploying to https://<user>.github.io/<repo>/
-  out = applyBasePath(out, base);
+  // Inject runtime base path and optional API proxy config before flicx-interactive.js
+  out = injectRuntimeConfig(out, base, apiProxyBase);
   return out;
 }
 
@@ -158,9 +167,75 @@ function extractTitleMetaFromDetailHtml(html, slug, kind) {
   };
 }
 
-function buildCatalogIndex() {
+function sanitizeDirectSources(rawSources) {
+  const seen = new Set();
+  const out = [];
+  for (const s of Array.isArray(rawSources) ? rawSources : []) {
+    if (!s || !s.name || typeof s.src !== 'string' || !/^https:\/\//i.test(s.src)) continue;
+    const name = s.name === 'Flicx' ? 'Kaira' : s.name;
+    const key = `${name.toLowerCase()}:${s.kind || 'hls'}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push({
+      name,
+      kind: s.kind || 'hls',
+      src: s.src,
+      quality: s.quality || '4K',
+      group: s.group || 'external'
+    });
+  }
+  return out;
+}
+
+async function fetchDirectSourcesFromUpstream(imdbId, season, episode) {
+  const query = season && episode ? `?s=${season}&e=${episode}` : '';
+  const url = `https://fli.cx/api/sources/${encodeURIComponent(imdbId)}${query}`;
+  const res = await fetch(url, {
+    headers: { 'User-Agent': BROWSER_UA, Referer: 'https://fli.cx/' },
+    signal: AbortSignal.timeout(5000)
+  });
+  if (!res.ok) return [];
+  const data = await res.json().catch(() => null);
+  return sanitizeDirectSources(data?.sources);
+}
+
+function collectExtraCatalogImdbIds() {
+  const ids = new Set();
+  const pages = ['index.html', '4k.html', 'discover.html', 'just-added.html', 'new.html', 'top-rated.html'];
+  for (const rel of pages) {
+    const filePath = path.join(distDir, rel);
+    if (!fs.existsSync(filePath)) continue;
+    try {
+      const html = fs.readFileSync(filePath, 'utf-8');
+      for (const match of html.matchAll(/\b(tt\d{6,})\b/g)) {
+        ids.add(match[1]);
+      }
+    } catch {
+      // Ignore unreadable page
+    }
+  }
+  return ids;
+}
+
+async function buildCatalogIndex() {
   const titles = {};
   const sources = {};
+
+  // Seed with any previously cached sources so offline builds never lose existing streams
+  const existingPublicIndex = path.resolve(rootDir, 'public', 'catalog-index.json');
+  if (fs.existsSync(existingPublicIndex)) {
+    try {
+      const prev = JSON.parse(fs.readFileSync(existingPublicIndex, 'utf-8'));
+      if (prev && prev.sources && typeof prev.sources === 'object') {
+        for (const [k, v] of Object.entries(prev.sources)) {
+          const clean = sanitizeDirectSources(v);
+          if (clean.length > 0) sources[k] = clean;
+        }
+      }
+    } catch {
+      // Ignore malformed previous index
+    }
+  }
 
   for (const [folder, kind] of [['movie', 'movie'], ['tv', 'show']]) {
     const baseFolder = path.join(distDir, folder);
@@ -193,15 +268,7 @@ function buildCatalogIndex() {
       if (!fs.existsSync(jsonPath)) continue;
       try {
         const parsed = JSON.parse(fs.readFileSync(jsonPath, 'utf-8'));
-        const directSources = (Array.isArray(parsed?.sources) ? parsed.sources : [])
-          .filter(s => s && s.name && typeof s.src === 'string' && /^https:\/\//i.test(s.src))
-          .map(s => ({
-            name: s.name === 'Flicx' ? 'Kaira' : s.name,
-            kind: s.kind || 'hls',
-            src: s.src,
-            quality: s.quality || '4K',
-            group: s.group || 'external'
-          }));
+        const directSources = sanitizeDirectSources(parsed?.sources);
         if (directSources.length > 0) {
           sources[entry.name] = directSources;
         }
@@ -209,6 +276,56 @@ function buildCatalogIndex() {
         // Ignore invalid JSON
       }
     }
+  }
+
+  // Hydrate direct HTTPS HLS sources at build time so GitHub Pages & Firebase Hosting
+  // serve all star servers (Kaira, Vega, Sirius, Rigel, ...) without needing a backend proxy.
+  if (process.env.SKIP_SOURCE_HYDRATION !== '1') {
+    const jobs = [];
+    const queuedKeys = new Set();
+    const queueJob = (cacheKey, imdbId, season, episode) => {
+      if (!/^tt\d+$/i.test(imdbId) || queuedKeys.has(cacheKey)) return;
+      queuedKeys.add(cacheKey);
+      jobs.push({ cacheKey, imdbId, season, episode });
+    };
+
+    for (const meta of Object.values(titles)) {
+      if (!meta || !meta.imdbId) continue;
+      if (meta.kind === 'show') {
+        queueJob(`${meta.imdbId}:1:1`, meta.imdbId, 1, 1);
+      } else {
+        queueJob(meta.imdbId, meta.imdbId);
+      }
+    }
+
+    for (const extraId of collectExtraCatalogImdbIds()) {
+      if (!queuedKeys.has(extraId) && !queuedKeys.has(`${extraId}:1:1`)) {
+        queueJob(extraId, extraId);
+      }
+    }
+
+    const CONCURRENCY = 10;
+    let cursor = 0;
+    async function worker() {
+      while (cursor < jobs.length) {
+        const job = jobs[cursor++];
+        try {
+          let list = await fetchDirectSourcesFromUpstream(job.imdbId, job.season, job.episode);
+          // Some catalog IDs in index/discover pages are TV series rather than movies
+          if (list.length === 0 && !job.season && !job.episode) {
+            const epList = await fetchDirectSourcesFromUpstream(job.imdbId, 1, 1);
+            if (epList.length > 0) {
+              sources[`${job.imdbId}:1:1`] = epList;
+            }
+          } else if (list.length > 0) {
+            sources[job.cacheKey] = list;
+          }
+        } catch {
+          // Keep any previously cached sources on transient upstream failure
+        }
+      }
+    }
+    await Promise.all(Array.from({ length: Math.min(CONCURRENCY, jobs.length || 1) }, () => worker()));
   }
 
   const indexPayload = {
@@ -225,7 +342,7 @@ function buildCatalogIndex() {
   return { titleCount: Object.keys(titles).length, sourceCount: Object.keys(sources).length };
 }
 
-function run() {
+async function run() {
   if (!fs.existsSync(distDir)) {
     console.error('[prepare-gh-pages] dist/ directory not found. Run `npm run build` first.');
     process.exit(1);
@@ -242,8 +359,8 @@ function run() {
     fs.writeFileSync(filePath, processed, 'utf-8');
   }
 
-  // 3. Build static catalog-index.json for GitHub Pages zero-backend resolution
-  const indexStats = buildCatalogIndex();
+  // 3. Build static catalog-index.json for GitHub Pages & Firebase Hosting
+  const indexStats = await buildCatalogIndex();
 
   // 4. Create 404.html SPA fallback for GitHub Pages deep links (/watch/..., /movie/..., /tv/...)
   const rootIndex = path.join(distDir, 'index.html');
