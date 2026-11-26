@@ -9916,18 +9916,18 @@
         bottom: calc(2.5rem + env(safe-area-inset-bottom, 0px));
         display: inline-flex;
         align-items: center;
-        gap: 0.45rem;
-        padding: 0.56rem 1.05rem;
+        gap: 0.42rem;
+        height: 40px;
+        padding: 0 1rem;
         border-radius: 999px;
-        background: rgba(24, 24, 30, 0.72);
-        -webkit-backdrop-filter: blur(24px) saturate(1.7);
-        backdrop-filter: blur(24px) saturate(1.7);
-        border: 1px solid rgba(255, 255, 255, 0.24);
-        box-shadow: 0 14px 36px rgba(0, 0, 0, 0.55);
-        color: #ffffff;
+        background: rgba(24, 24, 28, 0.48);
+        -webkit-backdrop-filter: blur(22px) saturate(1.6);
+        backdrop-filter: blur(22px) saturate(1.6);
+        border: 1px solid rgba(255, 255, 255, 0.14);
+        color: rgba(255, 255, 255, 0.94);
         font-family: inherit;
-        font-size: 0.88rem;
-        font-weight: 650;
+        font-size: 0.85rem;
+        font-weight: 600;
         letter-spacing: -0.01em;
         z-index: 19;
         cursor: pointer;
@@ -9935,22 +9935,21 @@
         visibility: hidden;
         pointer-events: none;
         transform: translate3d(0, 10px, 0) scale(0.96);
-        transition: bottom 0.28s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.2s cubic-bezier(0.4, 0, 1, 1), transform 0.22s cubic-bezier(0.4, 0, 1, 1), background-color 0.16s ease, color 0.16s ease, visibility 0s linear 0.22s;
+        transition: bottom 0.28s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.2s cubic-bezier(0.4, 0, 1, 1), transform 0.2s cubic-bezier(0.22, 1, 0.36, 1), background-color 0.2s cubic-bezier(0.22, 1, 0.36, 1), color 0.18s ease, visibility 0s linear 0.22s;
       }
       .atv-skip-intro-btn.atv-visible {
         opacity: 1;
         visibility: visible;
         pointer-events: auto;
         transform: translate3d(0, 0, 0) scale(1);
-        transition: bottom 0.28s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.24s cubic-bezier(0.22, 1, 0.36, 1), transform 0.28s cubic-bezier(0.16, 1, 0.3, 1), background-color 0.16s ease, color 0.16s ease, visibility 0s linear 0s;
+        transition: bottom 0.28s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.24s cubic-bezier(0.22, 1, 0.36, 1), transform 0.28s cubic-bezier(0.16, 1, 0.3, 1), background-color 0.2s cubic-bezier(0.22, 1, 0.36, 1), color 0.18s ease, visibility 0s linear 0s;
       }
       .fx-player.atv-chrome-visible .atv-skip-intro-btn {
         bottom: calc(14.25rem + env(safe-area-inset-bottom, 0px));
       }
       .atv-skip-intro-btn:hover {
-        background: rgba(255, 255, 255, 0.94);
-        border-color: #ffffff;
-        color: #111114;
+        background: rgba(255, 255, 255, 0.18);
+        color: #ffffff;
       }
       .atv-skip-intro-btn:active {
         transform: scale(0.96);
