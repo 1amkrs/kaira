@@ -3248,58 +3248,8 @@
         wakeControls();
       }
 
-      // Skip Intro resolution (IntroDB / AniSkip / Verified Series Intros)
-      const VERIFIED_INTRO_FALLBACKS = {
-        tt4574334: { start: 155, end: 232 },
-        tt11280740: { start: 95, end: 175 },
-        tt12637874: { start: 110, end: 185 },
-        tt11198330: { start: 80, end: 165 },
-        tt3581920: { start: 110, end: 185 },
-        tt11126994: { start: 125, end: 215 },
-        tt0903747: { start: 180, end: 200 },
-        tt3032476: { start: 120, end: 140 },
-        tt0944947: { start: 70, end: 168 },
-        tt2442560: { start: 90, end: 150 },
-        tt1475582: { start: 120, end: 175 },
-        tt7366338: { start: 85, end: 145 },
-        tt14452776: { start: 60, end: 110 },
-        tt7660850: { start: 90, end: 175 },
-        tt2788316: { start: 75, end: 155 },
-        tt5753856: { start: 80, end: 155 },
-        tt2560140: { start: 90, end: 180 },
-        tt12590266: { start: 85, end: 175 },
-        tt0460649: { start: 95, end: 115 },
-        tt0475784: { start: 85, end: 165 },
-        tt0141842: { start: 75, end: 155 },
-        tt0306414: { start: 65, end: 150 },
-        tt2861424: { start: 105, end: 165 },
-        tt0979432: { start: 70, end: 145 },
-        tt0455275: { start: 60, end: 125 },
-        tt0411008: { start: 50, end: 85 },
-        tt0108778: { start: 45, end: 95 },
-        tt0386676: { start: 60, end: 95 },
-        tt10986410: { start: 60, end: 90 },
-        tt2306299: { start: 80, end: 145 },
-        tt8111088: { start: 60, end: 110 },
-        tt9140554: { start: 60, end: 115 },
-        tt6741278: { start: 120, end: 170 },
-        tt2707408: { start: 90, end: 175 },
-        tt4236770: { start: 80, end: 160 },
-        tt8707010: { start: 50, end: 85 },
-        tt2085059: { start: 50, end: 80 },
-        tt4786824: { start: 85, end: 175 },
-        tt8772296: { start: 60, end: 120 },
-        tt2356777: { start: 90, end: 185 },
-        tt14218830: { start: 110, end: 150 },
-        tt0121955: { start: 0, end: 30 },
-        tt1442437: { start: 244, end: 256 },
-        tt7587890: { start: 87, end: 159 },
-        tt7631058: { start: 86, end: 179 },
-        tt31510819: { start: 340, end: 400 }
-      };
-
+      // Skip Intro resolution (exact per-episode timestamps via IntroDB & AniSkip)
       let introSegment = null;
-      let introIsHeuristic = false;
       let introSkippedForPlay = false;
       let skipIntroVisible = false;
 
@@ -3362,7 +3312,7 @@
                 const d = await r.json().catch(() => null);
                 const op = d && d.found && Array.isArray(d.results) ? d.results[0] : null;
                 if (op && op.interval && op.interval.endTime > op.interval.startTime) {
-                  resolved = { start: Math.round(op.interval.startTime), end: Math.round(op.interval.endTime) };
+                  resolved = { start: Number(op.interval.startTime), end: Number(op.interval.endTime) };
                 }
               }
             } catch {}
@@ -3374,18 +3324,9 @@
               );
               const d = introRes && introRes.data;
               if (d?.intro && typeof d.intro.start_sec === 'number' && typeof d.intro.end_sec === 'number' && d.intro.end_sec > d.intro.start_sec) {
-                resolved = { start: Math.round(d.intro.start_sec), end: Math.round(d.intro.end_sec) };
+                resolved = { start: Number(d.intro.start_sec), end: Number(d.intro.end_sec) };
               }
             } catch {}
-            if (!resolved && VERIFIED_INTRO_FALLBACKS[cleanImdb]) {
-              resolved = VERIFIED_INTRO_FALLBACKS[cleanImdb];
-            }
-            if (!resolved) {
-              const dur = Number.isFinite(videoEl.duration) && videoEl.duration >= 300 ? videoEl.duration : 2700;
-              const isShort = dur < 1800;
-              resolved = { start: isShort ? 40 : 75, end: isShort ? 90 : 160 };
-              introIsHeuristic = true;
-            }
           }
           if (!isDestroyed && resolved) {
             introSegment = resolved;
@@ -3835,11 +3776,6 @@
         persistPlaybackProgress(true);
       };
       videoEl.onloadedmetadata = () => {
-        if (introIsHeuristic && Number.isFinite(videoEl.duration) && videoEl.duration >= 300) {
-          const isShort = videoEl.duration < 1800;
-          introSegment = { start: isShort ? 40 : 75, end: isShort ? 90 : 160 };
-          updateSkipIntroVisibility(videoEl.currentTime || 0);
-        }
         tryApplyResumePosition(true);
         updateTimeDisplay();
         if (activeDrawer === 'chapters') renderChaptersIfReady();
