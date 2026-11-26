@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import crypto from 'node:crypto';
 
 const rootDir = process.cwd();
 const distDir = path.resolve(rootDir, 'dist');
@@ -14,6 +15,10 @@ function normalizeBasePath(raw) {
 
 const basePath = normalizeBasePath(process.env.VITE_BASE_PATH || process.env.BASE_PATH || '/');
 const apiProxyBase = String(process.env.VITE_API_PROXY_URL || process.env.KAIRA_API_PROXY_URL || '').trim().replace(/\/$/, '');
+const interactiveJsPath = path.resolve(process.cwd(), 'public', 'flicx-interactive.js');
+const interactiveJsHash = fs.existsSync(interactiveJsPath)
+  ? crypto.createHash('sha1').update(fs.readFileSync(interactiveJsPath)).digest('hex').slice(0, 8)
+  : Date.now().toString(36);
 const BROWSER_UA =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
 
@@ -86,9 +91,11 @@ function prepareStaticHtml(html, base) {
       '<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-9047551447187712" crossorigin="anonymous"></script></head>'
     );
   }
-  // Ensure interactive runtime script is injected
+  // Ensure interactive runtime script is injected and cache-busted per build
   if (!out.includes('flicx-interactive.js')) {
-    out = out.replace('</body>', '<script src="/flicx-interactive.js"></script></body>');
+    out = out.replace('</body>', `<script src="/flicx-interactive.js?v=${interactiveJsHash}"></script></body>`);
+  } else {
+    out = out.replace(/\/flicx-interactive\.js(?:\?v=[^"'\s<>]*)?/g, `/flicx-interactive.js?v=${interactiveJsHash}`);
   }
   // Rewrite /_next/image proxy URLs to direct upstream image URLs for static hosting
   out = rewriteNextImageUrls(out);

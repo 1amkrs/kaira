@@ -3831,7 +3831,7 @@
 
       videoEl.ontimeupdate = updateTimeDisplay;
       videoEl.onseeked = () => {
-        renderActiveSubtitleCue();
+        updateTimeDisplay();
         persistPlaybackProgress(true);
       };
       videoEl.onloadedmetadata = () => {
@@ -10706,8 +10706,11 @@
           right: calc(1rem + env(safe-area-inset-right, 0px));
           width: calc(100vw - 2rem);
         }
-        .fx-player.atv-chrome-visible .atv-upnext-card {
-          bottom: calc(16.25rem + env(safe-area-inset-bottom, 0px));
+        .fx-player.atv-chrome-visible .atv-upnext-card.atv-visible {
+          transform: translate3d(0, -14rem, 0) scale(1);
+        }
+        .fx-player.atv-chrome-visible .atv-upnext-card:not(.atv-visible) {
+          transform: translate3d(0, calc(-14rem + 22px), 0) scale(0.94);
         }
         .atv-glass-panel.atv-open {
           padding: 0.9rem 1rem;
