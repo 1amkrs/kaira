@@ -5527,6 +5527,96 @@
     try { initRailScroll(); } catch {}
   }
 
+  const MALAYALAM_MOVIES = [
+    { id: 'tt31969600', slug: 'tt31969600', title: 'Thudarum', year: 2025, rating: 7.5, genres: ['Action', 'Crime', 'Drama'], kind: 'movie', tone: '#3b241c' },
+    { id: 'tt32284154', slug: 'tt32284154', title: 'Rekhachithram', year: 2025, rating: 7.8, genres: ['Drama', 'Mystery', 'Thriller'], kind: 'movie', tone: '#1f2d38' },
+    { id: 'tt34388152', slug: 'tt34388152', title: 'Officer on Duty', year: 2025, rating: 7.5, genres: ['Action', 'Crime', 'Thriller'], kind: 'movie', tone: '#222b36' },
+    { id: 'tt30089457', slug: 'tt30089457', title: 'Ponman', year: 2025, rating: 7.5, genres: ['Comedy', 'Drama'], kind: 'movie', tone: '#3d2c1c' },
+    { id: 'tt10505918', slug: 'tt10505918', title: 'L2: Empuraan', year: 2025, rating: 6.1, genres: ['Action', 'Crime', 'Thriller'], kind: 'movie', tone: '#24201f' },
+    { id: 'tt29884526', slug: 'tt29884526', title: 'Alappuzha Gymkhana', year: 2025, rating: 6.7, genres: ['Action', 'Comedy', 'Drama'], kind: 'movie', tone: '#2d3326' },
+    { id: 'tt26458038', slug: 'manjummel-boys-2024', title: 'Manjummel Boys', year: 2024, rating: 8.2, genres: ['Adventure', 'Drama', 'Thriller'], kind: 'movie', tone: '#24302d' },
+    { id: 'tt26660021', slug: 'aavesham-2024', title: 'Aavesham', year: 2024, rating: 7.8, genres: ['Action', 'Comedy'], kind: 'movie', tone: '#3b2025' },
+    { id: 'tt28288786', slug: 'tt28288786', title: 'Premalu', year: 2024, rating: 7.8, genres: ['Comedy', 'Romance'], kind: 'movie', tone: '#3b2e35' },
+    { id: 'tt15980138', slug: 'tt15980138', title: 'Kishkindha Kaandam', year: 2024, rating: 8.0, genres: ['Drama', 'Mystery', 'Thriller'], kind: 'movie', tone: '#283226' },
+    { id: 'tt27431598', slug: 'bramayugam-2024', title: 'Bramayugam', year: 2024, rating: 7.7, genres: ['Drama', 'Horror', 'Thriller'], kind: 'movie', tone: '#242424' },
+    { id: 'tt32495687', slug: 'tt32495687', title: 'Sookshma Darshini', year: 2024, rating: 7.7, genres: ['Comedy', 'Mystery', 'Thriller'], kind: 'movie', tone: '#2c3138' },
+    { id: 'tt29383379', slug: 'marco-2024', title: 'Marco', year: 2024, rating: 6.5, genres: ['Action', 'Crime', 'Thriller'], kind: 'movie', tone: '#331d1d' },
+    { id: 'tt31188121', slug: 'tt31188121', title: 'Rifle Club', year: 2024, rating: 7.0, genres: ['Action'], kind: 'movie', tone: '#382a1e' },
+    { id: 'tt32592802', slug: 'bougainvillea-2024', title: 'Bougainvillea', year: 2024, rating: 6.5, genres: ['Action', 'Crime', 'Mystery'], kind: 'movie', tone: '#342230' },
+    { id: 'tt9006564', slug: 'tt9006564', title: '2018', year: 2023, rating: 8.3, genres: ['Action', 'Drama', 'Thriller'], kind: 'movie', tone: '#1e2c36' },
+    { id: 'tt27302079', slug: 'tt27302079', title: 'Aattam', year: 2023, rating: 8.1, genres: ['Drama', 'Mystery', 'Thriller'], kind: 'movie', tone: '#2b2824' },
+    { id: 'tt25274786', slug: 'tt25274786', title: 'Kannur Squad', year: 2023, rating: 7.6, genres: ['Action', 'Crime', 'Drama'], kind: 'movie', tone: '#242b33' },
+    { id: 'tt20249418', slug: 'tt20249418', title: 'Romancham', year: 2023, rating: 7.5, genres: ['Comedy', 'Horror'], kind: 'movie', tone: '#232e27' },
+    { id: 'tt11410312', slug: 'tt11410312', title: 'Falimy', year: 2023, rating: 7.3, genres: ['Comedy', 'Drama'], kind: 'movie', tone: '#362d22' },
+    { id: 'tt11375428', slug: 'tt11375428', title: 'Hridayam', year: 2022, rating: 8.0, genres: ['Drama', 'Musical', 'Romance'], kind: 'movie', tone: '#38272b' },
+    { id: 'tt14188930', slug: 'tt14188930', title: 'Nna, Thaan Case Kodu', year: 2022, rating: 7.9, genres: ['Comedy', 'Crime', 'Drama'], kind: 'movie', tone: '#382d1f' },
+    { id: 'tt22027654', slug: 'tt22027654', title: 'Jaya Jaya Jaya Jaya Hey', year: 2022, rating: 7.7, genres: ['Comedy', 'Drama', 'Family'], kind: 'movie', tone: '#362c24' },
+    { id: 'tt14002046', slug: 'tt14002046', title: 'Bheeshma Parvam', year: 2022, rating: 7.5, genres: ['Action', 'Crime', 'Drama'], kind: 'movie', tone: '#2b221e' },
+    { id: 'tt11075264', slug: 'tt11075264', title: 'Thallumaala', year: 2022, rating: 7.0, genres: ['Action', 'Comedy', 'Drama'], kind: 'movie', tone: '#2b2438' },
+    { id: 'tt7268738', slug: 'tt7268738', title: 'Minnal Murali', year: 2021, rating: 7.8, genres: ['Action', 'Comedy', 'Drama'], kind: 'movie', tone: '#262e3d' },
+    { id: 'tt11322920', slug: 'tt11322920', title: 'Ayyappanum Koshiyum', year: 2020, rating: 8.0, genres: ['Action', 'Drama', 'Thriller'], kind: 'movie', tone: '#293224' },
+    { id: 'tt10717738', slug: 'tt10717738', title: 'Anjaam Pathiraa', year: 2020, rating: 7.9, genres: ['Crime', 'Mystery', 'Thriller'], kind: 'movie', tone: '#1e252e' },
+    { id: 'tt8413338', slug: 'tt8413338', title: 'Kumbalangi Nights', year: 2019, rating: 8.5, genres: ['Comedy', 'Drama', 'Romance'], kind: 'movie', tone: '#1f3033' },
+    { id: 'tt9271408', slug: 'tt9271408', title: 'Uyare', year: 2019, rating: 8.0, genres: ['Drama'], kind: 'movie', tone: '#262d38' },
+    { id: 'tt6067752', slug: 'tt6067752', title: 'Lucifer', year: 2019, rating: 7.5, genres: ['Action', 'Crime', 'Drama'], kind: 'movie', tone: '#261e1c' },
+    { id: 'tt8721556', slug: 'tt8721556', title: 'Jallikattu', year: 2019, rating: 7.3, genres: ['Action', 'Crime', 'Drama'], kind: 'movie', tone: '#2b231d' },
+    { id: 'tt4851630', slug: 'tt4851630', title: 'Maheshinte Prathikaaram', year: 2016, rating: 8.3, genres: ['Comedy', 'Drama', 'Romance'], kind: 'movie', tone: '#2b3324' },
+    { id: 'tt5458088', slug: 'tt5458088', title: 'Kammatti Paadam', year: 2016, rating: 7.9, genres: ['Action', 'Crime', 'Drama'], kind: 'movie', tone: '#2c2520' },
+    { id: 'tt4679210', slug: 'tt4679210', title: 'Premam', year: 2015, rating: 8.3, genres: ['Comedy', 'Drama', 'Musical'], kind: 'movie', tone: '#2c3024' },
+    { id: 'tt3668162', slug: 'tt3668162', title: 'Bangalore Days', year: 2014, rating: 8.3, genres: ['Comedy', 'Drama', 'Musical'], kind: 'movie', tone: '#2a2e38' },
+    { id: 'tt2924472', slug: 'tt2924472', title: 'Mumbai Police', year: 2013, rating: 7.8, genres: ['Crime', 'Mystery', 'Thriller'], kind: 'movie', tone: '#212936' }
+  ];
+
+  function renderMalayalamCinemaRail() {
+    const cleanPath = normalizeRoutePath(window.location.pathname);
+    const existing = document.getElementById('kaira-malayalam-section');
+    if (cleanPath !== '/' && cleanPath !== '/index.html' && cleanPath !== '/movies') {
+      if (existing) existing.remove();
+      return;
+    }
+    if (existing) return;
+
+    const railItems = MALAYALAM_MOVIES.slice(0, 22);
+    const html = `
+      <section class="section" id="kaira-malayalam-section" aria-labelledby="malayalam-cinema-heading">
+        <header class="shell gutter relative z-[1] mb-4 flex justify-between md:mb-5 items-baseline gap-6">
+          <div class="flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-1">
+            <h2 id="malayalam-cinema-heading" class="section-title text-section font-semibold text-fg">Malayalam Cinema</h2>
+          </div>
+          <a class="section-action -mr-2 flex h-9 shrink-0 items-center gap-1.5 rounded-full px-2 text-[0.875rem] font-medium text-fg-subtle transition-colors duration-200 hover:text-fg section-link" href="${escapeAttr(withBasePath('/collection/malayalam-cinema'))}">
+            See all
+            <svg xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" fill="currentColor" viewBox="0 0 256 256" class="size-3.5" aria-hidden="true"><path d="M224.49,136.49l-72,72a12,12,0,0,1-17-17L187,140H40a12,12,0,0,1,0-24H187L135.51,64.48a12,12,0,0,1,17-17l72,72A12,12,0,0,1,224.49,136.49Z"></path></svg>
+          </a>
+        </header>
+        <div class="shell">
+          <div class="rail">
+            <div role="list" aria-label="Malayalam Cinema" class="rail-track [--cols:2.35] sm:[--cols:3.4] md:[--cols:4.3] lg:[--cols:5] xl:[--cols:6] 2xl:[--cols:7]">
+              ${railItems.map(item => `<div role="listitem">${renderPosterCardHtml(item)}</div>`).join('')}
+            </div>
+          </div>
+        </div>
+      </section>
+    `;
+
+    const cwSection = document.getElementById('kaira-continue-watching-section');
+    const firstSection = document.querySelector('main section.section');
+    if (cwSection && cwSection.parentNode) {
+      cwSection.insertAdjacentHTML('afterend', html);
+    } else if (firstSection && firstSection.parentNode) {
+      firstSection.insertAdjacentHTML('afterend', html);
+    } else {
+      const main = document.querySelector('main');
+      if (main) main.insertAdjacentHTML('beforeend', html);
+    }
+
+    const sectionEl = document.getElementById('kaira-malayalam-section');
+    if (sectionEl) {
+      markLoadedContinueWatchingImages(sectionEl);
+      try { initRailScroll(); } catch {}
+      try { initWatchlist(); } catch {}
+    }
+  }
+
   function syncDetailContinueWatchingButton() {
     const cleanPath = normalizeRoutePath(window.location.pathname);
     if (!cleanPath.startsWith('/movie/') && !cleanPath.startsWith('/tv/')) return;
@@ -5560,6 +5650,7 @@
 
   function refreshContinueWatchingUI() {
     try { renderContinueWatchingHomeRail(); } catch {}
+    try { renderMalayalamCinemaRail(); } catch {}
     try { renderContinueWatchingLibraryRail(); } catch {}
     try { syncDetailContinueWatchingButton(); } catch {}
   }
@@ -11681,7 +11772,7 @@
       if (raw) return { type: 'genre', slug: raw };
     }
 
-    const colMatch = norm.match(/^\/collection\/([^/?#]+)$/);
+    const colMatch = norm.match(/^\/collections?\/([^/?#]+)$/);
     if (colMatch) {
       let raw = colMatch[1];
       try { raw = decodeURIComponent(raw); } catch {}
@@ -11985,7 +12076,9 @@
     const seq = ++dynHydrateSeq;
     let items = [];
 
-    if (route.type === 'genre') {
+    if (route.slug === 'malayalam' || route.slug === 'malayalam-cinema') {
+      items = MALAYALAM_MOVIES;
+    } else if (route.type === 'genre') {
       const label = formatLabelFromSlug(route.slug, '');
       const primaryGenre = label.split('&')[0].trim();
       const apiSlug = primaryGenre.toLowerCase().replace(/[^a-z0-9]+/g, '-');
