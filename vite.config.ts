@@ -81,6 +81,43 @@ function createKairaMiddleware(rootDir: string) {
       return res.end('Font asset not found');
     }
 
+    // 1a-2. Missing static CSS chunk proxy so Vite SPA fallback never returns HTML for .css chunks
+    if (reqUrl.startsWith('/_next/static/chunks/') && reqUrl.split('?')[0].endsWith('.css')) {
+      const cleanChunkPath = reqUrl.split('?')[0].replace(/^\//, '');
+      const rawChunkFile = path.resolve(publicPath, cleanChunkPath);
+      if (
+        rawChunkFile.startsWith(path.join(publicPath, '_next', 'static', 'chunks') + path.sep) &&
+        !cleanChunkPath.includes('..') &&
+        fs.existsSync(rawChunkFile)
+      ) {
+        return next();
+      }
+      try {
+        const cssRes = await fetch(`https://fli.cx/${cleanChunkPath}`, {
+          headers: { 'User-Agent': BROWSER_UA, Referer: 'https://fli.cx/' },
+        });
+        const ct = cssRes.headers.get('content-type') || '';
+        if (cssRes.ok && !ct.includes('text/html')) {
+          const buf = Buffer.from(await cssRes.arrayBuffer());
+          res.statusCode = 200;
+          res.setHeader('Content-Type', 'text/css; charset=utf-8');
+          res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+          return res.end(buf);
+        }
+      } catch {
+        // Fall through to local CSS fallback
+      }
+      const fallbackCss = path.join(publicPath, '_next', 'static', 'chunks', '1tah4yxtfn-jp.css');
+      if (fs.existsSync(fallbackCss)) {
+        res.statusCode = 200;
+        res.setHeader('Content-Type', 'text/css; charset=utf-8');
+        return res.end(fs.readFileSync(fallbackCss));
+      }
+      res.statusCode = 404;
+      res.setHeader('Content-Type', 'text/css; charset=utf-8');
+      return res.end('/* CSS chunk not found */');
+    }
+
     // 1b. Native /api/title resolver (local cached HTML -> upstream search -> upstream detail HTML)
     if (reqUrl.startsWith('/api/title')) {
       try {
