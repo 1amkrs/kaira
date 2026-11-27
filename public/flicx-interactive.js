@@ -10919,11 +10919,24 @@
           gap: 0.25rem;
           border-radius: 1.5rem;
         }
+        .hero-actions:has(.kaira-btn-continue) > .capsule[role="group"]:first-child {
+          display: contents;
+        }
+        .hero-actions:has(.kaira-btn-continue) > .capsule[role="group"]:first-child > .capsule-btn:not(.kaira-btn-continue) {
+          height: 3rem;
+          padding-inline: 1rem;
+          background: rgba(255, 255, 255, 0.1);
+          -webkit-backdrop-filter: var(--frost, blur(18px));
+          backdrop-filter: var(--frost, blur(18px));
+          box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.14), inset 0 1px rgba(255, 255, 255, 0.1);
+        }
         .hero-actions .capsule-btn-play.kaira-btn-continue {
           max-width: 100%;
           min-width: 0;
+          height: 2.75rem;
+          margin-inline: 2rem;
           font-size: 0.85rem;
-          padding-inline: 0.78rem;
+          padding-inline: 0.9rem;
           gap: 0.38rem;
         }
         .hero-actions .capsule-btn-play.kaira-btn-continue .kaira-continue-meta {
