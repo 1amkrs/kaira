@@ -121,13 +121,28 @@ export function buildEmbedFallbackServers(
   if (!/^tt\d+$/i.test(cleanImdb)) return [];
   const s = Math.max(1, Number(season) || 1);
   const e = Math.max(1, Number(episode) || 1);
+  const enc = encodeURIComponent(cleanImdb);
 
   if (isShow) {
     return [
       {
+        name: 'VidLink',
+        kind: 'embed',
+        src: `https://vidlink.pro/tv/${enc}/${s}/${e}`,
+        quality: 'HD',
+        group: 'embed'
+      },
+      {
+        name: 'VidFast',
+        kind: 'embed',
+        src: `https://vidfast.pro/tv/${enc}/${s}/${e}`,
+        quality: 'HD',
+        group: 'embed'
+      },
+      {
         name: '2Embed',
         kind: 'embed',
-        src: `https://www.2embed.cc/embedtv/${encodeURIComponent(cleanImdb)}?s=${s}&e=${e}`,
+        src: `https://www.2embed.cc/embedtv/${enc}?s=${s}&e=${e}`,
         quality: 'HD',
         group: 'embed'
       }
@@ -136,9 +151,23 @@ export function buildEmbedFallbackServers(
 
   return [
     {
+      name: 'VidLink',
+      kind: 'embed',
+      src: `https://vidlink.pro/movie/${enc}`,
+      quality: 'HD',
+      group: 'embed'
+    },
+    {
+      name: 'VidFast',
+      kind: 'embed',
+      src: `https://vidfast.pro/movie/${enc}`,
+      quality: 'HD',
+      group: 'embed'
+    },
+    {
       name: '2Embed',
       kind: 'embed',
-      src: `https://www.2embed.cc/embed/${encodeURIComponent(cleanImdb)}`,
+      src: `https://www.2embed.cc/embed/${enc}`,
       quality: 'HD',
       group: 'embed'
     }

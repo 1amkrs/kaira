@@ -209,13 +209,18 @@
     if (!/^tt\d+$/i.test(cleanImdb)) return [];
     const s = Math.max(1, Number(seasonNum) || 1);
     const e = Math.max(1, Number(episodeNum) || 1);
+    const enc = encodeURIComponent(cleanImdb);
     if (isShow) {
       return [
-        { name: '2Embed', kind: 'embed', src: `https://www.2embed.cc/embedtv/${encodeURIComponent(cleanImdb)}?s=${s}&e=${e}`, quality: 'HD', group: 'embed' }
+        { name: 'VidLink', kind: 'embed', src: `https://vidlink.pro/tv/${enc}/${s}/${e}`, quality: 'HD', group: 'embed' },
+        { name: 'VidFast', kind: 'embed', src: `https://vidfast.pro/tv/${enc}/${s}/${e}`, quality: 'HD', group: 'embed' },
+        { name: '2Embed', kind: 'embed', src: `https://www.2embed.cc/embedtv/${enc}?s=${s}&e=${e}`, quality: 'HD', group: 'embed' }
       ];
     }
     return [
-      { name: '2Embed', kind: 'embed', src: `https://www.2embed.cc/embed/${encodeURIComponent(cleanImdb)}`, quality: 'HD', group: 'embed' }
+      { name: 'VidLink', kind: 'embed', src: `https://vidlink.pro/movie/${enc}`, quality: 'HD', group: 'embed' },
+      { name: 'VidFast', kind: 'embed', src: `https://vidfast.pro/movie/${enc}`, quality: 'HD', group: 'embed' },
+      { name: '2Embed', kind: 'embed', src: `https://www.2embed.cc/embed/${enc}`, quality: 'HD', group: 'embed' }
     ];
   }
 
@@ -550,6 +555,48 @@
     return null;
   }
 
+  async function preflightHlsCandidates(hlsServers) {
+    if (!Array.isArray(hlsServers) || hlsServers.length === 0) return [];
+    const checks = await Promise.all(hlsServers.map(async (srv) => {
+      if (!srv || !srv.src) return { srv, alive: false, verifiedLive: false };
+      if (srv.group === 'dedicated' || srv.steady === true) {
+        return { srv, alive: true, verifiedLive: Boolean(srv.has || srv.steady) };
+      }
+      const rawUrl = String(srv.src).trim();
+      const probeUrl = rawUrl.startsWith('http') && !rawUrl.includes('fx=cors')
+        ? rawUrl + (rawUrl.includes('?') ? '&' : '?') + 'fx=cors'
+        : rawUrl;
+      const ctrl = typeof AbortController !== 'undefined' ? new AbortController() : null;
+      const timer = ctrl ? setTimeout(() => ctrl.abort(), 3000) : null;
+      try {
+        const res = await fetch(probeUrl, {
+          method: 'GET',
+          signal: ctrl ? ctrl.signal : undefined
+        });
+        if (timer) clearTimeout(timer);
+        if (res.status === 404 || res.status === 410 || res.status === 403 || res.status >= 500) {
+          return { srv, alive: false, verifiedLive: false };
+        }
+        if (res.ok) {
+          const text = await res.text();
+          if (text && text.includes('#EXTM3U')) {
+            return { srv: { ...srv, verifiedLive: true }, alive: true, verifiedLive: true };
+          }
+          return { srv, alive: false, verifiedLive: false };
+        }
+        return { srv, alive: true, verifiedLive: false };
+      } catch {
+        if (timer) clearTimeout(timer);
+        // Network/timeout/CORS error: keep only if upstream marked steady/has, otherwise deprioritize
+        return { srv, alive: Boolean(srv.has || srv.steady), verifiedLive: false };
+      }
+    }));
+
+    const liveVerified = checks.filter(c => c.alive && c.verifiedLive).map(c => c.srv);
+    const liveOther = checks.filter(c => c.alive && !c.verifiedLive).map(c => c.srv);
+    return [...liveVerified, ...liveOther];
+  }
+
   async function resolveStreamSources(imdbId, isShow, seasonNum, episodeNum) {
     const serverList = [];
     const seenNames = new Set();
@@ -570,11 +617,20 @@
       if (apiResult && apiResult.data) {
         const rawSources = Array.isArray(apiResult.data.sources) ? apiResult.data.sources : [];
         const isStaticHtmlResponse = apiResult.ct.includes('text/html');
-        // Push direct HTTPS CDN streams (e.g. https://s.fli.cx/...) before relative /api/ proxy streams
-        const orderedSources = [
-          ...rawSources.filter(s => s && typeof s.src === 'string' && /^https:\/\//i.test(s.src)),
-          ...rawSources.filter(s => s && typeof s.src === 'string' && !/^https:\/\//i.test(s.src))
-        ];
+        // Prioritize dedicated/steady/has=true streams before unverified external stars
+        const scoreSource = (s) => {
+          if (!s || typeof s.src !== 'string') return 99;
+          let sc = /^https:\/\//i.test(s.src) ? 0 : 1;
+          if (s.group === 'dedicated') sc -= 10;
+          if (s.steady) sc -= 6;
+          if (s.has === true) sc -= 4;
+          return sc;
+        };
+        const orderedSources = [...rawSources]
+          .filter(s => s && typeof s.src === 'string')
+          .sort((a, b) => scoreSource(a) - scoreSource(b));
+
+        const candidateHls = [];
         for (const s of orderedSources) {
           if (s.has === false) continue;
           const srcStr = String(s.src || '').trim();
@@ -582,7 +638,7 @@
           if (srcStr.startsWith('/api/')) {
             if (isStaticHtmlResponse) continue;
             if (apiResult.usedProxy && apiResult.proxyBase) {
-              pushServer({ ...s, src: `${apiResult.proxyBase}${srcStr}` });
+              candidateHls.push({ ...s, src: `${apiResult.proxyBase}${srcStr}` });
               continue;
             }
             // On static hosts without a local Node middleware, skip relative /api/s/... paths
@@ -590,6 +646,12 @@
               continue;
             }
           }
+          candidateHls.push(s);
+        }
+
+        // Parallel preflight filter so dead 404 star HLS streams never stall the player sequentially
+        const verifiedHls = await preflightHlsCandidates(candidateHls);
+        for (const s of verifiedHls) {
           pushServer(s);
         }
         if (serverList.length > 0) gotLiveApi = true;
@@ -1834,7 +1896,8 @@
       const synopsisText = String(titleInfo.description || '').trim();
       const ratingText = titleInfo.rating ? String(titleInfo.rating).trim() : '';
       const genresList = Array.isArray(titleInfo.genres) ? titleInfo.genres.filter(Boolean) : [];
-      const posterUrl = titleInfo.poster || (imdbId ? `https://s.fli.cx/a/poster/medium/${encodeURIComponent(imdbId)}/img` : '');
+      const rawPoster = titleInfo.poster && !/images\.metahub\.space/i.test(titleInfo.poster) ? titleInfo.poster : '';
+      const posterUrl = rawPoster || (imdbId ? `https://s.fli.cx/a/poster/medium/${encodeURIComponent(imdbId)}/img` : '');
 
       let savedServerName = 'Kaira';
       try { savedServerName = localStorage.getItem('flicx:player:server') || 'Kaira'; } catch {}
@@ -3117,13 +3180,14 @@
         bufferingEl.style.display = 'block';
         renderActiveSubtitleCue();
 
-        // Stall guard: if stream does not load metadata within 14s, fail over cleanly
+        // Stall guard: fast-fail unverified external stars in 5s if no video frames buffer, keep 14s for dedicated/verified streams
+        const stallTimeoutMs = (source.group === 'external' && !source.steady && !source.verifiedLive) ? 5000 : 14000;
         streamLoadTimer = setTimeout(() => {
           if (isDestroyed || token !== activeStreamToken) return;
-          if (videoEl.readyState < 1) {
+          if (videoEl.readyState < 2) {
             fallbackToNextServer('Server timed out — switching…');
           }
-        }, 14000);
+        }, stallTimeoutMs);
 
         const canPlayNativeHls = Boolean(
           videoEl.canPlayType('application/vnd.apple.mpegurl') ||
@@ -3184,10 +3248,15 @@
             const hlsStartPosition = (!hasAppliedResume && resumeTargetSeconds >= CONTINUE_WATCHING_MIN_SECONDS)
               ? resumeTargetSeconds
               : -1;
+            const isExternalUnverified = source.group === 'external' && !source.steady && !source.verifiedLive;
             const hls = new window.Hls({
               startPosition: hlsStartPosition,
               capLevelToPlayerSize: isTouchMobile,
               enableWorker: true,
+              manifestLoadingMaxRetry: isExternalUnverified ? 1 : 2,
+              levelLoadingMaxRetry: isExternalUnverified ? 1 : 2,
+              fragLoadingMaxRetry: 1,
+              fragLoadingRetryDelay: 350,
               maxBufferLength: isTouchMobile ? 20 : 30,
               maxMaxBufferLength: isTouchMobile ? 45 : 60,
               backBufferLength: isTouchMobile ? 20 : 45,
@@ -3200,21 +3269,48 @@
             currentHls = hls;
             let networkRetries = 0;
             let mediaRetries = 0;
+            let startupSegmentErrors = 0;
+
+            nativeCanPlayHandler = () => {
+              if (isDestroyed || token !== activeStreamToken) return;
+              clearTimeout(streamLoadTimer);
+              bufferingEl.style.display = 'none';
+            };
+            videoEl.addEventListener('canplay', nativeCanPlayHandler, { once: true });
 
             hls.loadSource(streamUrl);
             hls.attachMedia(videoEl);
 
             hls.on(window.Hls.Events.MANIFEST_PARSED, () => {
               if (isDestroyed || token !== activeStreamToken) return;
-              clearTimeout(streamLoadTimer);
-              bufferingEl.style.display = 'none';
               attemptPlay(false);
             });
 
+            hls.on(window.Hls.Events.FRAG_BUFFERED, () => {
+              if (isDestroyed || token !== activeStreamToken) return;
+              clearTimeout(streamLoadTimer);
+              bufferingEl.style.display = 'none';
+            });
+
             hls.on(window.Hls.Events.ERROR, (event, data) => {
-              if (!data || !data.fatal || isDestroyed || token !== activeStreamToken) return;
+              if (!data || isDestroyed || token !== activeStreamToken) return;
+              if (!data.fatal) {
+                const code = data.response ? Number(data.response.code) : 0;
+                const isStartupSegFail =
+                  videoEl.readyState < 2 &&
+                  (data.details === 'fragLoadError' || data.details === 'levelLoadError' || data.details === 'manifestLoadError') &&
+                  (code === 403 || code === 404 || code === 410 || code >= 500);
+                if (isStartupSegFail) {
+                  startupSegmentErrors += 1;
+                  if (startupSegmentErrors >= 2) {
+                    clearTimeout(streamLoadTimer);
+                    fallbackToNextServer('Server error — switching…');
+                  }
+                }
+                return;
+              }
               console.warn('HLS stream error on', source.name, data);
-              if (data.type === window.Hls.ErrorTypes.NETWORK_ERROR && networkRetries < 1) {
+              if (data.type === window.Hls.ErrorTypes.NETWORK_ERROR && networkRetries < 1 && videoEl.readyState >= 2) {
                 networkRetries += 1;
                 hls.startLoad();
                 return;

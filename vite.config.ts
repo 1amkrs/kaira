@@ -233,6 +233,43 @@ function createKairaMiddleware(rootDir: string) {
           }
         }
 
+        // Live Cinemeta fallback when slug is a raw IMDb ID (e.g. tt31969600)
+        if ((!resolvedMeta || !resolvedMeta.id) && /^tt\d+$/i.test(rawSlug)) {
+          for (const cType of kindHint === 'show' ? ['series', 'movie'] : ['movie', 'series']) {
+            try {
+              const cmRes = await fetch(`https://v3-cinemeta.strem.io/meta/${cType}/${encodeURIComponent(rawSlug)}.json`, {
+                headers: { 'User-Agent': BROWSER_UA },
+                signal: AbortSignal.timeout(4000),
+              });
+              if (cmRes.ok) {
+                const cmJson: any = await cmRes.json();
+                const m = cmJson?.meta;
+                if (m && m.imdb_id) {
+                  resolvedMeta = {
+                    slug: rawSlug,
+                    id: m.imdb_id,
+                    imdbId: m.imdb_id,
+                    title: m.name || rawSlug,
+                    year: String(m.releaseInfo || m.year || '').slice(0, 4),
+                    kind: cType === 'series' ? 'show' : 'movie',
+                    runtime: m.runtime || '',
+                    genres: Array.isArray(m.genres) ? m.genres : [],
+                    rating: m.imdbRating ? String(m.imdbRating) : '',
+                    poster: `https://s.fli.cx/a/poster/medium/${encodeURIComponent(m.imdb_id)}/img`,
+                    still: m.background || null,
+                    description: m.description || '',
+                    trailerId: Array.isArray(m.trailers) && m.trailers[0] ? m.trailers[0].source : null,
+                    trailers: [],
+                  };
+                  break;
+                }
+              }
+            } catch {
+              // Try next type
+            }
+          }
+        }
+
         if (!resolvedMeta || !resolvedMeta.id) {
           res.statusCode = 404;
           res.setHeader('Content-Type', 'application/json');
