@@ -237,6 +237,22 @@ export function isValidAppPageHtml(html: string, cleanPath: string): boolean {
   return true;
 }
 
+const KAIRA_HOME_LOGO_HTML =
+  '<a aria-label="Kaira home" class="flicx-logo-link flex items-center justify-center rounded-[0.625rem]" style="width:3.1rem;height:3.1rem;" href="/">' +
+  '<svg class="mark" style="width:3.1rem;height:3.1rem;display:block;" viewBox="0 0 796 757" fill="none" xmlns="http://www.w3.org/2000/svg">' +
+  '<defs>' +
+  '<linearGradient id="paint0_linear_2393_3956" x1="73.5" y1="0" x2="73.5" y2="453" gradientUnits="userSpaceOnUse"><stop stop-color="white" stop-opacity="0.5"/><stop offset="1" stop-color="#F25C05"/></linearGradient>' +
+  '<linearGradient id="paint1_linear_2393_3956" x1="72.5" y1="0" x2="72.5" y2="269" gradientUnits="userSpaceOnUse"><stop stop-color="#F25C05"/><stop offset="1" stop-color="white"/></linearGradient>' +
+  '<linearGradient id="paint2_linear_2393_3956" x1="72.5" y1="0" x2="72.5" y2="269" gradientUnits="userSpaceOnUse"><stop stop-color="white" stop-opacity="0.5"/><stop offset="1" stop-color="#F25C05" stop-opacity="0"/></linearGradient>' +
+  '<linearGradient id="paint3_linear_2393_3956" x1="147.75" y1="0" x2="147.75" y2="386.5" gradientUnits="userSpaceOnUse"><stop stop-color="#F25C05"/><stop offset="1" stop-color="white"/></linearGradient>' +
+  '<linearGradient id="paint4_linear_2393_3956" x1="147.75" y1="0" x2="147.75" y2="386.5" gradientUnits="userSpaceOnUse"><stop stop-color="white" stop-opacity="0.5"/><stop offset="1" stop-color="#F25C05" stop-opacity="0"/></linearGradient>' +
+  '</defs>' +
+  '<g id="kaira-mark">' +
+  '<rect id="Rectangle_22048" transform="translate(195 150)" x="0.5" y="0.5" width="146" height="452" rx="73" fill="#F25C05" stroke="url(#paint0_linear_2393_3956)"/>' +
+  '<path id="Union" transform="translate(196 333)" d="M144.5 195.616C144.5 235.874 112.259 268.5 72.5 268.5C32.7414 268.5 0.500104 235.874 0.5 195.616V181.902C38.0057 125.417 93.8697 47.5687 144.5 1.13867V195.616Z" fill="url(#paint1_linear_2393_3956)" fill-opacity="0.5" stroke="url(#paint2_linear_2393_3956)"/>' +
+  '<path id="Rectangle_22049" transform="translate(341 234)" d="M69.3506 30.9248C86.8558 13.564 114.469 11.7324 134.114 26.6279L244.233 110.122C269.874 129.564 270.442 167.917 245.387 188.108L81.0605 320.534C48.6786 346.63 0.500306 323.58 0.5 281.992V99.209L69.3506 30.9248Z" fill="url(#paint3_linear_2393_3956)" stroke="url(#paint4_linear_2393_3956)"/>' +
+  '</g></svg></a>';
+
 /**
  * Strips unused Next.js preload links that trigger console warnings, cleans leftover
  * "Flicx" branding strings in visible copy, and ensures the interactive runtime script is injected.
@@ -245,7 +261,9 @@ export function prepareServedHtml(html: string): string {
   let out = html;
   // Remove unused preloaded Next.js chunk link tag that causes console warnings on every page
   out = out.replace(/<link[^>]*rel=["']preload["'][^>]*href=["']\/_next\/static\/chunks\/3bep5nso12chb\.js["'][^>]*\/?>/gi, '');
-  // Normalize leftover visible Flicx branding text and social preview assets to Kaira
+  // Normalize leftover visible Flicx branding text, header logo, and social preview assets to Kaira
+  out = out.replace(/<a[^>]*aria-label=["']Flicx home["'][^>]*>[\s\S]*?<\/a>/gi, KAIRA_HOME_LOGO_HTML);
+  out = out.replace(/·\s*Flicx<\/title>/gi, '· Kaira</title>');
   out = out.replace(/Popular on Flicx/g, 'Popular on Kaira');
   out = out.replace(/On Flicx since/g, 'On Kaira since');
   out = out.replace(/Watch on Flicx/g, 'Watch on Kaira');

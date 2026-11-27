@@ -6980,6 +6980,18 @@
 
   // --- 9. Animated Logo Hover Re-trigger ---
   function initAnimatedLogoHover() {
+    document.querySelectorAll('a[aria-label="Flicx home"], header.site-header a[href="/"]').forEach(link => {
+      if (link.getAttribute('aria-label') === 'Flicx home' || link.querySelector('.mark-bird')) {
+        link.setAttribute('aria-label', 'Kaira home');
+        link.className = 'flicx-logo-link flex items-center justify-center rounded-[0.625rem]';
+        link.style.width = '3.1rem';
+        link.style.height = '3.1rem';
+        link.innerHTML = '<svg class="mark" style="width:3.1rem;height:3.1rem;display:block;" viewBox="0 0 796 757" fill="none" xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="kaira_p0" x1="73.5" y1="0" x2="73.5" y2="453" gradientUnits="userSpaceOnUse"><stop stop-color="white" stop-opacity="0.5"/><stop offset="1" stop-color="#F25C05"/></linearGradient><linearGradient id="kaira_p1" x1="72.5" y1="0" x2="72.5" y2="269" gradientUnits="userSpaceOnUse"><stop stop-color="#F25C05"/><stop offset="1" stop-color="white"/></linearGradient><linearGradient id="kaira_p2" x1="72.5" y1="0" x2="72.5" y2="269" gradientUnits="userSpaceOnUse"><stop stop-color="white" stop-opacity="0.5"/><stop offset="1" stop-color="#F25C05" stop-opacity="0"/></linearGradient><linearGradient id="kaira_p3" x1="147.75" y1="0" x2="147.75" y2="386.5" gradientUnits="userSpaceOnUse"><stop stop-color="#F25C05"/><stop offset="1" stop-color="white"/></linearGradient><linearGradient id="kaira_p4" x1="147.75" y1="0" x2="147.75" y2="386.5" gradientUnits="userSpaceOnUse"><stop stop-color="white" stop-opacity="0.5"/><stop offset="1" stop-color="#F25C05" stop-opacity="0"/></linearGradient></defs><g id="kaira-mark"><rect id="Rectangle_22048" transform="translate(195 150)" x="0.5" y="0.5" width="146" height="452" rx="73" fill="#F25C05" stroke="url(#kaira_p0)"/><path id="Union" transform="translate(196 333)" d="M144.5 195.616C144.5 235.874 112.259 268.5 72.5 268.5C32.7414 268.5 0.500104 235.874 0.5 195.616V181.902C38.0057 125.417 93.8697 47.5687 144.5 1.13867V195.616Z" fill="url(#kaira_p1)" fill-opacity="0.5" stroke="url(#kaira_p2)"/><path id="Rectangle_22049" transform="translate(341 234)" d="M69.3506 30.9248C86.8558 13.564 114.469 11.7324 134.114 26.6279L244.233 110.122C269.874 129.564 270.442 167.917 245.387 188.108L81.0605 320.534C48.6786 346.63 0.500306 323.58 0.5 281.992V99.209L69.3506 30.9248Z" fill="url(#kaira_p3)" stroke="url(#kaira_p4)"/></g></svg>';
+      }
+    });
+    if (/·\s*Flicx$/i.test(document.title || '')) {
+      document.title = document.title.replace(/·\s*Flicx$/i, '· Kaira');
+    }
     document.querySelectorAll('.flicx-logo-link, a[aria-label="Kaira home"]').forEach(link => {
       if (link.dataset.logoHoverActive) return;
       link.dataset.logoHoverActive = 'true';
@@ -10928,6 +10940,8 @@
         display: inline-flex;
         align-items: center;
         gap: 0.65rem;
+        max-width: calc(100vw - 1.5rem);
+        white-space: nowrap;
         padding: 0.45rem 0.55rem 0.45rem 0.95rem;
         border-radius: 999px;
         background: rgba(22, 22, 28, 0.78);
@@ -10958,11 +10972,24 @@
         color: #ffffff;
         font-size: 0.78rem;
         font-weight: 600;
+        white-space: nowrap;
+        flex-shrink: 0;
         cursor: pointer;
         transition: background-color 0.16s ease;
       }
       .atv-resume-restart-btn:hover {
         background: rgba(255, 255, 255, 0.3);
+      }
+      @media (max-width: 47.99rem) {
+        .atv-resume-pill {
+          font-size: 0.78rem;
+          gap: 0.45rem;
+          padding: 0.36rem 0.45rem 0.36rem 0.78rem;
+        }
+        .atv-resume-restart-btn {
+          font-size: 0.72rem;
+          padding: 0.28rem 0.6rem;
+        }
       }
 
       /* Smooth Continue Watching Card & Section Close Transitions */
