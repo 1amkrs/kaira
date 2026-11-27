@@ -10892,6 +10892,33 @@
         font-weight: 500;
         margin-left: 0.15rem;
       }
+      @media (max-width: 47.99rem) {
+        .hero-actions {
+          max-width: 100%;
+          flex-wrap: wrap;
+        }
+        .hero-actions > .capsule[role="group"] {
+          max-width: 100%;
+          height: auto;
+          min-height: 3rem;
+          flex-wrap: wrap;
+          justify-content: center;
+          padding: 0.25rem;
+          gap: 0.25rem;
+          border-radius: 1.5rem;
+        }
+        .hero-actions .capsule-btn-play.kaira-btn-continue {
+          max-width: 100%;
+          min-width: 0;
+          font-size: 0.85rem;
+          padding-inline: 0.78rem;
+          gap: 0.38rem;
+        }
+        .hero-actions .capsule-btn-play.kaira-btn-continue .kaira-continue-meta {
+          font-size: 0.78em;
+          white-space: nowrap;
+        }
+      }
       .atv-resume-pill {
         position: absolute;
         top: calc(4.8rem + env(safe-area-inset-top, 0px));
