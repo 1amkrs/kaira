@@ -5555,7 +5555,7 @@
     playBtn.setAttribute('href', withBasePath(entry.watchUrl || playBtn.dataset.origHref));
     playBtn.classList.add('kaira-btn-continue');
     playBtn.style.setProperty('--cw-pct', `${pct}%`);
-    playBtn.innerHTML = `${playIcon}<span>Continue Watching</span>${timeLabel && timeLabel !== 'Resume' ? `<span class="kaira-continue-meta">${escapeHtml(timeLabel)}</span>` : ''}`;
+    playBtn.innerHTML = `${playIcon}<span class="kaira-cw-label-desktop">Continue Watching</span><span class="kaira-cw-label-mobile">Resume</span>${timeLabel && timeLabel !== 'Resume' ? `<span class="kaira-continue-meta">${escapeHtml(timeLabel)}</span>` : ''}`;
   }
 
   function refreshContinueWatchingUI() {
@@ -10904,40 +10904,31 @@
         font-weight: 500;
         margin-left: 0.15rem;
       }
+      .kaira-cw-label-mobile {
+        display: none;
+      }
       @media (max-width: 47.99rem) {
-        .hero-actions {
-          max-width: 100%;
-          flex-wrap: wrap;
+        .kaira-cw-label-desktop {
+          display: none;
         }
-        .hero-actions > .capsule[role="group"] {
-          max-width: 100%;
-          height: auto;
-          min-height: 3rem;
-          flex-wrap: wrap;
-          justify-content: center;
-          padding: 0.25rem;
-          gap: 0.25rem;
-          border-radius: 1.5rem;
+        .kaira-cw-label-mobile {
+          display: inline;
         }
-        .hero-actions:has(.kaira-btn-continue) > .capsule[role="group"]:first-child {
-          display: contents;
+        .hero-actions .capsule {
+          height: 2.65rem;
         }
-        .hero-actions:has(.kaira-btn-continue) > .capsule[role="group"]:first-child > .capsule-btn:not(.kaira-btn-continue) {
-          height: 3rem;
-          padding-inline: 1rem;
-          background: rgba(255, 255, 255, 0.1);
-          -webkit-backdrop-filter: var(--frost, blur(18px));
-          backdrop-filter: var(--frost, blur(18px));
-          box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.14), inset 0 1px rgba(255, 255, 255, 0.1);
+        .hero-actions .capsule-btn {
+          min-width: 2.15rem;
+          height: 2.25rem;
+          font-size: 0.82rem;
+          gap: 0.32rem;
+        }
+        .hero-actions .capsule-btn-text {
+          padding-inline: 0.65rem 0.78rem;
         }
         .hero-actions .capsule-btn-play.kaira-btn-continue {
-          max-width: 100%;
-          min-width: 0;
-          height: 2.75rem;
-          margin-inline: 2rem;
-          font-size: 0.85rem;
-          padding-inline: 0.9rem;
-          gap: 0.38rem;
+          padding-inline: 0.72rem;
+          gap: 0.3rem;
         }
         .hero-actions .capsule-btn-play.kaira-btn-continue .kaira-continue-meta {
           font-size: 0.78em;
