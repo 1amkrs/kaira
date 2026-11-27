@@ -5567,6 +5567,37 @@
     { id: 'tt2924472', slug: 'tt2924472', title: 'Mumbai Police', year: 2013, rating: 7.8, genres: ['Crime', 'Mystery', 'Thriller'], kind: 'movie', tone: '#212936' }
   ];
 
+  let malayalamCatalogCache = null;
+  let malayalamCatalogPromise = null;
+  async function loadMalayalamCatalog() {
+    if (Array.isArray(malayalamCatalogCache) && malayalamCatalogCache.length > 0) {
+      return malayalamCatalogCache;
+    }
+    if (!malayalamCatalogPromise) {
+      malayalamCatalogPromise = fetch(withBasePath('/malayalam-movies.json'))
+        .then(r => (r.ok ? r.json() : null))
+        .then(data => {
+          const list = Array.isArray(data) ? data : [];
+          const merged = [];
+          const seen = new Set();
+          for (const item of [...list, ...MALAYALAM_MOVIES]) {
+            if (!item || !item.id || seen.has(item.id)) continue;
+            seen.add(item.id);
+            merged.push({
+              ...item,
+              slug: item.slug || item.id,
+              kind: 'movie',
+              tone: item.tone || '#242933'
+            });
+          }
+          malayalamCatalogCache = merged.length ? merged : MALAYALAM_MOVIES;
+          return malayalamCatalogCache;
+        })
+        .catch(() => MALAYALAM_MOVIES);
+    }
+    return malayalamCatalogPromise;
+  }
+
   function renderMalayalamCinemaRail() {
     const cleanPath = normalizeRoutePath(window.location.pathname);
     const existing = document.getElementById('kaira-malayalam-section');
@@ -8326,7 +8357,7 @@
 
       fetchApiJsonWithMeta(`/api/search?q=${encodeURIComponent(query)}&full=1`)
         .then(res => (res && res.data ? res.data : Promise.reject(new Error('No API data'))))
-        .then(data => {
+        .then(async data => {
           if (reqId !== searchReqId) return;
           resultsContainer.classList.remove('search-results-stale');
 
@@ -8337,6 +8368,12 @@
               if (item.kind === 'show') shows.push(item);
               else films.push(item);
             }
+          }
+          if (/^(malayalam|mollywood)$/i.test(query)) {
+            const mlList = await loadMalayalamCatalog();
+            if (reqId !== searchReqId) return;
+            const seenIds = new Set(films.map(f => f.id || f.slug));
+            films = [...mlList, ...films.filter(f => !seenIds.has(f.id || f.slug))];
           }
           const people = Array.isArray(data.people) ? data.people : [];
           const groups = Array.isArray(data.groups) ? data.groups : [];
@@ -12077,7 +12114,7 @@
     let items = [];
 
     if (route.slug === 'malayalam' || route.slug === 'malayalam-cinema') {
-      items = MALAYALAM_MOVIES;
+      items = await loadMalayalamCatalog();
     } else if (route.type === 'genre') {
       const label = formatLabelFromSlug(route.slug, '');
       const primaryGenre = label.split('&')[0].trim();
