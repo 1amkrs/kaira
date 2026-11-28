@@ -28,8 +28,8 @@ import java.util.concurrent.atomic.AtomicBoolean
  * Lightweight embedded loopback HTTP/1.1 server bound strictly to 127.0.0.1.
  *
  * Serves bundled Kaira web assets from `assets/public/`, resolves clean URLs
- * (`/movies`, `/tv`, `/movie/<slug>`, `/watch/<slug>`), and proxies `/api/*`,
- * `/_next/*`, `/s/`, `/f/`, and `/k/` to upstream with the required `Referer`
+ * (`/movies`, `/tv`, `/movie/<slug>`, `/watch/<slug>`), and proxies `/api/...`,
+ * `/_next/...`, `/s/`, `/f/`, and `/k/` to upstream with the required `Referer`
  * header, `Range`/`206` byte-range forwarding, binary streaming, and `.m3u8`
  * playlist URL rewriting so both WebView and native Media3 ExoPlayer stream 4K HLS cleanly.
  */
