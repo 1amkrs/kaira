@@ -63,9 +63,17 @@
   async function fetchApiJsonWithMeta(apiPath) {
     const cleanPath = String(apiPath || '').startsWith('/') ? String(apiPath) : `/${apiPath}`;
     const proxyBase = getApiProxyBase();
-    const candidates = [{ url: cleanPath, usedProxy: false }];
-    if (proxyBase) {
+    const host = typeof window !== 'undefined' && window.location ? String(window.location.hostname || '').toLowerCase() : '';
+    const isLocalHost = host === 'localhost' || host === '127.0.0.1' || host === '0.0.0.0' || host === '::1';
+    const candidates = [];
+    if (proxyBase && host && !isLocalHost) {
       candidates.push({ url: `${proxyBase}${cleanPath}`, usedProxy: true });
+      candidates.push({ url: cleanPath, usedProxy: false });
+    } else {
+      candidates.push({ url: cleanPath, usedProxy: false });
+      if (proxyBase) {
+        candidates.push({ url: `${proxyBase}${cleanPath}`, usedProxy: true });
+      }
     }
 
     for (const candidate of candidates) {
@@ -555,46 +563,139 @@
     return null;
   }
 
+  function withCorsFlagIfCdn(rawUrl) {
+    const str = String(rawUrl || '').trim();
+    if (!str) return str;
+    if (/^https?:\/\/s\.fli\.cx\//i.test(str) && !str.includes('fx=cors')) {
+      return str + (str.includes('?') ? '&' : '?') + 'fx=cors';
+    }
+    return str;
+  }
+
+  function pickLightestVariantUrl(playlistText, baseUrl) {
+    const lines = String(playlistText || '').split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+    const nonComments = lines.filter(l => !l.startsWith('#'));
+    if (nonComments.length === 0) return null;
+    // Master playlists typically order highest -> lowest bandwidth; pick lowest-bitrate variant for fast probe
+    let bestUrl = nonComments[nonComments.length - 1];
+    let minBw = Infinity;
+    for (let i = 0; i < lines.length; i++) {
+      if (lines[i].startsWith('#EXT-X-STREAM-INF')) {
+        const bwMatch = lines[i].match(/BANDWIDTH=(\d+)/i);
+        const bw = bwMatch ? Number(bwMatch[1]) : Infinity;
+        for (let j = i + 1; j < lines.length; j++) {
+          if (!lines[j].startsWith('#')) {
+            if (bw < minBw) {
+              minBw = bw;
+              bestUrl = lines[j];
+            }
+            break;
+          }
+        }
+      }
+    }
+    try {
+      return new URL(bestUrl, baseUrl).toString();
+    } catch {
+      return null;
+    }
+  }
+
+  function pickFirstSegmentUrl(variantText, variantUrl) {
+    const mapMatch = String(variantText || '').match(/#EXT-X-MAP:URI="([^"]+)"/i);
+    const segLine = (mapMatch && mapMatch[1]) ||
+      String(variantText || '').split(/\r?\n/).map(l => l.trim()).find(l => l && !l.startsWith('#'));
+    if (!segLine) return null;
+    try {
+      return new URL(segLine, variantUrl).toString();
+    } catch {
+      return null;
+    }
+  }
+
   async function preflightHlsCandidates(hlsServers) {
     if (!Array.isArray(hlsServers) || hlsServers.length === 0) return [];
     const checks = await Promise.all(hlsServers.map(async (srv) => {
       if (!srv || !srv.src) return { srv, alive: false, verifiedLive: false };
-      if (srv.group === 'dedicated' || srv.steady === true) {
-        return { srv, alive: true, verifiedLive: Boolean(srv.has || srv.steady) };
-      }
+      const isDedicatedOrSteady = srv.group === 'dedicated' || srv.steady === true;
       const rawUrl = String(srv.src).trim();
-      const probeUrl = rawUrl.startsWith('http') && !rawUrl.includes('fx=cors')
-        ? rawUrl + (rawUrl.includes('?') ? '&' : '?') + 'fx=cors'
-        : rawUrl;
+      const masterUrl = withCorsFlagIfCdn(rawUrl);
       const ctrl = typeof AbortController !== 'undefined' ? new AbortController() : null;
-      const timer = ctrl ? setTimeout(() => ctrl.abort(), 3000) : null;
+      const timer = ctrl ? setTimeout(() => ctrl.abort(), 2400) : null;
+      const signal = ctrl ? ctrl.signal : undefined;
       try {
-        const res = await fetch(probeUrl, {
-          method: 'GET',
-          signal: ctrl ? ctrl.signal : undefined
-        });
-        if (timer) clearTimeout(timer);
+        const res = await fetch(masterUrl, { method: 'GET', signal });
         if (res.status === 404 || res.status === 410 || res.status === 403 || res.status >= 500) {
+          if (timer) clearTimeout(timer);
           return { srv, alive: false, verifiedLive: false };
         }
-        if (res.ok) {
-          const text = await res.text();
-          if (text && text.includes('#EXTM3U')) {
-            return { srv: { ...srv, verifiedLive: true }, alive: true, verifiedLive: true };
+        if (!res.ok) {
+          if (timer) clearTimeout(timer);
+          return { srv, alive: isDedicatedOrSteady, verifiedLive: false };
+        }
+        const masterText = await res.text();
+        if (!masterText || !masterText.includes('#EXTM3U')) {
+          if (timer) clearTimeout(timer);
+          return { srv, alive: false, verifiedLive: false };
+        }
+
+        // Verify variant playlist + first segment content-type so 503 variants (Rigel/Vega) and 200 text/html fake segments (Altair) never poison playback
+        let variantUrl = masterUrl;
+        let variantText = masterText;
+        if (!masterText.includes('#EXTINF:')) {
+          const pickedVariant = pickLightestVariantUrl(masterText, res.url || masterUrl);
+          if (!pickedVariant) {
+            if (timer) clearTimeout(timer);
+            return { srv, alive: false, verifiedLive: false };
           }
-          return { srv, alive: false, verifiedLive: false };
+          variantUrl = withCorsFlagIfCdn(pickedVariant);
+          const varRes = await fetch(variantUrl, { method: 'GET', signal });
+          if (!varRes.ok) {
+            if (timer) clearTimeout(timer);
+            return { srv, alive: false, verifiedLive: false };
+          }
+          variantText = await varRes.text();
+          if (!variantText || !variantText.includes('#EXTM3U')) {
+            if (timer) clearTimeout(timer);
+            return { srv, alive: false, verifiedLive: false };
+          }
         }
-        return { srv, alive: true, verifiedLive: false };
+
+        const segUrl = pickFirstSegmentUrl(variantText, variantUrl);
+        if (segUrl) {
+          const segRes = await fetch(withCorsFlagIfCdn(segUrl), {
+            method: 'GET',
+            headers: { Range: 'bytes=0-63' },
+            signal
+          });
+          const segCt = (segRes.headers.get('content-type') || '').toLowerCase();
+          try { segRes.body?.cancel?.(); } catch {}
+          if (segRes.status === 404 || segRes.status === 410 || segRes.status === 403 || segRes.status >= 500) {
+            if (timer) clearTimeout(timer);
+            return { srv, alive: false, verifiedLive: false };
+          }
+          if (segRes.ok && (segCt.includes('text/html') || segCt.includes('application/json'))) {
+            if (timer) clearTimeout(timer);
+            return { srv, alive: false, verifiedLive: false };
+          }
+        }
+
+        if (timer) clearTimeout(timer);
+        return { srv: { ...srv, verifiedLive: true }, alive: true, verifiedLive: true };
       } catch {
         if (timer) clearTimeout(timer);
-        // Network/timeout/CORS error: keep only if upstream marked steady/has, otherwise deprioritize
-        return { srv, alive: Boolean(srv.has || srv.steady), verifiedLive: false };
+        return { srv, alive: isDedicatedOrSteady, verifiedLive: false, timedOutFallback: Boolean(srv.has) };
       }
     }));
 
-    const liveVerified = checks.filter(c => c.alive && c.verifiedLive).map(c => c.srv);
-    const liveOther = checks.filter(c => c.alive && !c.verifiedLive).map(c => c.srv);
-    return [...liveVerified, ...liveOther];
+    const dedicated = checks.filter(c => c.alive && c.srv.group === 'dedicated').map(c => c.srv);
+    const liveVerified = checks.filter(c => c.alive && c.verifiedLive && c.srv.group !== 'dedicated').map(c => c.srv);
+    const liveOther = checks.filter(c => c.alive && !c.verifiedLive && c.srv.group !== 'dedicated').map(c => c.srv);
+    if (dedicated.length > 0 || liveVerified.length > 0) {
+      return [...dedicated, ...liveVerified, ...liveOther];
+    }
+    const backupWithHas = checks.filter(c => !c.alive && c.timedOutFallback).map(c => c.srv);
+    return [...liveOther, ...backupWithHas];
   }
 
   async function resolveStreamSources(imdbId, isShow, seasonNum, episodeNum) {
@@ -3180,8 +3281,9 @@
         bufferingEl.style.display = 'block';
         renderActiveSubtitleCue();
 
-        // Stall guard: fast-fail unverified external stars in 5s if no video frames buffer, keep 14s for dedicated/verified streams
-        const stallTimeoutMs = (source.group === 'external' && !source.steady && !source.verifiedLive) ? 5000 : 14000;
+        // Stall guard: fail fast if playlist doesn't resolve, give verified/dedicated streams time to finish segment 1 once variant loads
+        const isFastFailUnverified = source.group === 'external' && !source.steady && !source.verifiedLive;
+        const stallTimeoutMs = isFastFailUnverified ? 5500 : 12000;
         streamLoadTimer = setTimeout(() => {
           if (isDestroyed || token !== activeStreamToken) return;
           if (videoEl.readyState < 2) {
@@ -3251,7 +3353,9 @@
             const isExternalUnverified = source.group === 'external' && !source.steady && !source.verifiedLive;
             const hls = new window.Hls({
               startPosition: hlsStartPosition,
-              capLevelToPlayerSize: isTouchMobile,
+              autoStartLoad: false,
+              abrEwmaDefaultEstimate: isTouchMobile ? 1000000 : 1500000,
+              capLevelToPlayerSize: true,
               enableWorker: true,
               manifestLoadingMaxRetry: isExternalUnverified ? 1 : 2,
               levelLoadingMaxRetry: isExternalUnverified ? 1 : 2,
@@ -3261,7 +3365,7 @@
               maxMaxBufferLength: isTouchMobile ? 45 : 60,
               backBufferLength: isTouchMobile ? 20 : 45,
               xhrSetup: (xhr, url) => {
-                if (url && !url.includes('fx=cors')) {
+                if (url && /^https?:\/\/s\.fli\.cx\//i.test(url) && !url.includes('fx=cors')) {
                   xhr.open('GET', url + (url.includes('?') ? '&' : '?') + 'fx=cors', true);
                 }
               }
@@ -3270,6 +3374,7 @@
             let networkRetries = 0;
             let mediaRetries = 0;
             let startupSegmentErrors = 0;
+            let extendedBufferGrace = false;
 
             nativeCanPlayHandler = () => {
               if (isDestroyed || token !== activeStreamToken) return;
@@ -3283,7 +3388,35 @@
 
             hls.on(window.Hls.Events.MANIFEST_PARSED, () => {
               if (isDestroyed || token !== activeStreamToken) return;
+              // Start fragment 1 on the lightest variant (~1.3-2.7 MB vs 12+ MB 4K) so video begins in 1-2s, then let ABR scale up immediately
+              if (Array.isArray(hls.levels) && hls.levels.length > 1) {
+                let fastIdx = 0;
+                let minBr = Infinity;
+                for (let i = 0; i < hls.levels.length; i++) {
+                  const br = Number(hls.levels[i]?.bitrate) || 0;
+                  if (br > 0 && br < minBr) {
+                    minBr = br;
+                    fastIdx = i;
+                  }
+                }
+                hls.nextAutoLevel = fastIdx;
+              }
+              hls.startLoad(hlsStartPosition);
               attemptPlay(false);
+            });
+
+            hls.on(window.Hls.Events.LEVEL_LOADED, () => {
+              if (isDestroyed || token !== activeStreamToken || extendedBufferGrace || videoEl.readyState >= 2) return;
+              extendedBufferGrace = true;
+              if (!isExternalUnverified) {
+                clearTimeout(streamLoadTimer);
+                streamLoadTimer = setTimeout(() => {
+                  if (isDestroyed || token !== activeStreamToken) return;
+                  if (videoEl.readyState < 2) {
+                    fallbackToNextServer('Server timed out — switching…');
+                  }
+                }, 18000);
+              }
             });
 
             hls.on(window.Hls.Events.FRAG_BUFFERED, () => {
@@ -3296,12 +3429,12 @@
               if (!data || isDestroyed || token !== activeStreamToken) return;
               if (!data.fatal) {
                 const code = data.response ? Number(data.response.code) : 0;
-                const isStartupSegFail =
-                  videoEl.readyState < 2 &&
+                const isHttpSegError =
                   (data.details === 'fragLoadError' || data.details === 'levelLoadError' || data.details === 'manifestLoadError') &&
                   (code === 403 || code === 404 || code === 410 || code >= 500);
-                if (isStartupSegFail) {
-                  startupSegmentErrors += 1;
+                const isBadSegmentPayload = data.details === 'fragParsingError';
+                if (videoEl.readyState < 2 && (isHttpSegError || isBadSegmentPayload)) {
+                  startupSegmentErrors += isBadSegmentPayload && isExternalUnverified ? 2 : 1;
                   if (startupSegmentErrors >= 2) {
                     clearTimeout(streamLoadTimer);
                     fallbackToNextServer('Server error — switching…');
