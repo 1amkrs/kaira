@@ -129,7 +129,7 @@ class MainActivity : AppCompatActivity() {
 
         webView.webChromeClient = object : WebChromeClient() {
             override fun onShowCustomView(view: View?, callback: CustomViewCallback?) {
-                if (customView != null) {
+                if (view == null || customView != null) {
                     callback?.onCustomViewHidden()
                     return
                 }
@@ -140,18 +140,14 @@ class MainActivity : AppCompatActivity() {
             }
 
             override fun onHideCustomView() {
-                customView = null
-                customViewCallback?.onCustomViewHidden()
-                customViewCallback = null
-                setContentView(webView)
-                applyImmersiveMode(isTV)
+                exitCustomView()
             }
         }
 
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
                 if (customView != null) {
-                    webView.webChromeClient?.onHideCustomView()
+                    exitCustomView()
                     return
                 }
                 webView.evaluateJavascript(
@@ -241,6 +237,14 @@ class MainActivity : AppCompatActivity() {
         } else {
             controller.show(WindowInsetsCompat.Type.systemBars())
         }
+    }
+
+    private fun exitCustomView() {
+        customView = null
+        customViewCallback?.onCustomViewHidden()
+        customViewCallback = null
+        setContentView(webView)
+        applyImmersiveMode(isTV)
     }
 
     override fun onDestroy() {

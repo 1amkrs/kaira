@@ -20,6 +20,7 @@ import android.widget.LinearLayout
 import android.widget.ProgressBar
 import android.widget.SeekBar
 import android.widget.TextView
+import androidx.annotation.OptIn
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.WindowCompat
@@ -28,6 +29,7 @@ import androidx.core.view.WindowInsetsControllerCompat
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
+import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.hls.HlsMediaSource
@@ -42,6 +44,7 @@ import java.util.Locale
  * D-pad scrubbing, server switching, auto-failover, and returns exact playback position
  * to [MainActivity] so Kaira's Continue Watching stays in sync.
  */
+@OptIn(UnstableApi::class)
 class TvPlayerActivity : AppCompatActivity() {
 
     companion object {
@@ -471,14 +474,9 @@ class TvPlayerActivity : AppCompatActivity() {
 
         exo.setMediaSource(hlsSource)
         exo.prepare()
-        val seekTarget = if (!hasAppliedInitialResume && resumePositionMs > 0L) {
+        if (resumePositionMs > 0L) {
             hasAppliedInitialResume = true
-            resumePositionMs
-        } else {
-            resumePositionMs
-        }
-        if (seekTarget > 0L) {
-            exo.seekTo(seekTarget)
+            exo.seekTo(resumePositionMs)
         }
         exo.playWhenReady = true
     }
@@ -555,7 +553,7 @@ class TvPlayerActivity : AppCompatActivity() {
             hudOverlay.animate()
                 .alpha(1f)
                 .setDuration(220L)
-                .withEndAction(null)
+                .withEndAction {}
                 .start()
             playPauseButton.requestFocus()
             scheduleHudAutoHide()
