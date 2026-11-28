@@ -24,13 +24,12 @@ export default {
     const url = new URL(request.url);
     let targetUrl = null;
     let customReferer = `${UPSTREAM_ORIGIN}/`;
-    const isStreamCdnPath = /^\/[sfk]\//.test(url.pathname);
     if (url.pathname === '/api/introdb') {
       targetUrl = `https://api.introdb.app/segments${url.search}`;
       customReferer = 'https://introdb.app/';
     } else if (url.pathname.startsWith('/api/')) {
       targetUrl = `${UPSTREAM_ORIGIN}${url.pathname}${url.search}`;
-    } else if (isStreamCdnPath) {
+    } else if (url.pathname.startsWith('/s/')) {
       targetUrl = `${STREAM_CDN_ORIGIN}${url.pathname}${url.search}`;
     } else {
       return new Response(JSON.stringify({ ok: true, service: 'kaira-api-proxy' }), {
@@ -39,54 +38,19 @@ export default {
       });
     }
 
-    const upstreamHeaders = {
-      'User-Agent': BROWSER_UA,
-      Referer: customReferer,
-    };
-    const rangeHeader = request.headers.get('range');
-    if (rangeHeader) upstreamHeaders.Range = rangeHeader;
-
     const upstreamRes = await fetch(targetUrl, {
       method: request.method,
-      headers: upstreamHeaders,
+      headers: {
+        'User-Agent': BROWSER_UA,
+        Referer: customReferer,
+      },
     });
 
     const headers = buildCorsHeaders();
-    const ct = upstreamRes.headers.get('content-type') || '';
+    const ct = upstreamRes.headers.get('content-type');
     if (ct) headers['Content-Type'] = ct;
     const cc = upstreamRes.headers.get('cache-control');
     if (cc) headers['Cache-Control'] = cc;
-    const cr = upstreamRes.headers.get('content-range');
-    if (cr) headers['Content-Range'] = cr;
-    const ar = upstreamRes.headers.get('accept-ranges');
-    if (ar) headers['Accept-Ranges'] = ar;
-
-    const ctLower = ct.toLowerCase();
-    const isPlaylist =
-      upstreamRes.ok &&
-      request.method === 'GET' &&
-      (ctLower.includes('mpegurl') ||
-        ctLower.includes('m3u8') ||
-        url.pathname.endsWith('.m3u8') ||
-        url.pathname.startsWith('/api/s/') ||
-        (url.pathname.startsWith('/s/') &&
-          !ctLower.startsWith('video/') &&
-          !ctLower.startsWith('audio/') &&
-          !ctLower.includes('octet-stream')));
-
-    if (isPlaylist) {
-      const text = await upstreamRes.text();
-      const rewritten = text.includes('#EXTM3U')
-        ? text.replace(
-            /https?:\/\/s\.fli\.cx\/([sfk])\/([^\s"'<>]+)/gi,
-            (_m, seg, rest) => `${url.origin}/${seg.toLowerCase()}/${rest}`
-          )
-        : text;
-      return new Response(rewritten, {
-        status: upstreamRes.status,
-        headers,
-      });
-    }
 
     return new Response(upstreamRes.body, {
       status: upstreamRes.status,

@@ -421,6 +421,27 @@ async function run() {
   // 1. Add .nojekyll so GitHub Pages serves _next/ static CSS & font directories
   fs.writeFileSync(path.join(distDir, '.nojekyll'), '', 'utf-8');
 
+  // 1b. Rewrite manifest.webmanifest with exact basePath so PWA install works on root & /kaira/
+  const manifestPath = path.join(distDir, 'manifest.webmanifest');
+  if (fs.existsSync(manifestPath)) {
+    try {
+      const prefix = basePath === '/' ? '' : basePath.slice(0, -1);
+      const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf-8'));
+      manifest.id = basePath;
+      manifest.start_url = basePath;
+      manifest.scope = basePath;
+      if (Array.isArray(manifest.icons)) {
+        manifest.icons = manifest.icons.map((ic) => {
+          if (!ic || typeof ic.src !== 'string') return ic;
+          const clean = ic.src.startsWith('/') ? ic.src : '/' + ic.src;
+          const prefixed = prefix && !clean.startsWith(prefix + '/') ? `${prefix}${clean}` : clean;
+          return { ...ic, src: prefixed };
+        });
+      }
+      fs.writeFileSync(manifestPath, JSON.stringify(manifest), 'utf-8');
+    } catch {}
+  }
+
   // 2. Process all HTML files in dist/ (excluding dist/api/ JSON payloads)
   const htmlFiles = walkHtmlFiles(distDir);
   for (const filePath of htmlFiles) {

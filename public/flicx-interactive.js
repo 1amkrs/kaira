@@ -555,20 +555,6 @@
     return null;
   }
 
-  function rewriteStreamUrlForProxy(rawUrl, canProxy, proxyBase) {
-    const trimmed = String(rawUrl || '').trim();
-    if (!trimmed || !canProxy) return trimmed;
-    const prefix = proxyBase ? String(proxyBase).replace(/\/+$/, '') : '';
-    if (trimmed.startsWith('/api/') || /^\/[sfk]\//.test(trimmed)) {
-      return prefix ? `${prefix}${trimmed}` : trimmed;
-    }
-    const cdnMatch = trimmed.match(/^https?:\/\/s\.fli\.cx\/([sfk]\/.+)$/i);
-    if (cdnMatch) {
-      return `${prefix}/${cdnMatch[1]}`;
-    }
-    return trimmed;
-  }
-
   async function preflightHlsCandidates(hlsServers) {
     if (!Array.isArray(hlsServers) || hlsServers.length === 0) return [];
     const checks = await Promise.all(hlsServers.map(async (srv) => {
@@ -577,12 +563,11 @@
         return { srv, alive: true, verifiedLive: Boolean(srv.has || srv.steady) };
       }
       const rawUrl = String(srv.src).trim();
-      const isDirectCdn = /^https?:\/\/s\.fli\.cx\//i.test(rawUrl);
-      const probeUrl = isDirectCdn && !rawUrl.includes('fx=cors')
+      const probeUrl = rawUrl.startsWith('http') && !rawUrl.includes('fx=cors')
         ? rawUrl + (rawUrl.includes('?') ? '&' : '?') + 'fx=cors'
         : rawUrl;
       const ctrl = typeof AbortController !== 'undefined' ? new AbortController() : null;
-      const timer = ctrl ? setTimeout(() => ctrl.abort(), 3500) : null;
+      const timer = ctrl ? setTimeout(() => ctrl.abort(), 3000) : null;
       try {
         const res = await fetch(probeUrl, {
           method: 'GET',
@@ -624,7 +609,7 @@
       serverList.push(normalized);
     };
 
-    // 1. Try local /api/sources proxy (works on localhost AND remote preview/deployed Node servers) or Worker proxy
+    // 1. Try local Vite /api/sources proxy or configured CORS API proxy first
     let gotLiveApi = false;
     try {
       const apiPath = `/api/sources/${encodeURIComponent(imdbId)}${isShow ? `?s=${seasonNum}&e=${episodeNum}` : ''}`;
@@ -632,17 +617,13 @@
       if (apiResult && apiResult.data) {
         const rawSources = Array.isArray(apiResult.data.sources) ? apiResult.data.sources : [];
         const isStaticHtmlResponse = apiResult.ct.includes('text/html');
-        const canProxyStream = Boolean(!isStaticHtmlResponse && (!apiResult.usedProxy || apiResult.proxyBase));
-        const streamProxyBase = apiResult.usedProxy ? (apiResult.proxyBase || '') : '';
-
-        // Prioritize dedicated/steady/has=true streams; never penalize proxied /api/s/ or /s/ paths
+        // Prioritize dedicated/steady/has=true streams before unverified external stars
         const scoreSource = (s) => {
           if (!s || typeof s.src !== 'string') return 99;
-          let sc = 0;
+          let sc = /^https:\/\//i.test(s.src) ? 0 : 1;
           if (s.group === 'dedicated') sc -= 10;
           if (s.steady) sc -= 6;
           if (s.has === true) sc -= 4;
-          if (s.src.startsWith('/api/s/') || s.src.startsWith('/s/')) sc -= 2;
           return sc;
         };
         const orderedSources = [...rawSources]
@@ -654,16 +635,18 @@
           if (s.has === false) continue;
           const srcStr = String(s.src || '').trim();
           if (!srcStr) continue;
-          if (srcStr.startsWith('/api/') && !canProxyStream) {
-            continue;
+          if (srcStr.startsWith('/api/')) {
+            if (isStaticHtmlResponse) continue;
+            if (apiResult.usedProxy && apiResult.proxyBase) {
+              candidateHls.push({ ...s, src: `${apiResult.proxyBase}${srcStr}` });
+              continue;
+            }
+            // On static hosts without a local Node middleware, skip relative /api/s/... paths
+            if (window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
+              continue;
+            }
           }
-          const proxiedSrc = rewriteStreamUrlForProxy(srcStr, canProxyStream, streamProxyBase);
-          candidateHls.push({
-            ...s,
-            src: proxiedSrc,
-            streamProxyEnabled: canProxyStream,
-            streamProxyBase,
-          });
+          candidateHls.push(s);
         }
 
         // Parallel preflight filter so dead 404 star HLS streams never stall the player sequentially
@@ -680,26 +663,17 @@
       const idx = await fetchStaticCatalogIndex();
       const cacheKey = isShow ? `${imdbId}:${seasonNum}:${episodeNum}` : imdbId;
       const cached = idx && idx.sources && Array.isArray(idx.sources[cacheKey]) ? idx.sources[cacheKey] : [];
-      const fallbackProxyBase = getApiProxyBase();
       for (const s of cached) {
         if (s && typeof s.src === 'string' && /^https:\/\//i.test(s.src)) {
-          const rewritten = rewriteStreamUrlForProxy(s.src, Boolean(fallbackProxyBase), fallbackProxyBase);
-          pushServer({
-            ...s,
-            src: rewritten,
-            streamProxyEnabled: Boolean(fallbackProxyBase),
-            streamProxyBase: fallbackProxyBase,
-          });
+          pushServer(s);
         }
       }
     }
 
-    // 3. Only fall back to third-party embed iframes if zero native HLS streams could be resolved
-    if (serverList.length === 0) {
-      const embedFallbacks = buildEmbedFallbackServers(imdbId, isShow, seasonNum, episodeNum);
-      for (const srv of embedFallbacks) {
-        pushServer(srv);
-      }
+    // 3. Always append CORS/iframe-safe universal embed servers so GitHub Pages ALWAYS plays on PC & mobile
+    const embedFallbacks = buildEmbedFallbackServers(imdbId, isShow, seasonNum, episodeNum);
+    for (const srv of embedFallbacks) {
+      pushServer(srv);
     }
 
     return serverList;
@@ -1837,19 +1811,13 @@
           const sourcesData = animeRes ? animeRes.data : null;
           if (sessionId !== activeWatchSessionId) return;
 
-          const canProxyAnime = Boolean(animeRes && !animeRes.ct.includes('text/html') && (!animeRes.usedProxy || animeRes.proxyBase));
-          const animeProxyBase = animeRes?.usedProxy ? (animeRes.proxyBase || '') : '';
           const serverList = (sourcesData && Array.isArray(sourcesData.sources) ? sourcesData.sources : [])
             .filter(s => s && s.name && s.src)
             .map(s => {
-              const src = rewriteStreamUrlForProxy(s.src, canProxyAnime, animeProxyBase);
-              return {
-                ...s,
-                src,
-                name: s.name === 'Flicx' ? 'Kaira' : s.name,
-                streamProxyEnabled: canProxyAnime,
-                streamProxyBase: animeProxyBase,
-              };
+              const src = String(s.src).startsWith('/api/') && animeRes?.usedProxy && animeRes?.proxyBase
+                ? `${animeRes.proxyBase}${s.src}`
+                : s.src;
+              return { ...s, src, name: s.name === 'Flicx' ? 'Kaira' : s.name };
             });
 
           if (serverList.length === 0) {
@@ -2611,82 +2579,6 @@
         });
       }
 
-      // Sync Continue Watching when returning from native Android TV Media3 ExoPlayer
-      const handleNativePlayerProgress = (ev) => {
-        if (isDestroyed) return;
-        const detail = ev && ev.detail ? ev.detail : null;
-        if (!detail) return;
-        const pos = Number(detail.currentTime) || 0;
-        const dur = Number(detail.duration) || 0;
-        if (pos >= CONTINUE_WATCHING_MIN_SECONDS || (dur > 0 && pos / dur >= 0.92)) {
-          upsertContinueWatchingProgress({
-            slug: titleSlug,
-            title: cleanTitle,
-            kind: isAnimeRoute ? 'anime' : (isShow ? 'show' : 'movie'),
-            imdbId: imdbId || undefined,
-            year: yearStr || '',
-            poster: posterUrl || '',
-            rating: ratingText || '',
-            genre: genresList[0] || '',
-            watchUrl: canonicalWatchUrl,
-            detailUrl: canonicalDetailUrl,
-            season: isShow ? seasonNum : undefined,
-            episode: (isShow || isAnimeRoute) ? episodeNum : undefined,
-            currentTime: pos,
-            duration: dur,
-            mode: 'direct',
-            serverName: servers[detail.serverIndex]?.name || currentServer?.name || 'Kaira',
-            updatedAt: Date.now()
-          });
-        }
-        if (backUrl) {
-          navigateTo(backUrl);
-        }
-      };
-      window.addEventListener('kaira:native-player-progress', handleNativePlayerProgress);
-
-      function tryLaunchNativeAndroidTvPlayer() {
-        const bridge = window.AndroidBridge;
-        if (!bridge || typeof bridge.playNativeHls !== 'function') return false;
-        const isNativeTv = typeof bridge.isAndroidTV === 'function' ? Boolean(bridge.isAndroidTV()) : false;
-        if (!isNativeTv) return false;
-        const localOrigin = (typeof bridge.getLocalServerUrl === 'function' && bridge.getLocalServerUrl())
-          || window.__KAIRA_LOCAL_SERVER__
-          || window.location.origin;
-        const cleanOrigin = String(localOrigin || '').replace(/\/+$/, '');
-        const hlsServers = [];
-        for (const srv of servers) {
-          if (!srv || !srv.src || srv.kind === 'embed') continue;
-          const rawSrc = String(srv.src).trim();
-          const resolvedSrc = rawSrc.startsWith('/') ? `${cleanOrigin}${rawSrc}` : rawSrc;
-          if (!/^https?:\/\//i.test(resolvedSrc)) continue;
-          hlsServers.push({
-            name: srv.name === 'Flicx' ? 'Kaira' : srv.name,
-            src: resolvedSrc,
-            quality: srv.quality || 'HD',
-            group: srv.group || 'external'
-          });
-        }
-        if (hlsServers.length === 0) return false;
-        const payload = {
-          title: cleanTitle,
-          subtitle: isShow ? `Season ${seasonNum} · Episode ${episodeNum}` : (yearStr || ''),
-          slug: titleSlug,
-          imdbId: imdbId || '',
-          isShow: Boolean(isShow),
-          season: seasonNum || 1,
-          episode: episodeNum || 1,
-          resumeSeconds: Math.max(0, Math.floor(resumeTargetSeconds || 0)),
-          activeServerIndex: Math.min(currentServerIndex, hlsServers.length - 1),
-          servers: hlsServers
-        };
-        try {
-          return Boolean(bridge.playNativeHls(JSON.stringify(payload)));
-        } catch {
-          return false;
-        }
-      }
-
       if (resumeRestartBtn) {
         resumeRestartBtn.onclick = (e) => {
           e.stopPropagation();
@@ -3237,10 +3129,6 @@
 
       function attachStream(source, opts = {}) {
         if (isDestroyed) return;
-        if (!opts.skipNativeTv && !opts.preserveTried && source && source.kind !== 'embed' && tryLaunchNativeAndroidTvPlayer()) {
-          bufferingEl.style.display = 'none';
-          return;
-        }
         activeStreamToken += 1;
         const token = activeStreamToken;
         if (!opts.preserveTried) {
@@ -3340,8 +3228,7 @@
           videoEl.addEventListener('canplay', nativeCanPlayHandler, { once: true });
           videoEl.addEventListener('error', nativeErrorHandler, { once: true });
 
-          const isDirectCdnNative = streamUrl && /^https?:\/\/s\.fli\.cx\//i.test(streamUrl);
-          const nativeUrl = isDirectCdnNative && !streamUrl.includes('fx=cors')
+          const nativeUrl = streamUrl && streamUrl.startsWith('http') && !streamUrl.includes('fx=cors')
             ? streamUrl + (streamUrl.includes('?') ? '&' : '?') + 'fx=cors'
             : streamUrl;
           videoEl.src = nativeUrl;
@@ -3362,11 +3249,6 @@
               ? resumeTargetSeconds
               : -1;
             const isExternalUnverified = source.group === 'external' && !source.steady && !source.verifiedLive;
-            const canProxyXhr = Boolean(
-              source.streamProxyEnabled ||
-              (typeof streamUrl === 'string' && (streamUrl.startsWith('/') || streamUrl.startsWith(window.location.origin + '/')))
-            );
-            const xhrProxyBase = source.streamProxyBase || '';
             const hls = new window.Hls({
               startPosition: hlsStartPosition,
               capLevelToPlayerSize: isTouchMobile,
@@ -3379,16 +3261,8 @@
               maxMaxBufferLength: isTouchMobile ? 45 : 60,
               backBufferLength: isTouchMobile ? 20 : 45,
               xhrSetup: (xhr, url) => {
-                if (!url) return;
-                let finalUrl = url;
-                if (canProxyXhr && /^https?:\/\/s\.fli\.cx\/[sfk]\//i.test(finalUrl)) {
-                  finalUrl = rewriteStreamUrlForProxy(finalUrl, true, xhrProxyBase);
-                }
-                if (/^https?:\/\/s\.fli\.cx\//i.test(finalUrl) && !finalUrl.includes('fx=cors')) {
-                  finalUrl = finalUrl + (finalUrl.includes('?') ? '&' : '?') + 'fx=cors';
-                }
-                if (finalUrl !== url) {
-                  xhr.open('GET', finalUrl, true);
+                if (url && !url.includes('fx=cors')) {
+                  xhr.open('GET', url + (url.includes('?') ? '&' : '?') + 'fx=cors', true);
                 }
               }
             });
@@ -4857,7 +4731,6 @@
         clearInterval(upNextCountdownTimer);
         upNextCountdownTimer = null;
         window.removeEventListener('pagehide', onPageHideSave);
-        window.removeEventListener('kaira:native-player-progress', handleNativePlayerProgress);
         document.removeEventListener('visibilitychange', onVisibilitySave);
         document.removeEventListener('fullscreenchange', onFullscreenChange);
         document.removeEventListener('webkitfullscreenchange', onFullscreenChange);
@@ -12859,8 +12732,27 @@
     }, { passive: true });
   }
 
+  function registerPwaServiceWorker() {
+    try {
+      if (typeof navigator === 'undefined' || !('serviceWorker' in navigator)) return;
+      const isSecure = window.location.protocol === 'https:' || window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+      if (!isSecure) return;
+      const swUrl = withBasePath('/sw.js');
+      const swScope = withBasePath('/');
+      fetch(swUrl, { method: 'HEAD', cache: 'no-store' })
+        .then((res) => {
+          const ct = (res.headers.get('content-type') || '').toLowerCase();
+          if (res.ok && (ct.includes('javascript') || ct.includes('ecmascript'))) {
+            return navigator.serviceWorker.register(swUrl, { scope: swScope });
+          }
+        })
+        .catch(() => {});
+    } catch {}
+  }
+
   // --- Bootstrap on load ---
   function bootstrap() {
+    registerPwaServiceWorker();
     // Restore deep links redirected via GitHub Pages 404.html
     try {
       const ghRedirect = sessionStorage.getItem('kaira:gh-redirect');
@@ -12914,7 +12806,6 @@
     try { initAnimatedLogoHover(); } catch (e) { console.error('LogoHover error', e); }
     try { initBackToTopButton(); } catch (e) { console.error('BackToTop error', e); }
     try { initPageTransitions(); } catch (e) { console.error('PageTransitions error', e); }
-    try { initAndroidTvMode(); } catch (e) { console.error('AndroidTvMode error', e); }
 
     if (typeof initialDynamicHydrate === 'function') {
       initialDynamicHydrate();
@@ -12942,463 +12833,6 @@
         return;
       }
     });
-  }
-
-  // --- Android TV / 10-Foot Leanback D-Pad Spatial Navigation ---
-  let tvModeInitialized = false;
-  let tvModeActive = false;
-  let tvFocusedEl = null;
-  let tvLastBackAt = 0;
-
-  function detectAndroidTvRuntime() {
-    try {
-      if (window.AndroidBridge && typeof window.AndroidBridge.isAndroidTV === 'function' && window.AndroidBridge.isAndroidTV()) {
-        return true;
-      }
-    } catch {}
-    const flag = String(window.__TVOS_PLATFORM__ || '').toLowerCase();
-    if (flag === 'android-tv' || flag === 'tvos' || flag === 'tv') return true;
-    const search = String(window.location.search || '').toLowerCase();
-    if (/[?&](android=tv|tv=1|mode=tv)\b/.test(search)) return true;
-    const ua = String(navigator.userAgent || '');
-    return /\b(Android TV|GoogleTV|AFT[A-Z0-9]+|BRAVIA|SHIELD Android TV|MIBOX|SmartTV|Tizen|Web0S|CrKey)\b/i.test(ua);
-  }
-
-  function injectAndroidTvStyles() {
-    if (document.getElementById('kaira-tv-mode-styles')) return;
-    const style = document.createElement('style');
-    style.id = 'kaira-tv-mode-styles';
-    style.textContent = `
-      body.kaira-tv-mode {
-        scroll-behavior: smooth;
-        -webkit-font-smoothing: antialiased;
-      }
-      body.kaira-tv-mode header,
-      body.kaira-tv-mode main .page,
-      body.kaira-tv-mode .hero-copy {
-        padding-left: max(env(safe-area-inset-left, 0px), 2.2vw);
-        padding-right: max(env(safe-area-inset-right, 0px), 2.2vw);
-      }
-      /* Keep Android TV sticks at a locked 60fps by trimming heavy multi-pass blur filters */
-      body.kaira-tv-mode .card,
-      body.kaira-tv-mode .rail li,
-      body.kaira-tv-mode .ep-rail li {
-        contain: layout style;
-      }
-      body.kaira-tv-mode main {
-        animation: kairaTvPageReveal 220ms cubic-bezier(0.22, 1, 0.36, 1) both;
-        will-change: opacity, transform;
-      }
-      @keyframes kairaTvPageReveal {
-        from { opacity: 0; transform: translate3d(0, 10px, 0) scale(0.992); }
-        to { opacity: 1; transform: translate3d(0, 0, 0) scale(1); }
-      }
-      .kaira-tv-focus {
-        outline: 3px solid #ffffff !important;
-        outline-offset: 4px !important;
-        box-shadow: 0 0 0 7px rgba(242, 92, 5, 0.55), 0 18px 38px rgba(0, 0, 0, 0.72) !important;
-        transform: translate3d(0, 0, 0) scale(1.045) !important;
-        transition: transform 180ms cubic-bezier(0.22, 1, 0.36, 1), box-shadow 180ms ease, outline-color 180ms ease !important;
-        will-change: transform;
-        position: relative !important;
-        z-index: 30 !important;
-      }
-      .rail .kaira-tv-focus,
-      .film-grid .kaira-tv-focus,
-      .ep-rail .kaira-tv-focus {
-        border-radius: 0.75rem;
-      }
-      .kaira-tv-toast {
-        position: fixed;
-        bottom: 2.2rem;
-        left: 50%;
-        transform: translateX(-50%);
-        z-index: 10050;
-        padding: 0.65rem 1.25rem;
-        border-radius: 999px;
-        background: rgba(18, 20, 28, 0.94);
-        border: 1px solid rgba(255, 255, 255, 0.22);
-        color: #ffffff;
-        font-size: 0.95rem;
-        font-weight: 600;
-        letter-spacing: 0.01em;
-        box-shadow: 0 12px 32px rgba(0, 0, 0, 0.55);
-        pointer-events: none;
-        animation: kairaTvFadeIn 180ms cubic-bezier(0.22, 1, 0.36, 1);
-      }
-      @keyframes kairaTvFadeIn {
-        from { opacity: 0; transform: translate3d(-50%, 8px, 0); }
-        to { opacity: 1; transform: translate3d(-50%, 0, 0); }
-      }
-    `;
-    document.head.appendChild(style);
-  }
-
-  function showTvToast(msg) {
-    document.querySelectorAll('.kaira-tv-toast').forEach(n => n.remove());
-    const toast = document.createElement('div');
-    toast.className = 'kaira-tv-toast';
-    toast.textContent = msg;
-    document.body.appendChild(toast);
-    setTimeout(() => {
-      if (toast.isConnected) toast.remove();
-    }, 2000);
-  }
-
-  function getActiveTvOverlayScope() {
-    const selectors = [
-      '#flicx-settings-dialog',
-      '#flicx-notes-popover',
-      '.kaira-trailer-modal',
-      '.fx-menu.open',
-      '[role="dialog"]',
-      '[role="menu"]'
-    ];
-    for (const sel of selectors) {
-      const el = document.querySelector(sel);
-      if (el && el.offsetParent !== null && getComputedStyle(el).display !== 'none' && getComputedStyle(el).visibility !== 'hidden') {
-        return el;
-      }
-    }
-    return document;
-  }
-
-  function collectTvFocusables(scopeRoot) {
-    const root = scopeRoot || getActiveTvOverlayScope();
-    const selector = [
-      'header a[href]',
-      'header button:not([disabled])',
-      'nav a[href]',
-      'nav button:not([disabled])',
-      '.hero-actions a[href]',
-      '.hero-actions button:not([disabled])',
-      '.rail a[href]',
-      '.rail button:not([disabled])',
-      '.ep-rail a[href]',
-      '.ep-rail button:not([disabled])',
-      '.film-grid a[href]',
-      '.film-grid button:not([disabled])',
-      '.chips a[href]',
-      '.chips button:not([disabled])',
-      '.fx-player button:not([disabled])',
-      '.fx-player a[href]',
-      'main a[href]',
-      'main button:not([disabled])',
-      'main input:not([type="hidden"]):not([disabled])',
-      'main select:not([disabled])',
-      '[role="dialog"] button:not([disabled])',
-      '[role="dialog"] a[href]',
-      '[role="dialog"] input:not([disabled])',
-      '[role="menu"] button:not([disabled])'
-    ].join(', ');
-
-    const seen = new Set();
-    const out = [];
-    root.querySelectorAll(selector).forEach((el) => {
-      if (seen.has(el)) return;
-      seen.add(el);
-      if (el.hasAttribute('hidden') || el.getAttribute('aria-hidden') === 'true') return;
-      if (el.closest('[hidden], [aria-hidden="true"], .sr-only')) return;
-      const cs = getComputedStyle(el);
-      if (cs.display === 'none' || cs.visibility === 'hidden' || Number(cs.opacity) < 0.05 || cs.pointerEvents === 'none') return;
-      const r = el.getBoundingClientRect();
-      if (r.width < 12 || r.height < 12) return;
-      out.push(el);
-    });
-    return out;
-  }
-
-  function getTvFocusGroup(el) {
-    if (!el || !el.closest) return '';
-    const container = el.closest('header, nav, .hero-actions, .rail, .ep-rail, .chips, .fx-top, .fx-bottom, .film-grid, [role="menu"]');
-    if (!container) return '';
-    if (!container.dataset.kairaTvGroup) {
-      container.dataset.kairaTvGroup = 'g-' + Math.random().toString(36).slice(2, 8);
-    }
-    return container.dataset.kairaTvGroup;
-  }
-
-  function setTvFocus(el, shouldScroll = true) {
-    if (tvFocusedEl && tvFocusedEl !== el) {
-      tvFocusedEl.classList.remove('kaira-tv-focus');
-    }
-    tvFocusedEl = el || null;
-    if (!tvFocusedEl) return;
-    tvFocusedEl.classList.add('kaira-tv-focus');
-    try {
-      tvFocusedEl.focus({ preventScroll: true });
-    } catch {}
-    if (shouldScroll) {
-      try {
-        tvFocusedEl.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
-      } catch {
-        try { tvFocusedEl.scrollIntoView(); } catch {}
-      }
-    }
-  }
-
-  function ensureInitialTvFocus() {
-    if (!tvModeActive) return;
-    const scope = getActiveTvOverlayScope();
-    if (tvFocusedEl && tvFocusedEl.isConnected && (scope === document || scope.contains(tvFocusedEl))) {
-      const r = tvFocusedEl.getBoundingClientRect();
-      if (r.width >= 12 && r.height >= 12) return;
-    }
-    const preferredSelectors = [
-      'main a[href^="/watch/"]',
-      '.hero-actions .btn-primary',
-      '.hero-actions a[href]',
-      '.fx-play-btn',
-      '.rail a[href]',
-      '.film-grid a[href]',
-      'header nav a[href]',
-      'button:not([disabled])'
-    ];
-    for (const sel of preferredSelectors) {
-      const el = scope.querySelector(sel);
-      if (el && el.offsetParent !== null) {
-        const r = el.getBoundingClientRect();
-        if (r.width >= 12 && r.height >= 12) {
-          setTvFocus(el, false);
-          return;
-        }
-      }
-    }
-    const list = collectTvFocusables(scope);
-    if (list.length > 0) setTvFocus(list[0], false);
-  }
-
-  function moveTvSpatialFocus(direction) {
-    const scope = getActiveTvOverlayScope();
-    const candidates = collectTvFocusables(scope);
-    if (candidates.length === 0) return false;
-
-    if (!tvFocusedEl || !tvFocusedEl.isConnected || !candidates.includes(tvFocusedEl)) {
-      setTvFocus(candidates[0], true);
-      return true;
-    }
-
-    const curRect = tvFocusedEl.getBoundingClientRect();
-    const curGroup = getTvFocusGroup(tvFocusedEl);
-    const curCx = curRect.left + curRect.width / 2;
-    const curCy = curRect.top + curRect.height / 2;
-
-    let bestEl = null;
-    let bestScore = Infinity;
-
-    for (const cand of candidates) {
-      if (cand === tvFocusedEl) continue;
-      const r = cand.getBoundingClientRect();
-      const cx = r.left + r.width / 2;
-      const cy = r.top + r.height / 2;
-      const dx = cx - curCx;
-      const dy = cy - curCy;
-
-      let primary = 0;
-      let secondary = 0;
-
-      if (direction === 'right') {
-        if (dx <= 4) continue;
-        primary = Math.max(0, r.left - curRect.right) + dx * 0.35;
-        secondary = Math.abs(dy);
-      } else if (direction === 'left') {
-        if (dx >= -4) continue;
-        primary = Math.max(0, curRect.left - r.right) + Math.abs(dx) * 0.35;
-        secondary = Math.abs(dy);
-      } else if (direction === 'down') {
-        if (dy <= 4) continue;
-        primary = Math.max(0, r.top - curRect.bottom) + dy * 0.35;
-        secondary = Math.abs(dx);
-      } else {
-        if (dy >= -4) continue;
-        primary = Math.max(0, curRect.top - r.bottom) + Math.abs(dy) * 0.35;
-        secondary = Math.abs(dx);
-      }
-
-      const candGroup = getTvFocusGroup(cand);
-      if ((direction === 'up' || direction === 'down') && curGroup && candGroup === curGroup && Math.abs(dy) < Math.max(curRect.height * 0.6, 24)) {
-        continue;
-      }
-
-      const crossWeight = (direction === 'left' || direction === 'right') ? 4.2 : 1.85;
-      let score = primary + secondary * crossWeight;
-      if ((direction === 'left' || direction === 'right') && curGroup && candGroup === curGroup) {
-        score *= 0.65;
-      }
-
-      if (score < bestScore) {
-        bestScore = score;
-        bestEl = cand;
-      }
-    }
-
-    if (bestEl) {
-      setTvFocus(bestEl, true);
-      return true;
-    }
-    return false;
-  }
-
-  function handleAndroidBackAction() {
-    // 1. Close any open modal/popover/menu first
-    const closeBtn = document.querySelector(
-      '.kaira-trailer-close, #flicx-settings-dialog .set-close, #flicx-notes-popover .notes-close, .fx-menu.open .fx-menu-close'
-    );
-    if (closeBtn) {
-      closeBtn.click();
-      setTimeout(ensureInitialTvFocus, 120);
-      return;
-    }
-    const openMenu = document.querySelector('.fx-menu.open');
-    if (openMenu) {
-      openMenu.classList.remove('open');
-      return;
-    }
-
-    // 2. If inside watch player, click player Back button cleanly
-    const watchBack = document.querySelector('.fx-player .fx-back, .watch-root a.btn');
-    if (watchBack) {
-      watchBack.click();
-      return;
-    }
-
-    // 3. Navigate back if not on home screen
-    const cleanPath = window.location.pathname.replace(/\/+$/, '') || '/';
-    if (cleanPath !== '/' && cleanPath !== '/index.html') {
-      if (window.history.length > 1) {
-        window.history.back();
-      } else {
-        navigateTo(withBasePath('/'));
-      }
-      return;
-    }
-
-    // 4. At home screen inside Android TV APK: double-press Back to exit cleanly
-    if (window.AndroidBridge && typeof window.AndroidBridge.exitApp === 'function') {
-      const now = Date.now();
-      if (now - tvLastBackAt < 2000) {
-        window.AndroidBridge.exitApp();
-      } else {
-        tvLastBackAt = now;
-        showTvToast('Press Back again to exit Kaira');
-      }
-    }
-  }
-
-  function enableAndroidTvMode() {
-    if (tvModeActive) return;
-    tvModeActive = true;
-    injectAndroidTvStyles();
-    document.body.classList.add('kaira-tv-mode');
-    setTimeout(ensureInitialTvFocus, 160);
-  }
-
-  function initAndroidTvMode() {
-    if (tvModeInitialized) {
-      if (tvModeActive) setTimeout(ensureInitialTvFocus, 160);
-      return;
-    }
-    tvModeInitialized = true;
-
-    if (detectAndroidTvRuntime()) {
-      enableAndroidTvMode();
-    }
-
-    window.addEventListener('kaira:android-ready', (ev) => {
-      if (ev && ev.detail && ev.detail.isTV) {
-        enableAndroidTvMode();
-      }
-    });
-
-    window.addEventListener('kaira:android-back', () => {
-      handleAndroidBackAction();
-    });
-
-    window.addEventListener('kaira:android-search', () => {
-      navigateTo(withBasePath('/search'));
-      setTimeout(() => {
-        const input = document.querySelector('input[type="search"], input[name="q"], .search-input');
-        if (input) input.focus();
-      }, 220);
-    });
-
-    // Clear visual TV ring if user switches to mouse pointer
-    document.addEventListener('pointerdown', (e) => {
-      if (e.pointerType === 'mouse' && tvFocusedEl) {
-        tvFocusedEl.classList.remove('kaira-tv-focus');
-        tvFocusedEl = null;
-      }
-    }, { passive: true });
-
-    // Re-seed focus after client-side route changes when in TV mode
-    const origPushState = window.history.pushState;
-    window.history.pushState = function () {
-      const r = origPushState.apply(this, arguments);
-      if (tvModeActive) setTimeout(ensureInitialTvFocus, 240);
-      return r;
-    };
-    window.addEventListener('popstate', () => {
-      if (tvModeActive) setTimeout(ensureInitialTvFocus, 240);
-    });
-
-    // Global D-pad & TV remote key handler
-    window.addEventListener('keydown', (e) => {
-      const key = e.key;
-      const activeTag = document.activeElement ? document.activeElement.tagName : '';
-      const isTypingField = activeTag === 'INPUT' || activeTag === 'TEXTAREA' || activeTag === 'SELECT';
-
-      if (key === 'MediaPlayPause' || key === 'MediaRewind' || key === 'MediaFastForward') {
-        const v = document.querySelector('video');
-        if (v) {
-          e.preventDefault();
-          if (key === 'MediaPlayPause') {
-            if (v.paused) v.play().catch(() => {});
-            else v.pause();
-          } else if (key === 'MediaRewind') {
-            v.currentTime = Math.max(0, (v.currentTime || 0) - 10);
-          } else if (key === 'MediaFastForward') {
-            v.currentTime = Math.min(v.duration || Infinity, (v.currentTime || 0) + 10);
-          }
-        }
-        return;
-      }
-
-      const isWatchPage = window.location.pathname.includes('/watch/');
-      if (isWatchPage && !document.querySelector('.fx-menu.open')) {
-        // Inside WebView watch player on TV, let the player's own seek/play shortcuts handle Left/Right/Space unless HUD is active
-        if (!tvModeActive) return;
-      }
-
-      if (key === 'ArrowUp' || key === 'ArrowDown' || key === 'ArrowLeft' || key === 'ArrowRight') {
-        if (isTypingField && (key === 'ArrowLeft' || key === 'ArrowRight')) return;
-        if (!tvModeActive) {
-          // Only activate 2D spatial navigation automatically on TV mode (keep desktop browser scrolling intact)
-          return;
-        }
-        e.preventDefault();
-        const dir = key === 'ArrowUp' ? 'up' : key === 'ArrowDown' ? 'down' : key === 'ArrowLeft' ? 'left' : 'right';
-        if (isTypingField && (dir === 'up' || dir === 'down')) {
-          try { document.activeElement.blur(); } catch {}
-        }
-        moveTvSpatialFocus(dir);
-        return;
-      }
-
-      if (key === 'Enter' && tvModeActive && !isTypingField) {
-        if (tvFocusedEl && tvFocusedEl.isConnected) {
-          e.preventDefault();
-          tvFocusedEl.click();
-        } else {
-          ensureInitialTvFocus();
-        }
-        return;
-      }
-
-      if ((key === 'Escape' || key === 'Backspace') && tvModeActive && !isTypingField) {
-        e.preventDefault();
-        handleAndroidBackAction();
-      }
-    }, true);
   }
 
   if (document.readyState === 'loading') {

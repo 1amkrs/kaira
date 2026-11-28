@@ -8,8 +8,6 @@ import {
   isValidDetailPageHtml,
   isValidAppPageHtml,
   prepareServedHtml,
-  isProxiedStreamPath,
-  rewriteHlsPlaylistUrls,
 } from './kairaMiddlewareUtils';
 
 test('isAllowedImageUrl permits allowlisted https media hosts and rejects SSRF targets', () => {
@@ -109,47 +107,3 @@ test('prepareServedHtml strips unused preload chunk, updates branding and OG ima
   // Idempotent on second call
   assert.equal(prepareServedHtml(cleaned).match(/flicx-interactive\.js/g)?.length, 1);
 });
-
-test('isProxiedStreamPath matches /s/, /f/, /k/ stream paths and rejects non-stream or traversal paths', () => {
-  assert.equal(isProxiedStreamPath('/s/abc123/master.m3u8?token=1'), true);
-  assert.equal(isProxiedStreamPath('/f/s0e-abc/segment001.m4s'), true);
-  assert.equal(isProxiedStreamPath('/k/key-01'), true);
-  assert.equal(isProxiedStreamPath('/s/'), false);
-  assert.equal(isProxiedStreamPath('/f/../etc/passwd'), false);
-  assert.equal(isProxiedStreamPath('/api/sources/tt0120338'), false);
-  assert.equal(isProxiedStreamPath('/movie/titanic-1997'), false);
-  assert.equal(isProxiedStreamPath(''), false);
-});
-
-test('rewriteHlsPlaylistUrls rewrites s.fli.cx manifest, map, key, and segment URLs cleanly', () => {
-  const playlist = [
-    '#EXTM3U',
-    '#EXT-X-VERSION:7',
-    '#EXT-X-MAP:URI="https://s.fli.cx/f/s0e-123/init.mp4"',
-    '#EXT-X-KEY:METHOD=AES-128,URI="https://s.fli.cx/k/abc/key.bin"',
-    '#EXT-X-STREAM-INF:BANDWIDTH=8000000,RESOLUTION=3840x2160',
-    'https://s.fli.cx/s/variant-4k/index.m3u8?sig=xyz',
-    '#EXTINF:4.000,',
-    '/f/s0e-123/seg1.m4s',
-    'https://cdn.other.example/keep-me.m3u8',
-  ].join('\n');
-
-  const sameOrigin = rewriteHlsPlaylistUrls(playlist);
-  assert.equal(sameOrigin.includes('#EXT-X-MAP:URI="/f/s0e-123/init.mp4"'), true);
-  assert.equal(sameOrigin.includes('#EXT-X-KEY:METHOD=AES-128,URI="/k/abc/key.bin"'), true);
-  assert.equal(sameOrigin.includes('\n/s/variant-4k/index.m3u8?sig=xyz\n'), true);
-  assert.equal(sameOrigin.includes('\n/f/s0e-123/seg1.m4s\n'), true);
-  assert.equal(sameOrigin.includes('https://cdn.other.example/keep-me.m3u8'), true);
-  assert.equal(sameOrigin.includes('s.fli.cx'), false);
-
-  const workerProxied = rewriteHlsPlaylistUrls(playlist, 'https://proxy.kaira.workers.dev/');
-  assert.equal(
-    workerProxied.includes('#EXT-X-MAP:URI="https://proxy.kaira.workers.dev/f/s0e-123/init.mp4"'),
-    true
-  );
-  assert.equal(
-    workerProxied.includes('\nhttps://proxy.kaira.workers.dev/s/variant-4k/index.m3u8?sig=xyz\n'),
-    true
-  );
-});
-
