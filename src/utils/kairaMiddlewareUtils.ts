@@ -280,3 +280,30 @@ export function prepareServedHtml(html: string): string {
   }
   return out;
 }
+
+/**
+ * Returns true if reqUrl targets an upstream s.fli.cx HLS manifest (/s/),
+ * media segment (/f/), or encryption key (/k/) path, rejecting traversal.
+ */
+export function isProxiedStreamPath(reqUrl: string): boolean {
+  if (!reqUrl || typeof reqUrl !== 'string') return false;
+  const cleanPath = reqUrl.split('?')[0];
+  if (cleanPath.includes('..') || cleanPath.includes('\\') || cleanPath.includes('\0')) {
+    return false;
+  }
+  return /^\/[sfk]\/.+/.test(cleanPath);
+}
+
+/**
+ * Rewrites absolute https://s.fli.cx/(s|f|k)/... URLs inside HLS .m3u8 playlists
+ * to go through the local or worker proxy prefix (default '' for same-origin /s/, /f/, /k/).
+ */
+export function rewriteHlsPlaylistUrls(playlistText: string, proxyPrefix = ''): string {
+  if (!playlistText || typeof playlistText !== 'string') return playlistText;
+  const normalizedPrefix = proxyPrefix ? proxyPrefix.replace(/\/+$/, '') : '';
+  return playlistText.replace(
+    /https?:\/\/s\.fli\.cx\/([sfk])\/([^\s"'<>]+)/gi,
+    (_match, segmentType: string, rest: string) => `${normalizedPrefix}/${segmentType.toLowerCase()}/${rest}`
+  );
+}
+

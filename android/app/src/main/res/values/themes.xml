@@ -1,7 +1,14 @@
 <resources>
     <style name="Theme.Kaira" parent="Theme.AppCompat.NoActionBar">
-        <item name="android:windowBackground">#0d0e12</item>
-        <item name="android:statusBarColor">#0d0e12</item>
-        <item name="android:navigationBarColor">#0d0e12</item>
+        <item name="android:windowBackground">#0a0b10</item>
+        <item name="android:statusBarColor">#0a0b10</item>
+        <item name="android:navigationBarColor">#0a0b10</item>
+    </style>
+
+    <style name="Theme.Kaira.Player" parent="Theme.AppCompat.NoActionBar">
+        <item name="android:windowBackground">#000000</item>
+        <item name="android:windowFullscreen">true</item>
+        <item name="android:statusBarColor">#000000</item>
+        <item name="android:navigationBarColor">#000000</item>
     </style>
 </resources>

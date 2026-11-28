@@ -3,6 +3,7 @@ import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
 import path from 'path';
 import fs from 'fs';
+import { Readable } from 'stream';
 import type { IncomingMessage, ServerResponse } from 'http';
 import {
   isAllowedImageUrl,
@@ -11,6 +12,8 @@ import {
   isValidDetailPageHtml,
   isValidAppPageHtml,
   prepareServedHtml,
+  isProxiedStreamPath,
+  rewriteHlsPlaylistUrls,
 } from './src/utils/kairaMiddlewareUtils';
 
 const BROWSER_UA =
@@ -330,9 +333,18 @@ function createKairaMiddleware(rootDir: string) {
           },
         });
         const buf = Buffer.from(await apiRes.arrayBuffer());
+        const ct = apiRes.headers.get('content-type') || 'application/json';
         res.statusCode = apiRes.status;
-        res.setHeader('Content-Type', apiRes.headers.get('content-type') || 'application/json');
+        res.setHeader('Content-Type', ct);
         res.setHeader('Access-Control-Allow-Origin', '*');
+        if (
+          apiRes.ok &&
+          reqUrl.startsWith('/api/s/') &&
+          (ct.toLowerCase().includes('mpegurl') || buf.subarray(0, 7).toString('utf-8') === '#EXTM3U')
+        ) {
+          const rewritten = rewriteHlsPlaylistUrls(buf.toString('utf-8'), '');
+          return res.end(rewritten, 'utf-8');
+        }
         return res.end(buf);
       } catch (e: any) {
         res.statusCode = 502;
@@ -341,18 +353,65 @@ function createKairaMiddleware(rootDir: string) {
       }
     }
 
-    // 1d. Status-preserving stream proxy for /s/ directly to s.fli.cx
-    if (reqUrl.startsWith('/s/')) {
+    // 1d. Status-preserving, streaming HLS proxy for /s/ (playlists), /f/ (segments), and /k/ (keys) to s.fli.cx
+    if (isProxiedStreamPath(reqUrl)) {
       try {
+        const upstreamHeaders: Record<string, string> = {
+          'User-Agent': BROWSER_UA,
+          Referer: 'https://fli.cx/',
+        };
+        if (typeof req.headers.range === 'string' && req.headers.range) {
+          upstreamHeaders.Range = req.headers.range;
+        }
         const streamRes = await fetch(`https://s.fli.cx${reqUrl}`, {
-          headers: {
-            'User-Agent': BROWSER_UA,
-            Referer: 'https://fli.cx/',
-          },
+          headers: upstreamHeaders,
         });
+        const ct = streamRes.headers.get('content-type') || '';
+        const ctLower = ct.toLowerCase();
+        const cleanPathOnly = reqUrl.split('?')[0].toLowerCase();
+        const isPlaylist =
+          streamRes.ok &&
+          (ctLower.includes('mpegurl') ||
+            ctLower.includes('m3u8') ||
+            cleanPathOnly.endsWith('.m3u8') ||
+            (cleanPathOnly.startsWith('/s/') &&
+              !ctLower.startsWith('video/') &&
+              !ctLower.startsWith('audio/') &&
+              !ctLower.includes('octet-stream')));
+
         res.statusCode = streamRes.status;
-        res.setHeader('Content-Type', streamRes.headers.get('content-type') || 'application/x-mpegurl');
         res.setHeader('Access-Control-Allow-Origin', '*');
+        const cc = streamRes.headers.get('cache-control');
+        if (cc) res.setHeader('Cache-Control', cc);
+
+        if (isPlaylist) {
+          res.setHeader('Content-Type', ct || 'application/vnd.apple.mpegurl');
+          const rawText = await streamRes.text();
+          const rewritten = rawText.includes('#EXTM3U')
+            ? rewriteHlsPlaylistUrls(rawText, '')
+            : rawText;
+          return res.end(rewritten, 'utf-8');
+        }
+
+        res.setHeader('Content-Type', ct || 'application/octet-stream');
+        const contentLength = streamRes.headers.get('content-length');
+        if (contentLength) res.setHeader('Content-Length', contentLength);
+        const contentRange = streamRes.headers.get('content-range');
+        if (contentRange) res.setHeader('Content-Range', contentRange);
+        const acceptRanges = streamRes.headers.get('accept-ranges');
+        if (acceptRanges) res.setHeader('Accept-Ranges', acceptRanges);
+
+        if (streamRes.body) {
+          const nodeStream = Readable.fromWeb(streamRes.body as any);
+          req.on('close', () => {
+            if (!res.writableEnded) nodeStream.destroy();
+          });
+          nodeStream.on('error', () => {
+            if (!res.writableEnded) res.end();
+          });
+          nodeStream.pipe(res);
+          return;
+        }
         const data = Buffer.from(await streamRes.arrayBuffer());
         return res.end(data);
       } catch (e: any) {

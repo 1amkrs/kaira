@@ -1,0 +1,56 @@
+name: Build Android TV APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'android/**'
+      - 'public/flicx-interactive.js'
+      - 'scripts/sync-android-assets.mjs'
+      - 'scripts/prepare-gh-pages.mjs'
+
+jobs:
+  build-android-tv:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install dependencies & sync Kaira assets into Android TV app
+        env:
+          SKIP_SOURCE_HYDRATION: '1'
+        run: |
+          npm ci
+          npm run build:android
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: 8.11.1
+
+      - name: Run Kotlin unit tests & assemble Android TV APK
+        working-directory: android
+        run: gradle testDebugUnitTest assembleDebug
+
+      - name: Upload Kaira Android TV APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: kaira-android-tv-apk
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+          retention-days: 30
